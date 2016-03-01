@@ -40,6 +40,7 @@ deps/
 
 # Executables #
 ###############
+teamsyncd/teamsyncd
 fpmsyncd/fpmsyncd
 intfsyncd/intfsyncd
 neighsyncd/neighsyncd

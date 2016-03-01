@@ -1,1 +1,1 @@
-SUBDIRS = fpmsyncd neighsyncd intfsyncd portsyncd orchagent swssconfig
+SUBDIRS = fpmsyncd neighsyncd intfsyncd portsyncd teamsyncd orchagent swssconfig
