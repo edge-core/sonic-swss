@@ -147,12 +147,22 @@ bool PortsOrch::isInitDone()
     return m_initDone;
 }
 
+void PortsOrch::setPort(string alias, Port p)
+{
+    m_portList[alias] = p;
+}
+
 bool PortsOrch::getPort(string alias, Port &p)
 {
     if (m_portList.find(alias) == m_portList.end())
         return false;
     p = m_portList[alias];
     return true;
+}
+
+void PortsOrch::removePort(string alias)
+{
+    m_portList.erase(alias);
 }
 
 bool PortsOrch::setPortAdminStatus(sai_object_id_t id, bool up)
@@ -254,7 +264,7 @@ void PortsOrch::doTask(Consumer &consumer)
                         if (initializePort(p))
                         {
                             /* Add port to port list */
-                            m_portList[alias] = p;
+                            setPort(alias, p);
                             SWSS_LOG_NOTICE("Port is initialized alias:%s\n", alias.c_str());
 
                         }

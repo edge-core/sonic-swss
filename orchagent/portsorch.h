@@ -15,7 +15,9 @@ public:
 
     bool isInitDone();
 
+    void setPort(string alias, Port p);
     bool getPort(string alias, Port &p);
+    void removePort(string alias);
 
     bool setPortAdminStatus(sai_object_id_t id, bool up);
 
