@@ -1,5 +1,11 @@
 Schema data is defined in ABNF [RFC5234](https://tools.ietf.org/html/rfc5234) syntax.  
 
+###Definitions of common tokens
+	name					= 1*DIGIT/1*ALPHA
+	ref_hash_key_reference	= "[" hash_key "]" ;The token is a refernce to another valid DB key.
+	hash_key				= name ; a valid key name (i.e. exists in DB)
+
+
 ###PORT_TABLE
 Stores information for physical switch ports managed by the switch chip.  device_names are defined in [port_config.ini](../portsyncd/port_config.ini).  Ports to the CPU (ie: management port) and logical ports (loopback) are not declared in the PORT_TABLE.   See INTF_TABLE.
 
@@ -13,7 +19,19 @@ Stores information for physical switch ports managed by the switch chip.  device
     lanes               = list of lanes ; (need format spec???)
     ifname              = 1*64VCHAR     ; name of the port, must be unique 
     mac                 = 12HEXDIG      ; 
-    
+
+	;QOS Mappings
+	map_dscp_to_tc		= ref_hash_key_reference
+	map_tc_to_queue		= ref_hash_key_reference
+	
+	Example:
+	127.0.0.1:6379> hgetall PORT_TABLE:ETHERNET4
+	1) "dscp_to_tc_map"
+	2) "[DSCP_TO_TC_MAP_TABLE:AZURE]"
+	3) "tc_to_queue_map"
+	4) "[TC_TO_QUEUE_MAP_TABLE:AZURE]"
+
+---------------------------------------------
 ###INTF_TABLE
 intfsyncd manages this table.  In SONiC, CPU (management) and logical ports (vlan, loopback, LAG) are declared in /etc/network/interface and loaded into the INTF_TABLE.
 
@@ -79,7 +97,7 @@ For example (reorder output)
     7) "if_mtu"
     8) "65536"
 
-
+---------------------------------------------
 ###VLAN_TABLE
     ;Defines VLANs and the interfaces which are members of the vlan
     ;Status: work in progress
@@ -88,6 +106,7 @@ For example (reorder output)
     admin_status        = BIT ; administrative status for vlan up or down
     attach_to           = PORT_TABLE.key
 
+---------------------------------------------
 ###LAG_TABLE
     ;a logical, link aggregation group interface (802.3ad) made of one or more ports
     ;In SONiC, data is loaded by teamsyncd
@@ -126,7 +145,7 @@ and reflects the LAG ports into the redis under: `LAG_TABLE:<team0>:port`
     5) "duplex"
     6) "half"
 
-
+---------------------------------------------
 ###ROUTE_TABLE
     ;Stores a list of routes
     ;Status: Mandatory
@@ -135,7 +154,7 @@ and reflects the LAG ports into the redis under: `LAG_TABLE:<team0>:port`
     intf          = ifindex? PORT_TABLE.key  ; zero or more separated by “,” (zero indicates no interface)
     blackhole     = BIT ; Set to 1 if this route is a blackhole (or null0)
   
-
+---------------------------------------------
 ###NEIGH_TABLE
     ; Stores the neighbors or next hop IP address and output port or 
     ; interface for routes
@@ -146,6 +165,107 @@ and reflects the LAG ports into the redis under: `LAG_TABLE:<team0>:port`
     neigh         = 12HEXDIG         ;  mac address of the neighbor 
     family        = "IPv4" / "IPv6"  ; address family
 
+---------------------------------------------
+###QUEUE_TABLE
+
+	; QUEUE table. Defines port queue.
+	; SAI mapping - port queue.
+
+	key					= "QUEUE_TABLE:"port_name":queue_index
+	queue_index			= 1*DIGIT
+	port_name			= ifName
+	queue_reference		= ref_hash_key_reference
+
+	;field					value
+	scheduler			= ref_hash_key_reference; reference to scheduler key
+	wred_profile		= ref_hash_key_reference; reference to wred profile key
+
+	Example:
+	127.0.0.1:6379> hgetall QUEUE_TABLE:ETHERNET4:1
+	1) "scheduler"
+	2) "[SCHEDULER_TABLE:BEST_EFFORT]"
+	3) "wred_profile"
+	4) "[WRED_PROFILE_TABLE:AZURE]"
+
+---------------------------------------------
+###TC\_TO\_QUEUE\_MAP\_TABLE
+	; TC to queue map
+	;SAI mapping - qos_map with SAI_QOS_MAP_ATTR_TYPE == SAI_QOS_MAP_TC_TO_QUEUE. See saiqosmaps.h
+	key					= "TC_TO_QUEUE_MAP_TABLE:"name
+	;field
+	tc_num				= 1*DIGIT
+	;values
+	queue				= 1*DIGIT; queue index
+	
+	Example:
+	27.0.0.1:6379> hgetall TC_TO_QUEUE_MAP_TABLE:AZURE
+	1) "5" ;tc
+	2) "1" ;queue index
+	3) "6" 
+	4) "1" 
+
+---------------------------------------------
+###DSCP\_TO\_TC\_MAP\_TABLE
+	; dscp to TC map
+	;SAI mapping - qos_map object with SAI_QOS_MAP_ATTR_TYPE == sai_qos_map_type_t::SAI_QOS_MAP_DSCP_TO_TC
+	key					= "DSCP_TO_TC_MAP_TABLE:"name
+	;field				value
+	dscp_value			= 1*DIGIT
+	tc_value			= 1*DIGIT
+	
+	Example:
+	127.0.0.1:6379> hgetall "DSCP_TO_TC_MAP_TABLE:AZURE"
+	 1) "3" ;dscp
+	 2) "3" ;tc
+	 3) "6" 
+	 4) "5" 
+	 5) "7"
+	 6) "5"
+	 7) "8"
+	 8) "7"
+	 9) "9"
+	10) "8"
+
+---------------------------------------------
+###SCHEDULER_TABLE
+	; Scheduler table
+	; SAI mapping - saicheduler.h
+	key					= "SCHEDULER_TABLE":name
+	; field						value
+	type			= "DWRR"/"WRR"/"PRIORITY"
+	weight				= 1*DIGIT
+	priority			= 1*DIGIT
+	
+	Example:
+	127.0.0.1:6379> hgetall SCHEDULER_TABLE:BEST_EFFORT
+	1) "type"
+	2) "PRIORITY"
+	3) "priority"
+	4) "7"
+	127.0.0.1:6379> hgetall SCHEDULER_TABLE:SCAVENGER
+	1) "type"
+	2) "DWRR"
+	3) "weight"
+	4) "35"
+
+---------------------------------------------
+###WRED\_PROFILE\_TABLE
+	; WRED profile
+	; SAI mapping - saiwred.h
+	key						= "WRED_PROFILE_TABLE:"name
+	;field						value
+	yellow_max_threshold	= byte_count
+	green_max_threshold		= byte_count
+	byte_count				= 1*DIGIT
+	
+	Example:
+	127.0.0.1:6379> hgetall "WRED_PROFILE_TABLE:AZURE"
+	1) "green_max_threshold"
+	2) "20480"
+	3) "yellow_max_threshold"
+	4) "30720"
+
+----------------------------------------------
 
 ###Configuration files
 What configuration files should we have?  Do apps, orch agent each need separate files?  
