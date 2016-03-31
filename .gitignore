@@ -56,5 +56,6 @@ neighsyncd/neighsyncd
 portsyncd/portsyncd
 orchagent/orchagent
 orchagent/routeresync
+swssconfig/swssconfig
 
 
