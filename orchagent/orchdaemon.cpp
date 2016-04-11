@@ -6,6 +6,8 @@
 
 #include <unistd.h>
 
+using namespace swss;
+
 OrchDaemon::OrchDaemon()
 {
     m_applDb = nullptr;
@@ -31,7 +33,6 @@ bool OrchDaemon::init()
     m_intfsO = new IntfsOrch(m_applDb, APP_INTF_TABLE_NAME, m_portsO);
     m_routeO = new RouteOrch(m_applDb, APP_ROUTE_TABLE_NAME, m_portsO);
     m_neighO = new NeighOrch(m_applDb, APP_NEIGH_TABLE_NAME, m_portsO, m_routeO);
-
     m_select = new Select();
 
     return true;
@@ -42,11 +43,10 @@ void OrchDaemon::start()
     SWSS_LOG_ENTER();
 
     int ret;
-
-    m_select->addSelectable(m_portsO->getConsumer());
-    m_select->addSelectable(m_intfsO->getConsumer());
-    m_select->addSelectable(m_neighO->getConsumer());
-    m_select->addSelectable(m_routeO->getConsumer());
+    m_select->addSelectables(m_portsO->getConsumers());
+    m_select->addSelectables(m_intfsO->getConsumers());
+    m_select->addSelectables(m_neighO->getConsumers());
+    m_select->addSelectables(m_routeO->getConsumers());
 
     while (true)
     {
@@ -64,9 +64,7 @@ void OrchDaemon::start()
             continue;
 
         Orch *o = getOrchByConsumer((ConsumerTable *)s);
-
-        SWSS_LOG_INFO("Get message from Orch: %s\n", o->getOrchName().c_str());
-        o->execute();
+        o->execute(((ConsumerTable *)s)->getTableName());
     }
 }
 
@@ -74,13 +72,13 @@ Orch *OrchDaemon::getOrchByConsumer(ConsumerTable *c)
 {
     SWSS_LOG_ENTER();
 
-    if (m_portsO->getConsumer() == c)
+    if (m_portsO->hasConsumer(c))
         return m_portsO;
-    if (m_intfsO->getConsumer() == c)
+    if (m_intfsO->hasConsumer(c))
         return m_intfsO;
-    if (m_neighO->getConsumer() == c)
+    if (m_neighO->hasConsumer(c))
         return m_neighO;
-    if (m_routeO->getConsumer() == c)
+    if (m_routeO->hasConsumer(c))
         return m_routeO;
     return nullptr;
 }

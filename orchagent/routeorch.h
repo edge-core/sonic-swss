@@ -35,8 +35,6 @@ public:
         m_nextHopGroupCount(0),
         m_resync(false) {};
 
-    void doTask();
-
     bool createNextHopEntry(IpAddress, sai_object_id_t);
     bool createNextHopEntry(IpAddresses, sai_object_id_t);
     bool removeNextHopEntry(IpAddress);
@@ -55,6 +53,7 @@ private:
     RouteTable m_syncdRoutes;
     NextHopTable m_syncdNextHops;
 
+    void doTask(Consumer& consumer);
     bool addRoute(IpPrefix, IpAddresses);
     bool removeRoute(IpPrefix);
 };

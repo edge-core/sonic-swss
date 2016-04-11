@@ -16,15 +16,15 @@ public:
     bool getPort(string alias, Port &p);
 
     bool setPortAdminStatus(sai_object_id_t id, bool up);
-private:
-    void doTask();
 
+private:
     sai_object_id_t m_cpuPort;
 
     sai_uint32_t m_portCount;
     map<set<int>, sai_object_id_t> m_portListLaneMap;
     map<string, Port> m_portList;
 
+    void doTask(Consumer &consumer);
     bool initializePort(Port &p);
     bool setupVlan(sai_vlan_id_t vlan_id, sai_object_id_t port_id, sai_object_id_t &vlan_member_id);
     bool setupRouterIntfs(sai_object_id_t virtual_router_id, MacAddress mac_address,

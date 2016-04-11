@@ -5,15 +5,15 @@
 extern sai_neighbor_api_t*         sai_neighbor_api;
 extern sai_next_hop_api_t*         sai_next_hop_api;
 
-void NeighOrch::doTask()
+void NeighOrch::doTask(Consumer &consumer)
 {
     SWSS_LOG_ENTER();
 
-    if (m_toSync.empty())
+    if (consumer.m_toSync.empty())
         return;
 
-    auto it = m_toSync.begin();
-    while (it != m_toSync.end())
+    auto it = consumer.m_toSync.begin();
+    while (it != consumer.m_toSync.end())
     {
         KeyOpFieldsValuesTuple t = it->second;
 
@@ -22,7 +22,7 @@ void NeighOrch::doTask()
         if (found == string::npos)
         {
             SWSS_LOG_ERROR("Failed to parse task key %s\n", key.c_str());
-            it = m_toSync.erase(it);
+            it = consumer.m_toSync.erase(it);
             continue;
         }
         string alias = key.substr(0, found);
@@ -30,14 +30,14 @@ void NeighOrch::doTask()
 
         if (!m_portsOrch->getPort(alias, p))
         {
-            it = m_toSync.erase(it);
+            it = consumer.m_toSync.erase(it);
             continue;
         }
 
         IpAddress ip_address(key.substr(found+1));
         if (!ip_address.isV4())
         {
-            it = m_toSync.erase(it);
+            it = consumer.m_toSync.erase(it);
             continue;
         }
 
@@ -58,30 +58,30 @@ void NeighOrch::doTask()
             if (m_syncdNeighbors.find(neighbor_entry) == m_syncdNeighbors.end() || m_syncdNeighbors[neighbor_entry] != mac_address)
             {
                 if (addNeighbor(neighbor_entry, mac_address))
-                    it = m_toSync.erase(it);
+                    it = consumer.m_toSync.erase(it);
                 else
                     it++;
             }
             else
-                it = m_toSync.erase(it);
+                it = consumer.m_toSync.erase(it);
         }
         else if (op == DEL_COMMAND)
         {
             if (m_syncdNeighbors.find(neighbor_entry) != m_syncdNeighbors.end())
             {
                 if (removeNeighbor(neighbor_entry))
-                    it = m_toSync.erase(it);
+                    it = consumer.m_toSync.erase(it);
                 else
                     it++;
             }
             /* Cannot locate the neighbor */
             else
-                it = m_toSync.erase(it);
+                it = consumer.m_toSync.erase(it);
         }
         else
         {
             SWSS_LOG_ERROR("Unknown operation type %s\n", op.c_str());
-            it = m_toSync.erase(it);
+            it = consumer.m_toSync.erase(it);
         }
     }
 }
@@ -147,8 +147,8 @@ bool NeighOrch::addNeighbor(NeighborEntry neighborEntry, MacAddress macAddress)
     }
     else
     {
-        // XXX: The neighbor entry is already there
-        // XXX: MAC change
+        // TODO: The neighbor entry is already there
+        // TODO: MAC change
     }
 
     return true;

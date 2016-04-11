@@ -16,10 +16,9 @@ class IntfsOrch : public Orch
 public:
     IntfsOrch(DBConnector *db, string tableName, PortsOrch *portsOrch);
 private:
-    void doTask();
-
     PortsOrch *m_portsOrch;
     IntfsTable m_intfs;
+    void doTask(Consumer &consumer);
 };
 
 #endif /* SWSS_INTFSORCH_H */

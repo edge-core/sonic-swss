@@ -7,15 +7,15 @@ extern sai_next_hop_group_api_t*        sai_next_hop_group_api;
 
 extern sai_object_id_t gVirtualRouterId;
 
-void RouteOrch::doTask()
+void RouteOrch::doTask(Consumer& consumer)
 {
     SWSS_LOG_ENTER();
 
-    if (m_toSync.empty())
+    if (consumer.m_toSync.empty())
         return;
 
-    auto it = m_toSync.begin();
-    while (it != m_toSync.end())
+    auto it = consumer.m_toSync.begin();
+    while (it != consumer.m_toSync.end())
     {
         KeyOpFieldsValuesTuple t = it->second;
 
@@ -34,13 +34,13 @@ void RouteOrch::doTask()
         {
             if (op == "SET")
             {
-                /* Mark all current routes as dirty (DEL) in m_toSync map */
+                /* Mark all current routes as dirty (DEL) in consumer.m_toSync map */
                 SWSS_LOG_NOTICE("Start resync routes\n");
                 for (auto i = m_syncdRoutes.begin(); i != m_syncdRoutes.end(); i++)
                 {
                     vector<FieldValueTuple> v;
                     auto x = KeyOpFieldsValuesTuple(i->first.to_string(), DEL_COMMAND, v);
-                    m_toSync[i->first.to_string()] = x;
+                    consumer.m_toSync[i->first.to_string()] = x;
                 }
                 m_resync = true;
             }
@@ -50,7 +50,7 @@ void RouteOrch::doTask()
                 m_resync = false;
             }
 
-            it = m_toSync.erase(it);
+            it = consumer.m_toSync.erase(it);
             continue;
         }
 
@@ -63,7 +63,7 @@ void RouteOrch::doTask()
         IpPrefix ip_prefix = IpPrefix(key);
         if (!ip_prefix.isV4())
         {
-            it = m_toSync.erase(it);
+            it = consumer.m_toSync.erase(it);
             continue;
         }
 
@@ -82,49 +82,49 @@ void RouteOrch::doTask()
                     alias = fvValue(*i);
             }
 
-            // XXX: set to blackhold if nexthop is empty?
+            // TODO: set to blackhold if nexthop is empty?
             if (ip_addresses.getSize() == 0)
             {
-                it = m_toSync.erase(it);
+                it = consumer.m_toSync.erase(it);
                 continue;
             }
 
-            // XXX: cannot trust m_portsOrch->getPortIdByAlias because sometimes alias is empty
-            // XXX: need to split aliases with ',' and verify the next hops?
+            // TODO: cannot trust m_portsOrch->getPortIdByAlias because sometimes alias is empty
+            // TODO: need to split aliases with ',' and verify the next hops?
             if (alias == "eth0" || alias == "lo" || alias == "docker0")
             {
-                it = m_toSync.erase(it);
+                it = consumer.m_toSync.erase(it);
                 continue;
             }
 
             if (m_syncdRoutes.find(ip_prefix) == m_syncdRoutes.end() || m_syncdRoutes[ip_prefix] != ip_addresses)
             {
                 if (addRoute(ip_prefix, ip_addresses))
-                    it = m_toSync.erase(it);
+                    it = consumer.m_toSync.erase(it);
                 else
                     it++;
             }
             else
                 /* Duplicate entry */
-                it = m_toSync.erase(it);
+                it = consumer.m_toSync.erase(it);
         }
         else if (op == DEL_COMMAND)
         {
             if (m_syncdRoutes.find(ip_prefix) != m_syncdRoutes.end())
             {
                 if (removeRoute(ip_prefix))
-                    it = m_toSync.erase(it);
+                    it = consumer.m_toSync.erase(it);
                 else
                     it++;
             }
             /* Cannot locate the route */
             else
-                it = m_toSync.erase(it);
+                it = consumer.m_toSync.erase(it);
         }
         else
         {
             SWSS_LOG_ERROR("Unknown operation type %s\n", op.c_str());
-            it = m_toSync.erase(it);
+            it = consumer.m_toSync.erase(it);
         }
     }
 }

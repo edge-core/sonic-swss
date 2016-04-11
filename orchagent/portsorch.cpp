@@ -164,15 +164,15 @@ bool PortsOrch::setPortAdminStatus(sai_object_id_t id, bool up)
     return true;
 }
 
-void PortsOrch::doTask()
+void PortsOrch::doTask(Consumer &consumer)
 {
     SWSS_LOG_ENTER();
 
-    if (m_toSync.empty())
+    if (consumer.m_toSync.empty())
         return;
 
-    auto it = m_toSync.begin();
-    while (it != m_toSync.end())
+    auto it = consumer.m_toSync.begin();
+    while (it != consumer.m_toSync.end())
     {
         KeyOpFieldsValuesTuple t = it->second;
 
@@ -220,7 +220,7 @@ void PortsOrch::doTask()
                     {
                         Port p(alias, Port::PHY_PORT);
 
-                        p.m_index = m_portList.size(); // XXX: Assume no deletion of physical port
+                        p.m_index = m_portList.size(); // TODO: Assume no deletion of physical port
                         p.m_port_id = id;
 
                         /* Initialize the port and create router interface and host interface */
@@ -260,7 +260,7 @@ void PortsOrch::doTask()
         else
             SWSS_LOG_ERROR("Unknown operation type %s\n", op.c_str());
 
-        it = m_toSync.erase(it);
+        it = consumer.m_toSync.erase(it);
     }
 }
 
@@ -290,8 +290,8 @@ bool PortsOrch::initializePort(Port &p)
         return false;
     }
 
-    // XXX: Assure if_nametoindex(p.m_alias.c_str()) != 0
-    // XXX: Get port oper status
+    // TODO: Assure if_nametoindex(p.m_alias.c_str()) != 0
+    // TODO: Get port oper status
 
 #if 0
     p.m_ifindex = if_nametoindex(p.m_alias.c_str());

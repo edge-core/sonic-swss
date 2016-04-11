@@ -15,28 +15,35 @@ extern "C" {
 using namespace std;
 using namespace swss;
 
+typedef map<string, KeyOpFieldsValuesTuple> SyncMap;
+struct Consumer {
+    Consumer(ConsumerTable* consumer) :m_consumer(consumer)  { }
+    ConsumerTable* m_consumer;
+    /* Store the latest 'golden' status */
+    SyncMap m_toSync;
+};
+typedef std::pair<string, Consumer> ConsumerMapPair;
+typedef map<string, Consumer> ConsumerMap;
+
 class Orch
 {
 public:
     Orch(DBConnector *db, string tableName);
+    Orch(DBConnector *db, vector<string> &tableNames);
     ~Orch();
 
-    inline ConsumerTable *getConsumer() { return m_consumer; }
+    std::vector<Selectable*> getConsumers();
+    bool hasConsumer(ConsumerTable* s)const;
 
-    void execute();
-    virtual void doTask() = 0;
-
-    inline string getOrchName() { return m_name; }
-
-private:
-    DBConnector *m_db;
-    const string m_name;
+    bool execute(string tableName);
 
 protected:
-    ConsumerTable *m_consumer;
+    virtual void doTask(Consumer &consumer) = 0;
+private:
+    DBConnector *m_db;
 
-    /* Store the latest 'golden' status */
-    map<string, KeyOpFieldsValuesTuple> m_toSync;
+protected:
+    ConsumerMap m_consumerMap;
 
 };
 
