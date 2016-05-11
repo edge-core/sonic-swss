@@ -15,12 +15,12 @@ class Port
 {
 public:
     enum Type {
+        CPU,
+        PHY,
         MGMT,
-        PHY_PORT,
         LOOPBACK,
         VLAN,
         LAG,
-        LAG_MEMBER,
         UNKNOWN
     } ;
 
@@ -54,6 +54,7 @@ public:
     sai_object_id_t     m_hif_id;
     sai_object_id_t     m_lag_id;
     sai_object_id_t     m_lag_member_id;
+    std::set<std::string> m_members;
 };
 
 }

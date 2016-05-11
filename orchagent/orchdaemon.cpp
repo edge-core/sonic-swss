@@ -4,6 +4,7 @@
 
 #include <unistd.h>
 
+using namespace std;
 using namespace swss;
 
 OrchDaemon::OrchDaemon()
@@ -27,11 +28,16 @@ bool OrchDaemon::init()
 
     m_applDb = new DBConnector(APPL_DB, "localhost", 6379, 0);
 
-    m_portsO = new PortsOrch(m_applDb, APP_PORT_TABLE_NAME);
+    vector<string> ports_tables = {
+        APP_PORT_TABLE_NAME,
+        APP_VLAN_TABLE_NAME,
+        APP_LAG_TABLE_NAME
+    };
+
+    m_portsO = new PortsOrch(m_applDb, ports_tables);
     m_intfsO = new IntfsOrch(m_applDb, APP_INTF_TABLE_NAME, m_portsO);
     m_neighO = new NeighOrch(m_applDb, APP_NEIGH_TABLE_NAME, m_portsO);
     m_routeO = new RouteOrch(m_applDb, APP_ROUTE_TABLE_NAME, m_portsO, m_neighO);
-    m_lagO = new LagOrch(m_applDb, "LAG_TABLE", m_portsO);
 
     m_select = new Select();
 
@@ -47,8 +53,6 @@ void OrchDaemon::start()
     m_select->addSelectables(m_intfsO->getConsumers());
     m_select->addSelectables(m_neighO->getConsumers());
     m_select->addSelectables(m_routeO->getConsumers());
-
-    m_select->addSelectables(m_lagO->getConsumers());
 
     while (true)
     {
@@ -82,7 +86,5 @@ Orch *OrchDaemon::getOrchByConsumer(ConsumerTable *c)
         return m_neighO;
     if (m_routeO->hasConsumer(c))
         return m_routeO;
-    if (m_lagO->hasConsumer(c))
-        return m_lagO;
     return nullptr;
 }

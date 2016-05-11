@@ -11,13 +11,11 @@
 class PortsOrch : public Orch
 {
 public:
-    PortsOrch(DBConnector *db, string tableName);
+    PortsOrch(DBConnector *db, vector<string> tableNames);
 
     bool isInitDone();
 
-    void setPort(string alias, Port p);
     bool getPort(string alias, Port &p);
-    void removePort(string alias);
 
     bool setPortAdminStatus(sai_object_id_t id, bool up);
 
@@ -30,11 +28,19 @@ private:
     map<string, Port> m_portList;
 
     void doTask(Consumer &consumer);
+    void doPortTask(Consumer &consumer);
+    void doLagTask(Consumer &consumer);
+
     bool initializePort(Port &p);
     bool setupVlan(sai_vlan_id_t vlan_id, sai_object_id_t port_id, sai_object_id_t &vlan_member_id);
     bool setupRouterIntfs(sai_object_id_t virtual_router_id, MacAddress mac_address,
             sai_vlan_id_t vlan_id, sai_object_id_t &router_intfs_id);
     bool setupHostIntfs(sai_object_id_t router_intfs_id, string alias, sai_object_id_t &host_intfs_id);
+
+    bool addLag(string lag);
+    bool removeLag(Port lag);
+    bool addLagMember(Port lag, Port port);
+    bool removeLagMember(Port lag, Port port);
 };
 #endif /* SWSS_PORTSORCH_H */
 

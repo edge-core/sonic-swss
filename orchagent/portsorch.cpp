@@ -1,18 +1,18 @@
-#include <unistd.h>
-
 #include "portsorch.h"
 
 #include <fstream>
 #include <sstream>
 #include <set>
+#include "assert.h"
 
 #include "net/if.h"
 
 #include "logger.h"
 
 extern sai_switch_api_t *sai_switch_api;
-extern sai_vlan_api_t *sai_vlan_api;
 extern sai_port_api_t *sai_port_api;
+extern sai_vlan_api_t *sai_vlan_api;
+extern sai_lag_api_t *sai_lag_api;
 extern sai_router_interface_api_t* sai_router_intfs_api;
 extern sai_hostif_api_t* sai_hostif_api;
 
@@ -21,8 +21,8 @@ extern MacAddress gMacAddress;
 
 #define FRONT_PANEL_PORT_VLAN_BASE 1024
 
-PortsOrch::PortsOrch(DBConnector *db, string tableName) :
-        Orch(db, tableName)
+PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
+        Orch(db, tableNames)
 {
     SWSS_LOG_ENTER();
 
@@ -147,22 +147,12 @@ bool PortsOrch::isInitDone()
     return m_initDone;
 }
 
-void PortsOrch::setPort(string alias, Port p)
-{
-    m_portList[alias] = p;
-}
-
 bool PortsOrch::getPort(string alias, Port &p)
 {
     if (m_portList.find(alias) == m_portList.end())
         return false;
     p = m_portList[alias];
     return true;
-}
-
-void PortsOrch::removePort(string alias)
-{
-    m_portList.erase(alias);
 }
 
 bool PortsOrch::setPortAdminStatus(sai_object_id_t id, bool up)
@@ -182,13 +172,8 @@ bool PortsOrch::setPortAdminStatus(sai_object_id_t id, bool up)
     return true;
 }
 
-void PortsOrch::doTask(Consumer &consumer)
+void PortsOrch::doPortTask(Consumer &consumer)
 {
-    SWSS_LOG_ENTER();
-
-    if (consumer.m_toSync.empty())
-        return;
-
     auto it = consumer.m_toSync.begin();
     while (it != consumer.m_toSync.end())
     {
@@ -255,7 +240,7 @@ void PortsOrch::doTask(Consumer &consumer)
                         SWSS_LOG_NOTICE("Port has already been initialized before alias:%s\n", alias.c_str());
                     else
                     {
-                        Port p(alias, Port::PHY_PORT);
+                        Port p(alias, Port::PHY);
 
                         p.m_index = m_portList.size(); // TODO: Assume no deletion of physical port
                         p.m_port_id = id;
@@ -264,7 +249,7 @@ void PortsOrch::doTask(Consumer &consumer)
                         if (initializePort(p))
                         {
                             /* Add port to port list */
-                            setPort(alias, p);
+                            m_portList[alias] = p;
                             SWSS_LOG_NOTICE("Port is initialized alias:%s\n", alias.c_str());
 
                         }
@@ -299,6 +284,128 @@ void PortsOrch::doTask(Consumer &consumer)
 
         it = consumer.m_toSync.erase(it);
     }
+}
+
+void PortsOrch::doLagTask(Consumer &consumer)
+{
+    if (!isInitDone())
+        return;
+
+    auto it = consumer.m_toSync.begin();
+    while (it != consumer.m_toSync.end())
+    {
+        KeyOpFieldsValuesTuple t = it->second;
+
+        string key = kfvKey(t);
+        size_t found = key.find(':');
+        string lag_alias, port_alias;
+        if (found == string::npos)
+            lag_alias = key;
+        else
+        {
+            lag_alias = key.substr(0, found);
+            port_alias = key.substr(found+1);
+        }
+
+        string op = kfvOp(t);
+
+        /* Manipulate LAG when port_alias is empty */
+        if (port_alias == "")
+        {
+            if (op == SET_COMMAND)
+            {
+                /* Duplicate entry */
+                if (m_portList.find(lag_alias) != m_portList.end())
+                {
+                    SWSS_LOG_ERROR("Duplicate LAG entry alias:%s", lag_alias.c_str());
+                    it = consumer.m_toSync.erase(it);
+                    continue;
+                }
+
+                if (addLag(lag_alias))
+                    it = consumer.m_toSync.erase(it);
+                else
+                    it++;
+            }
+            else if (op == DEL_COMMAND)
+            {
+                Port lag;
+                assert(getPort(lag_alias, lag));
+
+                if (removeLag(lag))
+                    it = consumer.m_toSync.erase(it);
+                else
+                    it++;
+            }
+            else
+            {
+                SWSS_LOG_ERROR("Unknown operation type %s\n", op.c_str());
+                it = consumer.m_toSync.erase(it);
+            }
+        }
+        /* Manipulate member */
+        else
+        {
+            assert(m_portList.find(lag_alias) != m_portList.end());
+            Port lag, port;
+            assert(getPort(lag_alias, lag));
+            assert(getPort(port_alias, port));
+
+            if (op == SET_COMMAND)
+            {
+                /* Duplicate entry */
+                if (lag.m_members.find(port_alias) != lag.m_members.end())
+                {
+                    SWSS_LOG_ERROR("Duplicate LAG member entry lag:%s port:%s",
+                            lag_alias.c_str(), port_alias.c_str());
+                    it = consumer.m_toSync.erase(it);
+                    continue;
+                }
+
+                /* Assert the port doesn't belong to any LAG */
+                assert(!port.m_lag_id && !port.m_lag_member_id);
+
+                if (addLagMember(lag, port))
+                    it = consumer.m_toSync.erase(it);
+                else
+                    it++;
+            }
+            else if (op == DEL_COMMAND)
+            {
+                assert(lag.m_members.find(port_alias) != lag.m_members.end());
+
+                /* Assert the port belongs to a LAG */
+                assert(port.m_lag_id && port.m_lag_member_id);
+
+                if (removeLagMember(lag, port))
+                    it = consumer.m_toSync.erase(it);
+                else
+                    it++;
+            }
+            else
+            {
+                SWSS_LOG_ERROR("Unknown operation type %s\n", op.c_str());
+                it = consumer.m_toSync.erase(it);
+            }
+        }
+    }
+}
+
+void PortsOrch::doTask(Consumer &consumer)
+{
+    SWSS_LOG_ENTER();
+
+    if (consumer.m_toSync.empty())
+        return;
+
+    string table_name = consumer.m_consumer->getTableName();
+
+    if (table_name == APP_PORT_TABLE_NAME)
+        doPortTask(consumer);
+    else if (table_name == APP_VLAN_TABLE_NAME)
+        SWSS_LOG_NOTICE("Unsupported for VLAN operations");
+    else if (table_name == APP_LAG_TABLE_NAME)
+        doLagTask(consumer);
 }
 
 bool PortsOrch::initializePort(Port &p)
@@ -450,6 +557,108 @@ bool PortsOrch::setupHostIntfs(sai_object_id_t id, string alias, sai_object_id_t
         SWSS_LOG_ERROR("Failed to create host interface\n");
         return false;
     }
+
+    return true;
+}
+
+bool PortsOrch::addLag(string lag_alias)
+{
+    sai_object_id_t lag_id;
+    sai_status_t status = sai_lag_api->create_lag(&lag_id, 0, NULL);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to create LAG %s lid:%llx", lag_alias.c_str(), lag_id);
+        return false;
+    }
+
+    SWSS_LOG_ERROR("Create an empty LAG %s lid:%llx", lag_alias.c_str(), lag_id);
+
+    Port lag(lag_alias, Port::LAG);
+    lag.m_lag_id = lag_id;
+    lag.m_members = set<string>();
+    m_portList[lag_alias] = lag;
+
+    return true;
+}
+
+bool PortsOrch::removeLag(Port lag)
+{
+    /* Retry when the LAG still has members */
+    if (lag.m_members.size() > 0)
+    {
+        SWSS_LOG_ERROR("Failed to remove non-empty LAG %s", lag.m_alias.c_str());
+        return false;
+    }
+
+    sai_status_t status = sai_lag_api->remove_lag(lag.m_lag_id);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to remove LAG %s lid:%llx\n", lag.m_alias.c_str(), lag.m_lag_id);
+        return false;
+    }
+
+    SWSS_LOG_ERROR("Remove LAG %s lid:%llx\n", lag.m_alias.c_str(), lag.m_lag_id);
+
+    m_portList.erase(lag.m_alias);
+
+    return true;
+}
+
+bool PortsOrch::addLagMember(Port lag, Port port)
+{
+    sai_attribute_t attr;
+    vector<sai_attribute_t> attrs;
+
+    attr.id = SAI_LAG_MEMBER_ATTR_LAG_ID;
+    attr.value.oid = lag.m_lag_id;
+    attrs.push_back(attr);
+
+    attr.id = SAI_LAG_MEMBER_ATTR_PORT_ID;
+    attr.value.oid = port.m_port_id;
+    attrs.push_back(attr);
+
+    sai_object_id_t lag_member_id;
+    sai_status_t status = sai_lag_api->create_lag_member(&lag_member_id, attrs.size(), attrs.data());
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to add member %s to LAG %s lid:%llx pid:%llx\n",
+                port.m_alias.c_str(), lag.m_alias.c_str(), lag.m_lag_id, port.m_port_id);
+        return false;
+    }
+
+    SWSS_LOG_ERROR("Add member %s to LAG %s lid:%llx pid:%llx\n",
+            port.m_alias.c_str(), lag.m_alias.c_str(), lag.m_lag_id, port.m_port_id);
+
+    port.m_lag_id = lag.m_lag_id;
+    port.m_lag_member_id = lag_member_id;
+    m_portList[port.m_alias] = port;
+    lag.m_members.insert(port.m_alias);
+    m_portList[lag.m_alias] = lag;
+
+    return true;
+}
+
+bool PortsOrch::removeLagMember(Port lag, Port port)
+{
+    sai_status_t status = sai_lag_api->remove_lag_member(port.m_lag_member_id);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to remove member %s from LAG %s lid:%llx lmid:%llx",
+                port.m_alias.c_str(), lag.m_alias.c_str(), lag.m_lag_id, port.m_lag_member_id);
+        return false;
+    }
+
+    SWSS_LOG_ERROR("Remove member %s from LAG %s lid:%llx lmid:%llx",
+            port.m_alias.c_str(), lag.m_alias.c_str(), lag.m_lag_id, port.m_lag_member_id);
+
+    port.m_lag_id = 0;
+    port.m_lag_member_id = 0;
+    m_portList[port.m_alias] = port;
+    lag.m_members.erase(port.m_alias);
+    m_portList[lag.m_alias] = lag;
 
     return true;
 }
