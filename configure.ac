@@ -10,7 +10,8 @@ AC_PROG_CXX
 AC_PROG_LIBTOOL
 AC_HEADER_STDC
 
-AC_CHECK_LIB([hiredis], [redisConnect])
+AC_CHECK_LIB([hiredis], [redisConnect],,
+  AC_MSG_ERROR([libhiredis is not installed.]))
 AC_CHECK_LIB([nl-genl-3], [genl_connect])
 
 AC_ARG_ENABLE(debug,
