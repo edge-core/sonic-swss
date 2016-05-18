@@ -11,8 +11,14 @@ AC_PROG_LIBTOOL
 AC_HEADER_STDC
 
 AC_CHECK_LIB([hiredis], [redisConnect],,
-  AC_MSG_ERROR([libhiredis is not installed.]))
+    AC_MSG_ERROR([libhiredis is not installed.]))
+
 AC_CHECK_LIB([nl-genl-3], [genl_connect])
+
+AC_CHECK_LIB([team], [team_alloc],
+    AM_CONDITIONAL(HAVE_LIBTEAM, true),
+   [AC_MSG_WARN([libteam is not installed.])
+    AM_CONDITIONAL(HAVE_LIBTEAM, false)])
 
 AC_ARG_ENABLE(debug,
 [  --enable-debug      Compile with debugging flags],
