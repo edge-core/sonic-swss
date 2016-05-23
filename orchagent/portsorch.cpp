@@ -198,6 +198,7 @@ void PortsOrch::doPortTask(Consumer &consumer)
 
             m_initDone = true;
             SWSS_LOG_INFO("Get ConfigDone notification from portsyncd.\n");
+            it = consumer.m_toSync.erase(it);
             return;
         }
 
