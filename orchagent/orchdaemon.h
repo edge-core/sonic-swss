@@ -25,10 +25,7 @@ private:
     DBConnector *m_applDb;
     DBConnector *m_asicDb;
 
-    PortsOrch *m_portsO;
-    IntfsOrch *m_intfsO;
-    NeighOrch *m_neighO;
-    RouteOrch *m_routeO;
+    std::vector<Orch *> m_orchList;
 
     Select *m_select;
 

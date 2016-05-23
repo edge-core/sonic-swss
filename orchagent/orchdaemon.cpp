@@ -20,6 +20,9 @@ OrchDaemon::~OrchDaemon()
 
     if (m_asicDb)
         delete(m_asicDb);
+
+    for (Orch *o : m_orchList)
+        delete(o);
 }
 
 bool OrchDaemon::init()
@@ -34,11 +37,12 @@ bool OrchDaemon::init()
         APP_LAG_TABLE_NAME
     };
 
-    m_portsO = new PortsOrch(m_applDb, ports_tables);
-    m_intfsO = new IntfsOrch(m_applDb, APP_INTF_TABLE_NAME, m_portsO);
-    m_neighO = new NeighOrch(m_applDb, APP_NEIGH_TABLE_NAME, m_portsO);
-    m_routeO = new RouteOrch(m_applDb, APP_ROUTE_TABLE_NAME, m_portsO, m_neighO);
+    PortsOrch *ports_orch = new PortsOrch(m_applDb, ports_tables);
+    IntfsOrch *intfs_orch = new IntfsOrch(m_applDb, APP_INTF_TABLE_NAME, ports_orch);
+    NeighOrch *neigh_orch = new NeighOrch(m_applDb, APP_NEIGH_TABLE_NAME, ports_orch);
+    RouteOrch *route_orch = new RouteOrch(m_applDb, APP_ROUTE_TABLE_NAME, ports_orch, neigh_orch);
 
+    m_orchList = { ports_orch, intfs_orch, neigh_orch, route_orch };
     m_select = new Select();
 
     return true;
@@ -48,16 +52,15 @@ void OrchDaemon::start()
 {
     SWSS_LOG_ENTER();
 
-    int ret;
-    m_select->addSelectables(m_portsO->getConsumers());
-    m_select->addSelectables(m_intfsO->getConsumers());
-    m_select->addSelectables(m_neighO->getConsumers());
-    m_select->addSelectables(m_routeO->getConsumers());
+    for (Orch *o : m_orchList)
+    {
+        m_select->addSelectables(o->getSelectables());
+    }
 
     while (true)
     {
         Selectable *s;
-        int fd;
+        int fd, ret;
 
         ret = m_select->select(&s, &fd, 1);
         if (ret == Select::ERROR)
@@ -67,7 +70,14 @@ void OrchDaemon::start()
         }
 
         if (ret == Select::TIMEOUT)
+        {
+            /* After every TIMEOUT, periodically check all m_toSync map to
+             * execute all the remaining tasks that need to be retried. */
+            for (Orch *o : m_orchList)
+                o->doTask();
+
             continue;
+        }
 
         Orch *o = getOrchByConsumer((ConsumerTable *)s);
         o->execute(((ConsumerTable *)s)->getTableName());
@@ -78,13 +88,14 @@ Orch *OrchDaemon::getOrchByConsumer(ConsumerTable *c)
 {
     SWSS_LOG_ENTER();
 
-    if (m_portsO->hasConsumer(c))
-        return m_portsO;
-    if (m_intfsO->hasConsumer(c))
-        return m_intfsO;
-    if (m_neighO->hasConsumer(c))
-        return m_neighO;
-    if (m_routeO->hasConsumer(c))
-        return m_routeO;
+    for (Orch *o : m_orchList)
+    {
+        if (o->hasSelectable(c))
+            return o;
+    }
+
+    SWSS_LOG_ERROR("Failed to get Orch class by ConsumerTable:%s",
+            c->getTableName().c_str());
+
     return nullptr;
 }

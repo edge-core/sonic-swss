@@ -27,21 +27,21 @@ Orch::~Orch()
     }
 }
 
-std::vector<Selectable*> Orch::getConsumers()
+std::vector<Selectable *> Orch::getSelectables()
 {
     SWSS_LOG_ENTER();
 
-    std::vector<Selectable*> consumers;
+    std::vector<Selectable *> selectables;
     for(auto it : m_consumerMap) {
-        consumers.push_back(it.second.m_consumer);
+        selectables.push_back(it.second.m_consumer);
     }
-    return consumers;
+    return selectables;
 }
 
-bool Orch::hasConsumer(ConsumerTable *consumer) const
+bool Orch::hasSelectable(ConsumerTable *selectable) const
 {
     for(auto it : m_consumerMap) {
-        if(it.second.m_consumer == consumer) {
+        if(it.second.m_consumer == selectable) {
             return true;
         }
     }
@@ -103,6 +103,17 @@ bool Orch::execute(string tableName)
         consumer.m_toSync[key] = KeyOpFieldsValuesTuple(key, op, existing_values);
     }
 
-    doTask(consumer);
+    if (!consumer.m_toSync.empty())
+        doTask(consumer);
+
     return true;
+}
+
+void Orch::doTask()
+{
+    for(auto it : m_consumerMap)
+    {
+        if (!it.second.m_toSync.empty())
+            doTask(it.second);
+    }
 }

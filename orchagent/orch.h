@@ -30,16 +30,19 @@ class Orch
 public:
     Orch(DBConnector *db, string tableName);
     Orch(DBConnector *db, vector<string> &tableNames);
-    ~Orch();
+    virtual ~Orch();
 
-    std::vector<Selectable*> getConsumers();
-    bool hasConsumer(ConsumerTable* s)const;
+    std::vector<Selectable*> getSelectables();
+    bool hasSelectable(ConsumerTable* s) const;
 
     bool execute(string tableName);
-
+    /* Iterate all consumers in m_consumerMap and run doTask(Consumer) */
+    void doTask();
 protected:
+    /* Run doTask against a specific consumer */
     virtual void doTask(Consumer &consumer) = 0;
 private:
+
     DBConnector *m_db;
 
 protected:
