@@ -193,11 +193,12 @@ void PortsOrch::doPortTask(Consumer &consumer)
             /* portsyncd restarting case:
              * When portsyncd restarts, duplicate notifications may be received.
              */
-            if (m_initDone)
-                return;
+            if (!m_initDone)
+            {
+                m_initDone = true;
+                SWSS_LOG_INFO("Get ConfigDone notification from portsyncd.\n");
+            }
 
-            m_initDone = true;
-            SWSS_LOG_INFO("Get ConfigDone notification from portsyncd.\n");
             it = consumer.m_toSync.erase(it);
             return;
         }
