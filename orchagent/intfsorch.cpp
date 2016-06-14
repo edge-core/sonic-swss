@@ -45,6 +45,13 @@ void IntfsOrch::doTask(Consumer &consumer)
         }
         string alias = key.substr(0, found);
 
+        /* TODO: Sync loopback address and trap all IP packets to loopback addressy */
+        if (alias == "lo" || alias == "eth0" || alias == "docker0")
+        {
+            it = consumer.m_toSync.erase(it);
+            continue;
+        }
+
         IpPrefix ip_prefix(key.substr(found+1));
         if (!ip_prefix.isV4())
         {
