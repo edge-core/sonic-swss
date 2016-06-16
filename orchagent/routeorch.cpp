@@ -46,11 +46,11 @@ void RouteOrch::doTask(Consumer& consumer)
             {
                 /* Mark all current routes as dirty (DEL) in consumer.m_toSync map */
                 SWSS_LOG_NOTICE("Start resync routes\n");
-                for (auto i = m_syncdRoutes.begin(); i != m_syncdRoutes.end(); i++)
+                for (auto i : m_syncdRoutes)
                 {
                     vector<FieldValueTuple> v;
-                    auto x = KeyOpFieldsValuesTuple(i->first.to_string(), DEL_COMMAND, v);
-                    consumer.m_toSync[i->first.to_string()] = x;
+                    auto x = KeyOpFieldsValuesTuple(i.first.to_string(), DEL_COMMAND, v);
+                    consumer.m_toSync[i.first.to_string()] = x;
                 }
                 m_resync = true;
             }
@@ -85,14 +85,13 @@ void RouteOrch::doTask(Consumer& consumer)
             IpAddresses ip_addresses;
             string alias;
 
-            for (auto i = kfvFieldsValues(t).begin();
-                 i != kfvFieldsValues(t).end(); i++)
+            for (auto i : kfvFieldsValues(t))
             {
-                if (fvField(*i) == "nexthop")
-                    ip_addresses = IpAddresses(fvValue(*i));
+                if (fvField(i) == "nexthop")
+                    ip_addresses = IpAddresses(fvValue(i));
 
-                if (fvField(*i) == "ifindex")
-                    alias = fvValue(*i);
+                if (fvField(i) == "ifindex")
+                    alias = fvValue(i);
             }
 
             // TODO: set to blackhold if nexthop is empty?
@@ -185,16 +184,16 @@ bool RouteOrch::addNextHopGroup(IpAddresses ipAddresses)
 
     /* Assert each IP address exists in m_syncdNextHops table,
      * and add the corresponding next_hop_id to next_hop_ids. */
-    for (auto it = next_hop_set.begin(); it != next_hop_set.end(); it++)
+    for (auto it : next_hop_set)
     {
-        if (!m_neighOrch->hasNextHop(*it))
+        if (!m_neighOrch->hasNextHop(it))
         {
             SWSS_LOG_NOTICE("Failed to get next hop entry ip:%s",
-                    (*it).to_string().c_str());
+                    it.to_string().c_str());
             return false;
         }
 
-        sai_object_id_t next_hop_id = m_neighOrch->getNextHopId(*it);
+        sai_object_id_t next_hop_id = m_neighOrch->getNextHopId(it);
         next_hop_ids.push_back(next_hop_id);
     }
 
@@ -225,8 +224,8 @@ bool RouteOrch::addNextHopGroup(IpAddresses ipAddresses)
                     next_hop_group_id, ipAddresses.to_string().c_str());
 
     /* Increate the ref_count for the next hops used by the next hop group. */
-    for (auto it = next_hop_set.begin(); it != next_hop_set.end(); it++)
-        m_neighOrch->increaseNextHopRefCount(*it);
+    for (auto it : next_hop_set)
+        m_neighOrch->increaseNextHopRefCount(it);
 
     /*
      * Initialize the next hop gruop structure with ref_count as 0. This
@@ -259,8 +258,8 @@ bool RouteOrch::removeNextHopGroup(IpAddresses ipAddresses)
         m_nextHopGroupCount --;
 
         set<IpAddress> ip_address_set = ipAddresses.getIpAddresses();
-        for (auto it = ip_address_set.begin(); it != ip_address_set.end(); it++)
-            m_neighOrch->decreaseNextHopRefCount(*it);
+        for (auto it : ip_address_set)
+            m_neighOrch->decreaseNextHopRefCount(it);
 
         m_syncdNextHopGroups.erase(ipAddresses);
     }
@@ -282,9 +281,9 @@ void RouteOrch::addTempRoute(IpPrefix ipPrefix, IpAddresses nextHops)
     if (it_route != m_syncdRoutes.end())
     {
         auto tmp_set = m_syncdRoutes[ipPrefix].getIpAddresses();
-        for (auto it = tmp_set.begin(); it != tmp_set.end(); it++)
+        for (auto it : tmp_set)
         {
-            if (next_hop_set.find(*it) == next_hop_set.end())
+            if (next_hop_set.find(it) == next_hop_set.end())
                 to_add = true;
         }
     }

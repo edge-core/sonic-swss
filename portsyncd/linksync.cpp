@@ -62,9 +62,9 @@ void LinkSync::onMsg(int nlmsg_type, struct nl_object *obj)
          * we manually bring up the port using ifup --force command.
          */
         bool init = true;
-        for (auto it = temp.begin(); it != temp.end(); it++)
+        for (auto it : temp)
         {
-            if (fvField(*it) == "admin_status")
+            if (fvField(it) == "admin_status")
             {
                 init = false;
                 break;

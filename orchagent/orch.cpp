@@ -13,16 +13,16 @@ Orch::Orch(DBConnector *db, string tableName) :
 Orch::Orch(DBConnector *db, vector<string> &tableNames) :
     m_db(db)
 {
-    for( auto it = tableNames.begin(); it != tableNames.end(); it++) {
-        Consumer consumer(new ConsumerTable(m_db, *it));
-        m_consumerMap.insert(ConsumerMapPair(*it, consumer));
+    for(auto it : tableNames) {
+        Consumer consumer(new ConsumerTable(m_db, it));
+        m_consumerMap.insert(ConsumerMapPair(it, consumer));
     }
 }
 
 Orch::~Orch()
 {
     delete(m_db);
-    for(auto it : m_consumerMap) {
+    for(auto &it : m_consumerMap) {
         delete it.second.m_consumer;
     }
 }
@@ -65,8 +65,8 @@ bool Orch::execute(string tableName)
 
 #ifdef DEBUG
     string debug = "Table : " + consumer.m_consumer.getTableName() + " key : " + kfvKey(new_data) + " op : "  + kfvOp(new_data);
-    for (auto i = kfvFieldsValues(new_data).begin(); i != kfvFieldsValues(new_data).end(); i++)
-        debug += " " + fvField(*i) + " : " + fvValue(*i);
+    for (auto i : kfvFieldsValues(new_data))
+        debug += " " + fvField(i) + " : " + fvValue(i);
     SWSS_LOG_DEBUG("%s\n", debug.c_str());
 #endif
 
@@ -84,10 +84,10 @@ bool Orch::execute(string tableName)
         auto existing_values = kfvFieldsValues(existing_data);
 
 
-        for (auto it = new_values.begin(); it != new_values.end(); it++)
+        for (auto it : new_values)
         {
-            string field = fvField(*it);
-            string value = fvValue(*it);
+            string field = fvField(it);
+            string value = fvValue(it);
 
             auto iu = existing_values.begin();
             while (iu != existing_values.end())
@@ -111,7 +111,7 @@ bool Orch::execute(string tableName)
 
 void Orch::doTask()
 {
-    for(auto it : m_consumerMap)
+    for(auto &it : m_consumerMap)
     {
         if (!it.second.m_toSync.empty())
             doTask(it.second);

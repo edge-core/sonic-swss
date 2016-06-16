@@ -208,14 +208,13 @@ void PortsOrch::doPortTask(Consumer &consumer)
         {
             set<int> lane_set;
             string admin_status;
-            for (auto i = kfvFieldsValues(t).begin();
-                 i != kfvFieldsValues(t).end(); i++)
+            for (auto i : kfvFieldsValues(t))
             {
                 /* Get lane information of a physical port and initialize the port */
-                if (fvField(*i) == "lanes")
+                if (fvField(i) == "lanes")
                 {
                     string lane_str;
-                    istringstream iss(fvValue(*i));
+                    istringstream iss(fvValue(i));
 
                     while (getline(iss, lane_str, ','))
                     {
@@ -226,8 +225,8 @@ void PortsOrch::doPortTask(Consumer &consumer)
                 }
 
                 /* Set port admin status */
-                if (fvField(*i) == "admin_status")
-                    admin_status = fvValue(*i);
+                if (fvField(i) == "admin_status")
+                    admin_status = fvValue(i);
             }
 
             if (lane_set.size())
