@@ -15,6 +15,8 @@ extern sai_vlan_api_t *sai_vlan_api;
 extern sai_lag_api_t *sai_lag_api;
 extern sai_hostif_api_t* sai_hostif_api;
 
+#define VLAN_PREFIX "Vlan"
+
 PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
         Orch(db, tableNames)
 {
@@ -300,8 +302,8 @@ void PortsOrch::doVlanTask(Consumer &consumer)
 
         string key = kfvKey(t);
 
-        /* Assert the key starts with "vlan" */
-        assert(!strncmp(key.c_str(), "vlan", 4));
+        /* Assert the key starts with "Vlan" */
+        assert(!strncmp(key.c_str(), VLAN_PREFIX, 4));
 
         key = key.substr(4);
         size_t found = key.find(':');
@@ -315,7 +317,7 @@ void PortsOrch::doVlanTask(Consumer &consumer)
             port_alias = key.substr(found+1);
         }
 
-        vlan_alias = "vlan" + to_string(vlan_id);
+        vlan_alias = VLAN_PREFIX + to_string(vlan_id);
         string op = kfvOp(t);
 
         /* Manipulate VLAN when port_alias is empty */
