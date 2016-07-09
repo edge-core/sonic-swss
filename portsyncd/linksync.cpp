@@ -8,7 +8,6 @@
 #include "netmsg.h"
 #include "dbconnector.h"
 #include "producertable.h"
-#include "scheme.h"
 #include "linkcache.h"
 #include "portsyncd/linksync.h"
 

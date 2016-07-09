@@ -8,7 +8,6 @@
 #include "netmsg.h"
 #include "dbconnector.h"
 #include "producertable.h"
-#include "scheme.h"
 #include "teamsync.h"
 
 using namespace std;

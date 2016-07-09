@@ -7,7 +7,6 @@
 #include "ipprefix.h"
 #include "dbconnector.h"
 #include "producertable.h"
-#include "scheme.h"
 #include "fpmsyncd/fpmlink.h"
 #include "fpmsyncd/routesync.h"
 
