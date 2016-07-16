@@ -1,4 +1,4 @@
-[![Build Status](https://sonic-jenkins.westus.cloudapp.azure.com/job/sonic-swss-build/badge/icon)](https://sonic-jenkins.westus.cloudapp.azure.com/job/sonic-swss-build/)
+P4[![P4](https://sonic-jenkins.westus.cloudapp.azure.com/job/p4/job/sonic-swss-build/badge/icon)](https://sonic-jenkins.westus.cloudapp.azure.com/job/p4/job/sonic-swss-build/)Mellanox[![Mellanox](https://sonic-jenkins.westus.cloudapp.azure.com/job/mellanox/job/sonic-swss-build/badge/icon)](https://sonic-jenkins.westus.cloudapp.azure.com/job/mellanox/job/sonic-swss-build/)
 
 # SONiC - SWitch State Service - SWSS
 
