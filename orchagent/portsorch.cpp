@@ -699,7 +699,7 @@ bool PortsOrch::removeVlanMember(Port vlan, Port port)
         return false;
     }
 
-    SWSS_LOG_ERROR("Remove member %s from VLAN %s lid:%hx vmid:%llx",
+    SWSS_LOG_NOTICE("Remove member %s from VLAN %s lid:%hx vmid:%llx",
             port.m_alias.c_str(), vlan.m_alias.c_str(), vlan.m_vlan_id, port.m_vlan_member_id);
 
     sai_attribute_t attr;
@@ -737,7 +737,7 @@ bool PortsOrch::addLag(string lag_alias)
         return false;
     }
 
-    SWSS_LOG_ERROR("Create an empty LAG %s lid:%llx", lag_alias.c_str(), lag_id);
+    SWSS_LOG_NOTICE("Create an empty LAG %s lid:%llx", lag_alias.c_str(), lag_id);
 
     Port lag(lag_alias, Port::LAG);
     lag.m_lag_id = lag_id;
@@ -765,7 +765,7 @@ bool PortsOrch::removeLag(Port lag)
         return false;
     }
 
-    SWSS_LOG_ERROR("Remove LAG %s lid:%llx\n", lag.m_alias.c_str(), lag.m_lag_id);
+    SWSS_LOG_NOTICE("Remove LAG %s lid:%llx\n", lag.m_alias.c_str(), lag.m_lag_id);
 
     m_portList.erase(lag.m_alias);
 
@@ -797,7 +797,7 @@ bool PortsOrch::addLagMember(Port lag, Port port)
         return false;
     }
 
-    SWSS_LOG_ERROR("Add member %s to LAG %s lid:%llx pid:%llx\n",
+    SWSS_LOG_NOTICE("Add member %s to LAG %s lid:%llx pid:%llx\n",
             port.m_alias.c_str(), lag.m_alias.c_str(), lag.m_lag_id, port.m_port_id);
 
     port.m_lag_id = lag.m_lag_id;
@@ -821,7 +821,7 @@ bool PortsOrch::removeLagMember(Port lag, Port port)
         return false;
     }
 
-    SWSS_LOG_ERROR("Remove member %s from LAG %s lid:%llx lmid:%llx",
+    SWSS_LOG_NOTICE("Remove member %s from LAG %s lid:%llx lmid:%llx",
             port.m_alias.c_str(), lag.m_alias.c_str(), lag.m_lag_id, port.m_lag_member_id);
 
     port.m_lag_id = 0;
