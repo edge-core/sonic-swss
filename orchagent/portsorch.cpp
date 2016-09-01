@@ -343,8 +343,12 @@ void PortsOrch::doVlanTask(Consumer &consumer)
 
         string key = kfvKey(t);
 
-        /* Assert the key starts with "Vlan" */
-        assert(!strncmp(key.c_str(), VLAN_PREFIX, 4));
+        /* Ensure the key starts with "Vlan" otherwise ignore */
+        if (strncmp(key.c_str(), VLAN_PREFIX, 4))
+        {
+            it = consumer.m_toSync.erase(it);
+            continue;
+        }
 
         key = key.substr(4);
         size_t found = key.find(':');
@@ -424,15 +428,19 @@ void PortsOrch::doVlanTask(Consumer &consumer)
             }
             else if (op == DEL_COMMAND)
             {
-                assert(vlan.m_members.find(port_alias) != vlan.m_members.end());
+                if (vlan.m_members.find(port_alias) == vlan.m_members.end())
+                {
+                    /* Assert the port belongs the a VLAN */
+                    assert(port.m_vlan_id && port.m_vlan_member_id);
 
-                /* Assert the port belongs the a VLAN */
-                assert(port.m_vlan_id && port.m_vlan_member_id);
-
-                if (removeVlanMember(vlan, port))
-                    it = consumer.m_toSync.erase(it);
+                    if (removeVlanMember(vlan, port))
+                        it = consumer.m_toSync.erase(it);
+                    else
+                        it++;
+                }
                 else
-                    it++;
+                    /* Cannot locate the VLAN */
+                    it = consumer.m_toSync.erase(it);
             }
             else
             {
