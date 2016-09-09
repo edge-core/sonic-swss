@@ -1,6 +1,7 @@
-#include "tunneldecaporch.h"
 #include <string.h>
+#include "tunneldecaporch.h"
 #include "logger.h"
+#include "swssnet.h"
 
 extern sai_tunnel_api_t* sai_tunnel_api;
 extern sai_router_interface_api_t* sai_router_intfs_api;
@@ -289,19 +290,14 @@ bool TunnelDecapOrch::addDecapTunnelTermEntries(string tunnelKey, IpAddresses ds
     attr.value.oid = tunnel_id;
     tunnel_table_entry_attrs.push_back(attr);
 
-    sai_ip_address_t tunnel_dst_ip;
-    tunnel_dst_ip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-
-    set<IpAddress> tunnel_ips = dst_ip.getIpAddresses();
-    struct sockaddr_in tunnel_ip_struct;
-    string ip;
-
     TunnelEntry *tunnel_info = &tunnelTable.find(tunnelKey)->second;
 
     // loop through the IP list and create a new tunnel table entry for every IP (in network byte order)
+    set<IpAddress> tunnel_ips = dst_ip.getIpAddresses();
     for (auto it = tunnel_ips.begin(); it != tunnel_ips.end(); ++it)
     {
-        ip = it->to_string();
+        const IpAddress& ia = *it;
+        string ip = ia.to_string();
 
         // check if the there's an entry already for the ip
         if (existingIps.find(ip) != existingIps.end())
@@ -311,12 +307,8 @@ bool TunnelDecapOrch::addDecapTunnelTermEntries(string tunnelKey, IpAddresses ds
 
         else
         {
-            // turn string ip into network byte order
-            inet_pton(AF_INET, ip.c_str(), &(tunnel_ip_struct.sin_addr));
-            tunnel_dst_ip.addr.ip4 = tunnel_ip_struct.sin_addr.s_addr;
-
             attr.id = SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_DST_IP;
-            attr.value.ipaddr = tunnel_dst_ip;
+            copy(attr.value.ipaddr, ia);
             tunnel_table_entry_attrs.push_back(attr);
 
             // create the tunnel table entry

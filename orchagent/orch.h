@@ -1,6 +1,8 @@
 #ifndef SWSS_ORCH_H
 #define SWSS_ORCH_H
 
+#include <map>
+
 extern "C" {
 #include "sai.h"
 #include "saistatus.h"
@@ -9,8 +11,6 @@ extern "C" {
 #include "dbconnector.h"
 #include "consumertable.h"
 #include "producertable.h"
-
-#include <map>
 
 using namespace std;
 using namespace swss;
