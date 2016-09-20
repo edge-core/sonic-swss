@@ -26,7 +26,7 @@ IntfsOrch::IntfsOrch(DBConnector *db, string tableName) :
 sai_object_id_t IntfsOrch::getRouterIntfsId(string alias)
 {
     Port port;
-    assert(gPortsOrch->getPort(alias, port));
+    gPortsOrch->getPort(alias, port);
     assert(port.m_rif_id);
     return port.m_rif_id;
 }

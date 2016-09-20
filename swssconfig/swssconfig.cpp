@@ -146,7 +146,7 @@ vector<string> read_directory(const string &path)
         {
             if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
             {
-                ret.push_back(string(entry->d_name));
+                ret.push_back(path + string(entry->d_name));
             }
         }
         closedir(dir);
