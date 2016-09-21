@@ -400,7 +400,7 @@ void PortsOrch::doVlanTask(Consumer &consumer)
             }
             else if (op == DEL_COMMAND)
             {
-                if (vlan.m_members.find(port_alias) == vlan.m_members.end())
+                if (vlan.m_members.find(port_alias) != vlan.m_members.end())
                 {
                     /* Assert the port belongs the a VLAN */
                     assert(port.m_vlan_id && port.m_vlan_member_id);
