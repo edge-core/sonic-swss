@@ -67,7 +67,7 @@ void IntfsOrch::doTask(Consumer &consumer)
             Port port;
             if (!gPortsOrch->getPort(alias, port))
             {
-                SWSS_LOG_INFO("Failed to locate interface %s\n", alias.c_str());
+                /* TODO: Resolve the dependency relationship and add ref_count to port */
                 it++;
                 continue;
             }
