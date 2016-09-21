@@ -78,6 +78,7 @@ void IntfsOrch::doTask(Consumer &consumer)
                 if (addRouterIntfs(port))
                 {
                     IntfsEntry intfs_entry;
+                    intfs_entry.ref_count = 0;
                     m_syncdIntfses[alias] = intfs_entry;
 
                     addSubnetRoute(port, ip_prefix);
