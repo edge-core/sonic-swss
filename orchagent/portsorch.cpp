@@ -25,8 +25,8 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
     SWSS_LOG_ENTER();
 
     /* Initialize counter table */
-    unique_ptr<DBConnector> pCounter_db(new DBConnector(COUNTERS_DB, "localhost", 6379, 0));
-    m_counterTable = unique_ptr<Table>(new Table(pCounter_db.get(), COUNTERS_PORT_NAME_MAP));
+    DBConnector *counter_db(new DBConnector(COUNTERS_DB, "localhost", 6379, 0));
+    m_counterTable = unique_ptr<Table>(new Table(counter_db, COUNTERS_PORT_NAME_MAP));
 
     /* Initialize port table */
     m_portTable = unique_ptr<Table>(new Table(m_db, APP_PORT_TABLE_NAME));
