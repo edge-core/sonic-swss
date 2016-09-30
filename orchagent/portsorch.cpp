@@ -62,10 +62,12 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
     SWSS_LOG_NOTICE("Get port number : %d", m_portCount);
 
     /* Get port list */
-    sai_object_id_t *port_list = new sai_object_id_t[m_portCount];
+    vector<sai_object_id_t> port_list;
+    port_list.resize(m_portCount);
+
     attr.id = SAI_SWITCH_ATTR_PORT_LIST;
-    attr.value.objlist.count = m_portCount;
-    attr.value.objlist.list = port_list;
+    attr.value.objlist.count = port_list.size();
+    attr.value.objlist.list = port_list.data();
 
     status = sai_switch_api->get_switch_attribute(1, &attr);
     if (status != SAI_STATUS_SUCCESS)
@@ -120,10 +122,12 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
     }
 
     /* Get default VLAN member list */
-    sai_object_id_t *vlan_member_list = new sai_object_id_t[m_portCount];
+    vector<sai_object_id_t> vlan_member_list;
+    vlan_member_list.resize(m_portCount);
+
     attr.id = SAI_VLAN_ATTR_MEMBER_LIST;
-    attr.value.objlist.count = m_portCount;
-    attr.value.objlist.list = vlan_member_list;
+    attr.value.objlist.count = vlan_member_list.size();
+    attr.value.objlist.list = vlan_member_list.data();
 
     status = sai_vlan_api->get_vlan_attribute(DEFAULT_VLAN_ID, 1, &attr);
     if (status != SAI_STATUS_SUCCESS)
