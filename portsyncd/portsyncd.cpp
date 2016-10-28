@@ -154,12 +154,21 @@ void handlePortConfigFile(ProducerTable &p, string file)
         }
 
         istringstream iss(line);
-        string alias, lanes;
-        iss >> alias >> lanes;
+        string name, lanes, alias;
+        iss >> name >> lanes >> alias;
 
+        /* If port has no alias, then use its' name as alias */
+        if (alias == "") {
+            alias = name;
+        }
         FieldValueTuple lanes_attr("lanes", lanes);
-        vector<FieldValueTuple> attrs = { lanes_attr };
-        p.set(alias, attrs);
+        FieldValueTuple alias_attr("alias", alias);
+
+        vector<FieldValueTuple> attrs;
+        attrs.push_back(lanes_attr);
+        attrs.push_back(alias_attr);
+
+        p.set(name, attrs);
 
         g_portSet.insert(alias);
     }
