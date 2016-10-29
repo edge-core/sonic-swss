@@ -20,6 +20,8 @@ TunnelDecapOrch::TunnelDecapOrch(DBConnector *db, string tableName) : Orch(db, t
  */
 void TunnelDecapOrch::doTask(Consumer& consumer)
 {
+    SWSS_LOG_ENTER();
+
     auto it = consumer.m_toSync.begin();
     while (it != consumer.m_toSync.end())
     {

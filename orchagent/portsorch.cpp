@@ -186,6 +186,8 @@ bool PortsOrch::setPortAdminStatus(sai_object_id_t id, bool up)
                        up ? "UP" : "DOWN", id);
         return false;
     }
+    SWSS_LOG_NOTICE("Set admin status %s to port pid:%llx",
+                    up ? "UP" : "DOWN", id);
     return true;
 }
 
@@ -704,7 +706,7 @@ bool PortsOrch::initializePort(Port &p)
     initializePriorityGroups(p);
     initializeQueues(p);
 
-    /* Set up host interface */
+    /* Create host interface */
     addHostIntfs(p.m_port_id, p.m_alias, p.m_hif_id);
 
     // TODO: Assure if_nametoindex(p.m_alias.c_str()) != 0
@@ -719,8 +721,8 @@ bool PortsOrch::initializePort(Port &p)
     }
 #endif
 
-    /* Set port admin status UP */
-    setPortAdminStatus(p.m_port_id, true);
+    /* Set port admin status DOWN */
+    setPortAdminStatus(p.m_port_id, false);
 
     return true;
 }
@@ -750,6 +752,8 @@ bool PortsOrch::addHostIntfs(sai_object_id_t id, string alias, sai_object_id_t &
         SWSS_LOG_ERROR("Failed to create host interface for port %s", alias.c_str());
         return false;
     }
+
+    SWSS_LOG_NOTICE("Create host interface for port %s", alias.c_str());
 
     return true;
 }
