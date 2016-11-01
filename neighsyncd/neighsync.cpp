@@ -1,14 +1,16 @@
-#include <string.h>
-#include <errno.h>
-#include <system_error>
+#include <string>
+#include <netinet/in.h>
 #include <netlink/route/link.h>
 #include <netlink/route/neighbour.h>
+
 #include "logger.h"
-#include "netmsg.h"
 #include "dbconnector.h"
 #include "producertable.h"
+#include "ipaddress.h"
+#include "netmsg.h"
 #include "linkcache.h"
-#include "neighsyncd/neighsync.h"
+
+#include "neighsync.h"
 
 using namespace std;
 using namespace swss;
@@ -20,7 +22,8 @@ NeighSync::NeighSync(DBConnector *db) :
 
 void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
 {
-    char addrStr[MAX_ADDR_SIZE + 1] = {0};
+    char ipStr[MAX_ADDR_SIZE + 1] = {0};
+    char macStr[MAX_ADDR_SIZE + 1] = {0};
     struct rtnl_neigh *neigh = (struct rtnl_neigh *)obj;
     string key;
     string family;
@@ -38,8 +41,12 @@ void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
 
     key+= LinkCache::getInstance().ifindexToName(rtnl_neigh_get_ifindex(neigh));
     key+= ":";
-    nl_addr2str(rtnl_neigh_get_dst(neigh), addrStr, MAX_ADDR_SIZE);
-    key+= addrStr;
+
+    nl_addr2str(rtnl_neigh_get_dst(neigh), ipStr, MAX_ADDR_SIZE);
+    /* Ignore IPv6 multicast link-local addresses as neighbors */
+    if (family == IPV6_NAME && IN6_IS_ADDR_MC_LINKLOCAL(nl_addr_get_binary_addr(rtnl_neigh_get_dst(neigh))))
+        return;
+    key+= ipStr;
 
     int state = rtnl_neigh_get_state(neigh);
     if ((nlmsg_type == RTM_DELNEIGH) || (state == NUD_INCOMPLETE) ||
@@ -49,10 +56,10 @@ void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
         return;
     }
 
-    nl_addr2str(rtnl_neigh_get_lladdr(neigh), addrStr, MAX_ADDR_SIZE);
+    nl_addr2str(rtnl_neigh_get_lladdr(neigh), macStr, MAX_ADDR_SIZE);
     std::vector<FieldValueTuple> fvVector;
     FieldValueTuple f("family", family);
-    FieldValueTuple nh("neigh", addrStr);
+    FieldValueTuple nh("neigh", macStr);
     fvVector.push_back(nh);
     fvVector.push_back(f);
     m_neighTable.set(key, fvVector);
