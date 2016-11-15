@@ -11,7 +11,7 @@ using namespace swss;
 
 int main(int argc, char **argv)
 {
-    DBConnector db(APPL_DB, "localhost", 6379, 0);
+    DBConnector db(APPL_DB, DBConnector::DEFAULT_UNIXSOCKET, 0);
     Select s;
     TeamSync sync(&db, &s);
 

@@ -1,18 +1,16 @@
-#include "dbconnector.h"
-#include "select.h"
-#include "netdispatcher.h"
-#include "netlink.h"
-#include "producerstatetable.h"
-#include "portsyncd/linksync.h"
-
 #include <getopt.h>
-
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <vector>
 #include <set>
 #include <map>
+#include "dbconnector.h"
+#include "select.h"
+#include "netdispatcher.h"
+#include "netlink.h"
+#include "producerstatetable.h"
+#include "portsyncd/linksync.h"
 
 #define DEFAULT_PORT_CONFIG_FILE     "port_config.ini"
 #define DEFAULT_VLAN_INTERFACES_FILE "/etc/network/interfaces.d/vlan_interfaces"
@@ -72,7 +70,7 @@ int main(int argc, char **argv)
         }
     }
 
-    DBConnector db(0, "localhost", 6379, 0);
+    DBConnector db(0, DBConnector::DEFAULT_UNIXSOCKET, 0);
     ProducerStateTable p(&db, APP_PORT_TABLE_NAME);
 
     LinkSync sync(&db);
