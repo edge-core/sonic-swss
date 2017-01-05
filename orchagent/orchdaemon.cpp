@@ -1,14 +1,15 @@
-#include "orchdaemon.h"
-
-#include "logger.h"
-
 #include <unistd.h>
+#include "orchdaemon.h"
+#include "logger.h"
+#include "sairedis.h"
 
 using namespace std;
 using namespace swss;
 
 /* select() function timeout retry time */
 #define SELECT_TIMEOUT 1000
+
+extern sai_switch_api_t*           sai_switch_api;
 
 /* Global variable gPortsOrch declared */
 PortsOrch *gPortsOrch;
@@ -77,6 +78,21 @@ bool OrchDaemon::init()
     return true;
 }
 
+/* Flush redis through sairedis interface */
+void OrchDaemon::flush()
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_SWITCH_ATTR_FLUSH;
+    sai_status_t status = sai_switch_api->set_switch_attribute(&attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to flush redis pipeline %d", status);
+        exit(EXIT_FAILURE);
+    }
+}
+
 void OrchDaemon::start()
 {
     SWSS_LOG_ENTER();
@@ -106,6 +122,12 @@ void OrchDaemon::start()
             for (Orch *o : m_orchList)
                 o->doTask();
 
+            /* Let sairedis to flush all SAI function call to ASIC DB.
+             * Normally the redis pipeline will flush when enough request
+             * accumulated. Still it is possible that small amount of
+             * requests live in it. When the daemon has nothing to do, it
+             * is a good chance to flush the pipeline  */
+            flush();
             continue;
         }
 

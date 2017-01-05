@@ -13,8 +13,8 @@
 using namespace std;
 using namespace swss;
 
-RouteSync::RouteSync(DBConnector *db) :
-    m_routeTable(db, APP_ROUTE_TABLE_NAME)
+RouteSync::RouteSync(RedisPipeline *pipeline) :
+    m_routeTable(pipeline, APP_ROUTE_TABLE_NAME, true)
 {
     m_nl_sock = nl_socket_alloc();
     nl_connect(m_nl_sock, NETLINK_ROUTE);
