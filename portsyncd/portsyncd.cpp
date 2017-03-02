@@ -47,6 +47,7 @@ void handleVlanIntfFile(string file);
 
 int main(int argc, char **argv)
 {
+    Logger::linkToDbNative("portsyncd");
     int opt;
     string port_config_file = DEFAULT_PORT_CONFIG_FILE;
     string vlan_interfaces_file = DEFAULT_VLAN_INTERFACES_FILE;
