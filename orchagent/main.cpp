@@ -12,6 +12,7 @@ extern "C" {
 #include <getopt.h>
 #include <unistd.h>
 
+#define SAI_SWITCH_ATTR_CUSTOM_RANGE_BASE SAI_SWITCH_ATTR_CUSTOM_RANGE_START
 #include <sairedis.h>
 #include "orchdaemon.h"
 #include "logger.h"
@@ -19,7 +20,7 @@ extern "C" {
 using namespace std;
 using namespace swss;
 
-extern sai_switch_notification_t switch_notifications;
+void on_fdb_event(uint32_t count, sai_fdb_event_notification_data_t *data);
 
 #define UNREFERENCED_PARAMETER(P)       (P)
 
@@ -51,6 +52,7 @@ sai_fdb_api_t*              sai_fdb_api;
 map<string, string> gProfileMap;
 sai_object_id_t gVirtualRouterId;
 sai_object_id_t gUnderlayIfId;
+sai_object_id_t gSwitchId;
 MacAddress gMacAddress;
 
 #define DEFAULT_BATCH_SIZE  128
@@ -124,7 +126,7 @@ void initSaiApi()
     sai_api_query(SAI_API_PORT,                 (void **)&sai_port_api);
     sai_api_query(SAI_API_FDB,                  (void **)&sai_fdb_api);
     sai_api_query(SAI_API_VLAN,                 (void **)&sai_vlan_api);
-    sai_api_query(SAI_API_HOST_INTERFACE,       (void **)&sai_hostif_api);
+    sai_api_query(SAI_API_HOSTIF,               (void **)&sai_hostif_api);
     sai_api_query(SAI_API_MIRROR,               (void **)&sai_mirror_api);
     sai_api_query(SAI_API_ROUTER_INTERFACE,     (void **)&sai_router_intfs_api);
     sai_api_query(SAI_API_NEIGHBOR,             (void **)&sai_neighbor_api);
@@ -137,33 +139,33 @@ void initSaiApi()
     sai_api_query(SAI_API_QUEUE,                (void **)&sai_queue_api);
     sai_api_query(SAI_API_SCHEDULER,            (void **)&sai_scheduler_api);
     sai_api_query(SAI_API_WRED,                 (void **)&sai_wred_api);
-    sai_api_query(SAI_API_QOS_MAPS,             (void **)&sai_qos_map_api);
-    sai_api_query(SAI_API_BUFFERS,              (void **)&sai_buffer_api);
+    sai_api_query(SAI_API_QOS_MAP,              (void **)&sai_qos_map_api);
+    sai_api_query(SAI_API_BUFFER,               (void **)&sai_buffer_api);
     sai_api_query(SAI_API_SCHEDULER_GROUP,      (void **)&sai_scheduler_group_api);
     sai_api_query(SAI_API_ACL,                  (void **)&sai_acl_api);
 
-    sai_log_set(SAI_API_SWITCH,                 SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_VIRTUAL_ROUTER,         SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_PORT,                   SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_FDB,                    SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_VLAN,                   SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_HOST_INTERFACE,         SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_MIRROR,                 SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_ROUTER_INTERFACE,       SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_NEIGHBOR,               SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_NEXT_HOP,               SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_NEXT_HOP_GROUP,         SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_ROUTE,                  SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_LAG,                    SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_POLICER,                SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_TUNNEL,                 SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_QUEUE,                  SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_SCHEDULER,              SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_WRED,                   SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_QOS_MAPS,               SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_BUFFERS,                SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_SCHEDULER_GROUP,        SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_ACL,                    SAI_LOG_NOTICE);
+    sai_log_set(SAI_API_SWITCH,                 SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_VIRTUAL_ROUTER,         SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_PORT,                   SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_FDB,                    SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_VLAN,                   SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_HOSTIF,                 SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_MIRROR,                 SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_ROUTER_INTERFACE,       SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_NEIGHBOR,               SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_NEXT_HOP,               SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_NEXT_HOP_GROUP,         SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_ROUTE,                  SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_LAG,                    SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_POLICER,                SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_TUNNEL,                 SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_QUEUE,                  SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_SCHEDULER,              SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_WRED,                   SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_QOS_MAP,                SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_BUFFER,                 SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_SCHEDULER_GROUP,        SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_ACL,                    SAI_LOG_LEVEL_NOTICE);
 }
 
 string getTimestamp()
@@ -257,11 +259,15 @@ int main(int argc, char **argv)
 
     initSaiApi();
 
-    SWSS_LOG_NOTICE("sai_switch_api: initializing switch");
-    status = sai_switch_api->initialize_switch(0, "", "", &switch_notifications);
+    SWSS_LOG_NOTICE("sai_switch_api: create a switch");
+
+    sai_attribute_t switch_attr;
+    switch_attr.id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
+    switch_attr.value.ptr = (void *)on_fdb_event;
+    status = sai_switch_api->create_switch(&gSwitchId, 1, &switch_attr);
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to initialize switch %d", status);
+        SWSS_LOG_ERROR("Failed to create a switch %d", status);
         exit(EXIT_FAILURE);
     }
 
@@ -274,7 +280,7 @@ int main(int argc, char **argv)
         attr.value.s8list.count = record_location.size();
         attr.value.s8list.list = (signed char *) record_location.c_str();
 
-        status = sai_switch_api->set_switch_attribute(&attr);
+        status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to set SAI Redis recording output folder to %s, rv:%d", record_location.c_str(), status);
@@ -285,7 +291,7 @@ int main(int argc, char **argv)
     attr.id = SAI_REDIS_SWITCH_ATTR_RECORD;
     attr.value.booldata = gSairedisRecord;
 
-    status = sai_switch_api->set_switch_attribute(&attr);
+    status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to set SAI Redis recording to %s, rv:%d", gSairedisRecord ? "true" : "false", status);
@@ -308,8 +314,8 @@ int main(int argc, char **argv)
 
     attr.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
     attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+    status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
 
-    status = sai_switch_api->set_switch_attribute(&attr);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to notify syncd INIT_VIEW %d", status);
@@ -321,7 +327,7 @@ int main(int argc, char **argv)
     attr.id = SAI_REDIS_SWITCH_ATTR_USE_PIPELINE;
     attr.value.booldata = true;
 
-    status = sai_switch_api->set_switch_attribute(&attr);
+    status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to enable redis pipeline %d", status);
@@ -331,7 +337,7 @@ int main(int argc, char **argv)
     attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
     if (!gMacAddress)
     {
-        status = sai_switch_api->get_switch_attribute(1, &attr);
+        status = sai_switch_api->get_switch_attribute(gSwitchId, 1, &attr);
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to get MAC address from switch %d", status);
@@ -345,7 +351,7 @@ int main(int argc, char **argv)
     else
     {
         memcpy(attr.value.mac, gMacAddress.getMac(), 6);
-        status = sai_switch_api->set_switch_attribute(&attr);
+        status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to set MAC address to switch %d", status);
@@ -356,7 +362,7 @@ int main(int argc, char **argv)
     /* Get the default virtual router ID */
     attr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
 
-    status = sai_switch_api->get_switch_attribute(1, &attr);
+    status = sai_switch_api->get_switch_attribute(gSwitchId, 1, &attr);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Fail to get switch virtual router ID %d", status);
@@ -373,7 +379,7 @@ int main(int argc, char **argv)
     underlay_intf_attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
     underlay_intf_attrs[1].value.s32 = SAI_ROUTER_INTERFACE_TYPE_LOOPBACK;
 
-    status = sai_router_intfs_api->create_router_interface(&gUnderlayIfId, 2, underlay_intf_attrs);
+    status = sai_router_intfs_api->create_router_interface(&gUnderlayIfId, gSwitchId, 2, underlay_intf_attrs);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create underlay router interface %d", status);
@@ -397,7 +403,7 @@ int main(int argc, char **argv)
 
         attr.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
         attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW;
-        status = sai_switch_api->set_switch_attribute(&attr);
+        status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
 
         if (status != SAI_STATUS_SUCCESS)
         {

@@ -12,7 +12,7 @@ using namespace std;
 extern sai_hostif_api_t*    sai_hostif_api;
 extern sai_policer_api_t*   sai_policer_api;
 extern sai_switch_api_t*    sai_switch_api;
-
+extern sai_object_id_t      gSwitchId;
 
 map<string, sai_meter_type_t> policer_meter_map = {
     {"packets", SAI_METER_TYPE_PACKETS},
@@ -20,8 +20,8 @@ map<string, sai_meter_type_t> policer_meter_map = {
 };
 
 map<string, sai_policer_mode_t> policer_mode_map = {
-    {"sr_tcm", SAI_POLICER_MODE_Sr_TCM},
-    {"tr_tcm", SAI_POLICER_MODE_Tr_TCM},
+    {"sr_tcm", SAI_POLICER_MODE_SR_TCM},
+    {"tr_tcm", SAI_POLICER_MODE_TR_TCM},
     {"storm",  SAI_POLICER_MODE_STORM_CONTROL}
 };
 
@@ -30,41 +30,41 @@ map<string, sai_policer_color_source_t> policer_color_aware_map = {
     {"blind", SAI_POLICER_COLOR_SOURCE_BLIND}
 };
 
-map<string, sai_hostif_trap_id_t> trap_id_map = {
-    {"stp", SAI_HOSTIF_TRAP_ID_STP},
-    {"lacp", SAI_HOSTIF_TRAP_ID_LACP},
-    {"eapol", SAI_HOSTIF_TRAP_ID_EAPOL},
-    {"lldp", SAI_HOSTIF_TRAP_ID_LLDP},
-    {"pvrst", SAI_HOSTIF_TRAP_ID_PVRST},
-    {"igmp_query", SAI_HOSTIF_TRAP_ID_IGMP_TYPE_QUERY},
-    {"igmp_leave", SAI_HOSTIF_TRAP_ID_IGMP_TYPE_LEAVE},
-    {"igmp_v1_report", SAI_HOSTIF_TRAP_ID_IGMP_TYPE_V1_REPORT},
-    {"igmp_v2_report", SAI_HOSTIF_TRAP_ID_IGMP_TYPE_V2_REPORT},
-    {"igmp_v3_report", SAI_HOSTIF_TRAP_ID_IGMP_TYPE_V3_REPORT},
-    {"sample_packet", SAI_HOSTIF_TRAP_ID_SAMPLEPACKET},
-    {"switch_cust_range", SAI_HOSTIF_TRAP_ID_SWITCH_CUSTOM_RANGE_BASE},
-    {"arp_req", SAI_HOSTIF_TRAP_ID_ARP_REQUEST},
-    {"arp_resp", SAI_HOSTIF_TRAP_ID_ARP_RESPONSE},
-    {"dhcp", SAI_HOSTIF_TRAP_ID_DHCP},
-    {"ospf", SAI_HOSTIF_TRAP_ID_OSPF},
-    {"pim", SAI_HOSTIF_TRAP_ID_PIM},
-    {"vrrp", SAI_HOSTIF_TRAP_ID_VRRP},
-    {"bgp", SAI_HOSTIF_TRAP_ID_BGP},
-    {"dhcpv6", SAI_HOSTIF_TRAP_ID_DHCPV6},
-    {"ospvfv6", SAI_HOSTIF_TRAP_ID_OSPFV6},
-    {"vrrpv6", SAI_HOSTIF_TRAP_ID_VRRPV6},
-    {"bgpv6", SAI_HOSTIF_TRAP_ID_BGPV6},
-    {"neigh_discovery", SAI_HOSTIF_TRAP_ID_IPV6_NEIGHBOR_DISCOVERY},
-    {"mld_v1_v2", SAI_HOSTIF_TRAP_ID_IPV6_MLD_V1_V2},
-    {"mld_v1_report", SAI_HOSTIF_TRAP_ID_IPV6_MLD_V1_REPORT},
-    {"mld_v2_done", SAI_HOSTIF_TRAP_ID_IPV6_MLD_V1_DONE},
-    {"mld_v2_report", SAI_HOSTIF_TRAP_ID_MLD_V2_REPORT},
-    {"ip2me", SAI_HOSTIF_TRAP_ID_IP2ME},
-    {"ssh", SAI_HOSTIF_TRAP_ID_SSH},
-    {"snmp", SAI_HOSTIF_TRAP_ID_SNMP},
-    {"router_custom_range", SAI_HOSTIF_TRAP_ID_ROUTER_CUSTOM_RANGE_BASE},
-    {"l3_mtu_error", SAI_HOSTIF_TRAP_ID_L3_MTU_ERROR},
-    {"ttl_error", SAI_HOSTIF_TRAP_ID_TTL_ERROR}
+map<string, sai_hostif_trap_type_t> trap_id_map = {
+    {"stp", SAI_HOSTIF_TRAP_TYPE_STP},
+    {"lacp", SAI_HOSTIF_TRAP_TYPE_LACP},
+    {"eapol", SAI_HOSTIF_TRAP_TYPE_EAPOL},
+    {"lldp", SAI_HOSTIF_TRAP_TYPE_LLDP},
+    {"pvrst", SAI_HOSTIF_TRAP_TYPE_PVRST},
+    {"igmp_query", SAI_HOSTIF_TRAP_TYPE_IGMP_TYPE_QUERY},
+    {"igmp_leave", SAI_HOSTIF_TRAP_TYPE_IGMP_TYPE_LEAVE},
+    {"igmp_v1_report", SAI_HOSTIF_TRAP_TYPE_IGMP_TYPE_V1_REPORT},
+    {"igmp_v2_report", SAI_HOSTIF_TRAP_TYPE_IGMP_TYPE_V2_REPORT},
+    {"igmp_v3_report", SAI_HOSTIF_TRAP_TYPE_IGMP_TYPE_V3_REPORT},
+    {"sample_packet", SAI_HOSTIF_TRAP_TYPE_SAMPLEPACKET},
+    {"switch_cust_range", SAI_HOSTIF_TRAP_TYPE_SWITCH_CUSTOM_RANGE_BASE},
+    {"arp_req", SAI_HOSTIF_TRAP_TYPE_ARP_REQUEST},
+    {"arp_resp", SAI_HOSTIF_TRAP_TYPE_ARP_RESPONSE},
+    {"dhcp", SAI_HOSTIF_TRAP_TYPE_DHCP},
+    {"ospf", SAI_HOSTIF_TRAP_TYPE_OSPF},
+    {"pim", SAI_HOSTIF_TRAP_TYPE_PIM},
+    {"vrrp", SAI_HOSTIF_TRAP_TYPE_VRRP},
+    {"bgp", SAI_HOSTIF_TRAP_TYPE_BGP},
+    {"dhcpv6", SAI_HOSTIF_TRAP_TYPE_DHCPV6},
+    {"ospvfv6", SAI_HOSTIF_TRAP_TYPE_OSPFV6},
+    {"vrrpv6", SAI_HOSTIF_TRAP_TYPE_VRRPV6},
+    {"bgpv6", SAI_HOSTIF_TRAP_TYPE_BGPV6},
+    {"neigh_discovery", SAI_HOSTIF_TRAP_TYPE_IPV6_NEIGHBOR_DISCOVERY},
+    {"mld_v1_v2", SAI_HOSTIF_TRAP_TYPE_IPV6_MLD_V1_V2},
+    {"mld_v1_report", SAI_HOSTIF_TRAP_TYPE_IPV6_MLD_V1_REPORT},
+    {"mld_v2_done", SAI_HOSTIF_TRAP_TYPE_IPV6_MLD_V1_DONE},
+    {"mld_v2_report", SAI_HOSTIF_TRAP_TYPE_MLD_V2_REPORT},
+    {"ip2me", SAI_HOSTIF_TRAP_TYPE_IP2ME},
+    {"ssh", SAI_HOSTIF_TRAP_TYPE_SSH},
+    {"snmp", SAI_HOSTIF_TRAP_TYPE_SNMP},
+    {"router_custom_range", SAI_HOSTIF_TRAP_TYPE_ROUTER_CUSTOM_RANGE_BASE},
+    {"l3_mtu_error", SAI_HOSTIF_TRAP_TYPE_L3_MTU_ERROR},
+    {"ttl_error", SAI_HOSTIF_TRAP_TYPE_TTL_ERROR}
 };
 
 map<string, sai_packet_action_t> packet_action_map = {
@@ -79,8 +79,8 @@ map<string, sai_packet_action_t> packet_action_map = {
 };
 
 const string default_trap_group = "default";
-const vector<sai_hostif_trap_id_t> default_trap_ids = {
-    SAI_HOSTIF_TRAP_ID_TTL_ERROR
+const vector<sai_hostif_trap_type_t> default_trap_ids = {
+    SAI_HOSTIF_TRAP_TYPE_TTL_ERROR
 };
 
 CoppOrch::CoppOrch(DBConnector *db, string tableName) :
@@ -107,8 +107,9 @@ void CoppOrch::initDefaultTrapIds()
     trap_id_attrs.push_back(attr);
 
     /* Receive packets via OS net device */
-    attr.id = SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL;
-    attr.value.s32 = SAI_HOSTIF_TRAP_CHANNEL_NETDEV;
+    // TODO: double check semantics
+    attr.id = SAI_HOSTIF_ATTR_TYPE;
+    attr.value.s32 = SAI_HOSTIF_TYPE_NETDEV;
     trap_id_attrs.push_back(attr);
 
     if (!applyAttributesToTrapIds(m_trap_group_map[default_trap_group], default_trap_ids, trap_id_attrs))
@@ -126,7 +127,7 @@ void CoppOrch::initDefaultTrapGroup()
     sai_attribute_t attr;
     attr.id = SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP;
 
-    sai_status_t status = sai_switch_api->get_switch_attribute(1, &attr);
+    sai_status_t status = sai_switch_api->get_switch_attribute(gSwitchId, 1, &attr);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to get default trap group, rc=%d", status);
@@ -136,12 +137,12 @@ void CoppOrch::initDefaultTrapGroup()
     m_trap_group_map[default_trap_group] = attr.value.oid;
 }
 
-void CoppOrch::getTrapIdList(vector<string> &trap_id_name_list, vector<sai_hostif_trap_id_t> &trap_id_list) const
+void CoppOrch::getTrapIdList(vector<string> &trap_id_name_list, vector<sai_hostif_trap_type_t> &trap_id_list) const
 {
     SWSS_LOG_ENTER();
     for (auto trap_id_str : trap_id_name_list)
     {
-        sai_hostif_trap_id_t trap_id;
+        sai_hostif_trap_type_t trap_id;
         SWSS_LOG_DEBUG("processing trap_id:%s", trap_id_str.c_str());
         trap_id = trap_id_map.at(trap_id_str);
         SWSS_LOG_DEBUG("Pushing trap_id:%d", trap_id);
@@ -150,14 +151,14 @@ void CoppOrch::getTrapIdList(vector<string> &trap_id_name_list, vector<sai_hosti
 }
 
 bool CoppOrch::applyAttributesToTrapIds(sai_object_id_t trap_group_id,
-                                        const vector<sai_hostif_trap_id_t> &trap_id_list,
+                                        const vector<sai_hostif_trap_type_t> &trap_id_list,
                                         vector<sai_attribute_t> &trap_id_attribs)
 {
     for (auto trap_id : trap_id_list)
     {
         for (auto attr : trap_id_attribs)
         {
-            sai_status_t status = sai_hostif_api->set_trap_attribute(trap_id, &attr);
+            sai_status_t status = sai_hostif_api->set_hostif_trap_attribute(trap_id, &attr);
             if (status != SAI_STATUS_SUCCESS)
             {
                 SWSS_LOG_ERROR("Failed to set attribute %d to trap %d, rc=%d", attr.id, trap_id, status);
@@ -173,7 +174,7 @@ bool CoppOrch::applyAttributesToTrapIds(sai_object_id_t trap_group_id,
 bool CoppOrch::applyTrapIds(sai_object_id_t trap_group, vector<string> &trap_id_name_list, vector<sai_attribute_t> &trap_id_attribs)
 {
     SWSS_LOG_ENTER();
-    vector<sai_hostif_trap_id_t> trap_id_list;
+    vector<sai_hostif_trap_type_t> trap_id_list;
 
     getTrapIdList(trap_id_name_list, trap_id_list);
 
@@ -183,8 +184,9 @@ bool CoppOrch::applyTrapIds(sai_object_id_t trap_group, vector<string> &trap_id_
     trap_id_attribs.push_back(attr);
 
     /* Receive packets via OS net device */
-    attr.id = SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL;
-    attr.value.s32 = SAI_HOSTIF_TRAP_CHANNEL_NETDEV;
+    // TODO: double check semantics
+    attr.id = SAI_HOSTIF_ATTR_TYPE;
+    attr.value.s32 = SAI_HOSTIF_TYPE_NETDEV;
     trap_id_attribs.push_back(attr);
 
     return applyAttributesToTrapIds(trap_group, trap_id_list, trap_id_attribs);
@@ -207,7 +209,7 @@ bool CoppOrch::removePolicer(string trap_group_name)
     attr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
     attr.value.oid = SAI_NULL_OBJECT_ID;
 
-    sai_status = sai_hostif_api->set_trap_group_attribute(m_trap_group_map[trap_group_name], &attr);
+    sai_status = sai_hostif_api->set_hostif_trap_group_attribute(m_trap_group_map[trap_group_name], &attr);
     if (sai_status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to set policer to NULL for trap group %s, rc=%d", trap_group_name.c_str(), sai_status);
@@ -251,7 +253,7 @@ bool CoppOrch::createPolicer(string trap_group_name, vector<sai_attribute_t> &po
     sai_object_id_t policer_id;
     sai_status_t sai_status;
 
-    sai_status = sai_policer_api->create_policer(&policer_id, policer_attribs.size(), policer_attribs.data());
+    sai_status = sai_policer_api->create_policer(&policer_id, gSwitchId, policer_attribs.size(), policer_attribs.data());
     if (sai_status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create policer trap group %s, rc=%d", trap_group_name.c_str(), sai_status);
@@ -264,7 +266,7 @@ bool CoppOrch::createPolicer(string trap_group_name, vector<sai_attribute_t> &po
     attr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
     attr.value.oid = policer_id;
 
-    sai_status = sai_hostif_api->set_trap_group_attribute(m_trap_group_map[trap_group_name], &attr);
+    sai_status = sai_hostif_api->set_hostif_trap_group_attribute(m_trap_group_map[trap_group_name], &attr);
     if (sai_status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to bind policer to trap group %s, rc=%d", trap_group_name.c_str(), sai_status);
@@ -444,7 +446,7 @@ task_process_status CoppOrch::processCoppRule(Consumer& consumer)
             {
                 auto trap_gr_attr = trap_gr_attribs[ind];
 
-                sai_status = sai_hostif_api->set_trap_group_attribute(m_trap_group_map[trap_group_name], &trap_gr_attr);
+                sai_status = sai_hostif_api->set_hostif_trap_group_attribute(m_trap_group_map[trap_group_name], &trap_gr_attr);
                 if (sai_status != SAI_STATUS_SUCCESS)
                 {
                     SWSS_LOG_ERROR("Failed to apply attribute:%d to trap group:%lx, name:%s, error:%d\n", trap_gr_attr.id, m_trap_group_map[trap_group_name], trap_group_name.c_str(), sai_status);
@@ -458,7 +460,7 @@ task_process_status CoppOrch::processCoppRule(Consumer& consumer)
         {
             sai_object_id_t new_trap;
 
-            sai_status = sai_hostif_api->create_hostif_trap_group(&new_trap, trap_gr_attribs.size(), trap_gr_attribs.data());
+            sai_status = sai_hostif_api->create_hostif_trap_group(&new_trap, gSwitchId, trap_gr_attribs.size(), trap_gr_attribs.data());
             if (sai_status != SAI_STATUS_SUCCESS)
             {
                 SWSS_LOG_ERROR("Failed to create host interface trap group %s, rc=%d", trap_group_name.c_str(), sai_status);
@@ -501,7 +503,7 @@ task_process_status CoppOrch::processCoppRule(Consumer& consumer)
         }
 
         /* Reset the trap IDs to default trap group with default attributes */
-        vector<sai_hostif_trap_id_t> trap_ids_to_reset;
+        vector<sai_hostif_trap_type_t> trap_ids_to_reset;
         for (auto it : m_syncdTrapIds)
         {
             if (it.second == m_trap_group_map[trap_group_name])

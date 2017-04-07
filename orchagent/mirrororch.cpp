@@ -26,6 +26,7 @@
 #define MIRROR_SESSION_DSCP_MAX         63
 
 extern sai_mirror_api_t *sai_mirror_api;
+extern sai_object_id_t gSwitchId;
 
 using namespace std::rel_ops;
 
@@ -392,7 +393,7 @@ bool MirrorOrch::activateSession(const string& name, MirrorEntry& session)
     attrs.push_back(attr);
 
     attr.id = SAI_MIRROR_SESSION_ATTR_TYPE;
-    attr.value.s32 = SAI_MIRROR_TYPE_ENHANCED_REMOTE;
+    attr.value.s32 = SAI_MIRROR_SESSION_TYPE_ENHANCED_REMOTE;
     attrs.push_back(attr);
 
     attr.id =SAI_MIRROR_SESSION_ATTR_VLAN_TPID;
@@ -411,8 +412,8 @@ bool MirrorOrch::activateSession(const string& name, MirrorEntry& session)
     attr.value.u8 = MIRROR_SESSION_DEFAULT_VLAN_CFI;
     attrs.push_back(attr);
 
-    attr.id =SAI_MIRROR_SESSION_ATTR_ENCAP_TYPE;
-    attr.value.s32 = SAI_MIRROR_L3_GRE_TUNNEL;
+    attr.id = SAI_MIRROR_SESSION_ATTR_ERSPAN_ENCAPSULATION_TYPE;
+    attr.value.s32 = SAI_ERSPAN_ENCAPSULATION_TYPE_MIRROR_L3_GRE_TUNNEL;
     attrs.push_back(attr);
 
     attr.id =SAI_MIRROR_SESSION_ATTR_IPHDR_VERSION;
@@ -451,7 +452,7 @@ bool MirrorOrch::activateSession(const string& name, MirrorEntry& session)
 
     session.status = true;
 
-    status = sai_mirror_api->create_mirror_session(&session.sessionId, attrs.size(), attrs.data());
+    status = sai_mirror_api->create_mirror_session(&session.sessionId, gSwitchId, attrs.size(), attrs.data());
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to activate mirroring session %s\n", name.c_str());

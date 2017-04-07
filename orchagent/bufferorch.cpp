@@ -12,6 +12,7 @@ extern sai_switch_api_t *sai_switch_api;
 extern sai_buffer_api_t *sai_buffer_api;
 
 extern PortsOrch *gPortsOrch;
+extern sai_object_id_t gSwitchId;
 
 using namespace std;
 
@@ -77,11 +78,11 @@ task_process_status BufferOrch::processBufferPool(Consumer &consumer)
                 string type = fvValue(*i);
                 if (type == buffer_value_ingress)
                 {
-                    attr.value.u32 = SAI_BUFFER_POOL_INGRESS;
+                    attr.value.u32 = SAI_BUFFER_POOL_TYPE_INGRESS;
                 }
                 else if (type == buffer_value_egress)
                 {
-                    attr.value.u32 = SAI_BUFFER_POOL_EGRESS;
+                    attr.value.u32 = SAI_BUFFER_POOL_TYPE_EGRESS;
                 }
                 else
                 {
@@ -96,18 +97,18 @@ task_process_status BufferOrch::processBufferPool(Consumer &consumer)
                 string mode = fvValue(*i);
                 if (mode == buffer_pool_mode_dynamic_value)
                 {
-                    attr.value.u32 = SAI_BUFFER_THRESHOLD_MODE_DYNAMIC;
+                    attr.value.u32 = SAI_BUFFER_POOL_THRESHOLD_MODE_DYNAMIC;
                 }
                 else if (mode == buffer_pool_mode_static_value)
                 {
-                    attr.value.u32 = SAI_BUFFER_THRESHOLD_MODE_STATIC;
+                    attr.value.u32 = SAI_BUFFER_POOL_THRESHOLD_MODE_STATIC;
                 }
                 else
                 {
                     SWSS_LOG_ERROR("Unknown pool mode specified:%s", mode.c_str());
                     return task_process_status::task_invalid_entry;
                 }
-                attr.id = SAI_BUFFER_POOL_ATTR_TH_MODE;
+                attr.id = SAI_BUFFER_POOL_ATTR_THRESHOLD_MODE;
                 attribs.push_back(attr);
             }
             else
@@ -119,7 +120,7 @@ task_process_status BufferOrch::processBufferPool(Consumer &consumer)
         if (SAI_NULL_OBJECT_ID != sai_object)
         {
             SWSS_LOG_DEBUG("Modifying existing sai object:%lx ", sai_object);
-            sai_status = sai_buffer_api->set_buffer_pool_attr(sai_object, &attribs[0]);
+            sai_status = sai_buffer_api->set_buffer_pool_attribute(sai_object, &attribs[0]);
             if (SAI_STATUS_SUCCESS != sai_status)
             {
                 SWSS_LOG_ERROR("Failed to modify buffer pool, name:%s, sai object:%lx, status:%d", object_name.c_str(), sai_object, sai_status);
@@ -130,7 +131,7 @@ task_process_status BufferOrch::processBufferPool(Consumer &consumer)
         else
         {
             SWSS_LOG_DEBUG("Creating new sai object");
-            sai_status = sai_buffer_api->create_buffer_pool(&sai_object, attribs.size(), attribs.data());
+            sai_status = sai_buffer_api->create_buffer_pool(&sai_object, gSwitchId, attribs.size(), attribs.data());
             if (SAI_STATUS_SUCCESS != sai_status)
             {
                 SWSS_LOG_ERROR("Failed to create buffer pool, name:%s, status:%d", object_name.c_str(), sai_status);
@@ -241,7 +242,7 @@ task_process_status BufferOrch::processBufferProfile(Consumer &consumer)
         if (SAI_NULL_OBJECT_ID != sai_object)
         {
             SWSS_LOG_DEBUG("Modifying existing sai object:%lx ", sai_object);
-            sai_status = sai_buffer_api->set_buffer_profile_attr(sai_object, &attribs[0]);
+            sai_status = sai_buffer_api->set_buffer_profile_attribute(sai_object, &attribs[0]);
             if (SAI_STATUS_SUCCESS != sai_status)
             {
                 SWSS_LOG_ERROR("Failed to modify buffer profile, name:%s, sai object:%lx, status:%d", object_name.c_str(), sai_object, sai_status);
@@ -251,7 +252,7 @@ task_process_status BufferOrch::processBufferProfile(Consumer &consumer)
         else
         {
             SWSS_LOG_DEBUG("Creating new sai object");
-            sai_status = sai_buffer_api->create_buffer_profile(&sai_object, attribs.size(), attribs.data());
+            sai_status = sai_buffer_api->create_buffer_profile(&sai_object, gSwitchId, attribs.size(), attribs.data());
             if (SAI_STATUS_SUCCESS != sai_status)
             {
                 SWSS_LOG_ERROR("Failed to create buffer profile, name:%s, status:%d", object_name.c_str(), sai_status);
@@ -412,7 +413,7 @@ task_process_status BufferOrch::processPriorityGroup(Consumer &consumer)
             }
             pg_id = port.m_priority_group_ids[ind];
             SWSS_LOG_DEBUG("Applying buffer profile:0x%lx to port:%s pg index:%zd, pg sai_id:0x%lx", sai_buffer_profile, port_name.c_str(), ind, pg_id);
-            sai_status_t sai_status = sai_buffer_api->set_ingress_priority_group_attr(pg_id, &attr);
+            sai_status_t sai_status = sai_buffer_api->set_ingress_priority_group_attribute(pg_id, &attr);
             if (sai_status != SAI_STATUS_SUCCESS)
             {
                 SWSS_LOG_ERROR("Failed to set port:%s pg:%zd buffer profile attribute, status:%d", port_name.c_str(), ind, sai_status);

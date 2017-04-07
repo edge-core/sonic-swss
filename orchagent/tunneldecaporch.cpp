@@ -8,6 +8,7 @@ extern sai_router_interface_api_t* sai_router_intfs_api;
 
 extern sai_object_id_t gVirtualRouterId;
 extern sai_object_id_t gUnderlayIfId;
+extern sai_object_id_t gSwitchId;
 
 TunnelDecapOrch::TunnelDecapOrch(DBConnector *db, string tableName) : Orch(db, tableName)
 {
@@ -198,7 +199,7 @@ bool TunnelDecapOrch::addDecapTunnel(string key, string type, IpAddresses dst_ip
     overlay_intf_attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
     overlay_intf_attrs[1].value.s32 = SAI_ROUTER_INTERFACE_TYPE_LOOPBACK;
 
-    status = sai_router_intfs_api->create_router_interface(&overlayIfId, 2, overlay_intf_attrs);
+    status = sai_router_intfs_api->create_router_interface(&overlayIfId, gSwitchId, 2, overlay_intf_attrs);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create overlay router interface %d", status);
@@ -209,7 +210,7 @@ bool TunnelDecapOrch::addDecapTunnel(string key, string type, IpAddresses dst_ip
 
     // tunnel type (only ipinip for now)
     attr.id = SAI_TUNNEL_ATTR_TYPE;
-    attr.value.s32 = SAI_TUNNEL_IPINIP;
+    attr.value.s32 = SAI_TUNNEL_TYPE_IPINIP;
     tunnel_attrs.push_back(attr);
     attr.id = SAI_TUNNEL_ATTR_OVERLAY_INTERFACE;
     attr.value.oid = overlayIfId;
@@ -239,11 +240,11 @@ bool TunnelDecapOrch::addDecapTunnel(string key, string type, IpAddresses dst_ip
     attr.id = SAI_TUNNEL_ATTR_DECAP_TTL_MODE;
     if (ttl == "uniform") 
     {
-        attr.value.s32 = SAI_TUNNEL_TTL_UNIFORM_MODEL;
+        attr.value.s32 = SAI_TUNNEL_TTL_MODE_UNIFORM_MODEL;
     }
     else if (ttl == "pipe") 
     {
-        attr.value.s32 = SAI_TUNNEL_TTL_PIPE_MODEL;
+        attr.value.s32 = SAI_TUNNEL_TTL_MODE_PIPE_MODEL;
     }
     tunnel_attrs.push_back(attr);
 
@@ -251,17 +252,17 @@ bool TunnelDecapOrch::addDecapTunnel(string key, string type, IpAddresses dst_ip
     attr.id = SAI_TUNNEL_ATTR_DECAP_DSCP_MODE;
     if (dscp == "uniform") 
     {
-        attr.value.s32 = SAI_TUNNEL_DSCP_UNIFORM_MODEL;
+        attr.value.s32 = SAI_TUNNEL_DSCP_MODE_UNIFORM_MODEL;
     }
     else if (dscp == "pipe") 
     {
-        attr.value.s32 = SAI_TUNNEL_DSCP_PIPE_MODEL;
+        attr.value.s32 = SAI_TUNNEL_DSCP_MODE_PIPE_MODEL;
     }
     tunnel_attrs.push_back(attr);
 
     // write attributes to ASIC_DB
     sai_object_id_t tunnel_id;
-    status = sai_tunnel_api->create_tunnel(&tunnel_id, tunnel_attrs.size(), tunnel_attrs.data());
+    status = sai_tunnel_api->create_tunnel(&tunnel_id, gSwitchId, tunnel_attrs.size(), tunnel_attrs.data());
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create tunnel");
@@ -306,10 +307,10 @@ bool TunnelDecapOrch::addDecapTunnelTermEntries(string tunnelKey, IpAddresses ds
     attr.value.oid = gVirtualRouterId;
     tunnel_table_entry_attrs.push_back(attr);
     attr.id = SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TYPE;
-    attr.value.u32 = SAI_TUNNEL_TERM_TABLE_ENTRY_P2MP;
+    attr.value.u32 = SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_P2MP;
     tunnel_table_entry_attrs.push_back(attr);
     attr.id = SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TUNNEL_TYPE;
-    attr.value.s32 = SAI_TUNNEL_IPINIP;
+    attr.value.s32 = SAI_TUNNEL_TYPE_IPINIP;
     tunnel_table_entry_attrs.push_back(attr);
     attr.id = SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_ACTION_TUNNEL_ID;
     attr.value.oid = tunnel_id;
@@ -338,7 +339,7 @@ bool TunnelDecapOrch::addDecapTunnelTermEntries(string tunnelKey, IpAddresses ds
 
             // create the tunnel table entry
             sai_object_id_t tunnel_term_table_entry_id;
-            sai_status_t status = sai_tunnel_api->create_tunnel_term_table_entry(&tunnel_term_table_entry_id, tunnel_table_entry_attrs.size(), tunnel_table_entry_attrs.data());
+            sai_status_t status = sai_tunnel_api->create_tunnel_term_table_entry(&tunnel_term_table_entry_id, gSwitchId, tunnel_table_entry_attrs.size(), tunnel_table_entry_attrs.data());
             if (status != SAI_STATUS_SUCCESS)
             {
                 SWSS_LOG_ERROR("Failed to create tunnel entry table for ip: %s", ip.c_str());
@@ -398,11 +399,11 @@ bool TunnelDecapOrch::setTunnelAttribute(string field, string value, sai_object_
         attr.id = SAI_TUNNEL_ATTR_DECAP_TTL_MODE;
         if (value == "uniform") 
         {
-            attr.value.s32 = SAI_TUNNEL_TTL_UNIFORM_MODEL;
+            attr.value.s32 = SAI_TUNNEL_TTL_MODE_UNIFORM_MODEL;
         }
         else if (value == "pipe") 
         {
-            attr.value.s32 = SAI_TUNNEL_TTL_PIPE_MODEL;
+            attr.value.s32 = SAI_TUNNEL_TTL_MODE_PIPE_MODEL;
         }
     }
 
@@ -412,11 +413,11 @@ bool TunnelDecapOrch::setTunnelAttribute(string field, string value, sai_object_
         attr.id = SAI_TUNNEL_ATTR_DECAP_DSCP_MODE;
         if (value == "uniform") 
         {
-            attr.value.s32 = SAI_TUNNEL_DSCP_UNIFORM_MODEL;
+            attr.value.s32 = SAI_TUNNEL_DSCP_MODE_UNIFORM_MODEL;
         }
         else if (value == "pipe") 
         {
-            attr.value.s32 = SAI_TUNNEL_DSCP_PIPE_MODEL;
+            attr.value.s32 = SAI_TUNNEL_DSCP_MODE_PIPE_MODEL;
         }
     }
 

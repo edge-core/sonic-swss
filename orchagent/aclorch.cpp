@@ -22,6 +22,7 @@ swss::Table AclOrch::m_countersTable(&m_db, "COUNTERS");
 extern sai_acl_api_t*    sai_acl_api;
 extern sai_port_api_t*   sai_port_api;
 extern sai_switch_api_t* sai_switch_api;
+extern sai_object_id_t   gSwitchId;
 
 acl_rule_attr_lookup_t aclMatchLookup =
 {
@@ -32,15 +33,15 @@ acl_rule_attr_lookup_t aclMatchLookup =
     { MATCH_ETHER_TYPE,        SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE },
     { MATCH_IP_PROTOCOL,       SAI_ACL_ENTRY_ATTR_FIELD_IP_PROTOCOL },
     { MATCH_TCP_FLAGS,         SAI_ACL_ENTRY_ATTR_FIELD_TCP_FLAGS },
-    { MATCH_IP_TYPE,           SAI_ACL_ENTRY_ATTR_FIELD_IP_TYPE },
+    { MATCH_IP_TYPE,           SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE },
     { MATCH_DSCP,              SAI_ACL_ENTRY_ATTR_FIELD_DSCP },
-    { MATCH_L4_SRC_PORT_RANGE, (sai_acl_entry_attr_t)SAI_ACL_RANGE_L4_SRC_PORT_RANGE },
-    { MATCH_L4_DST_PORT_RANGE, (sai_acl_entry_attr_t)SAI_ACL_RANGE_L4_DST_PORT_RANGE },
+    { MATCH_L4_SRC_PORT_RANGE, (sai_acl_entry_attr_t)SAI_ACL_RANGE_TYPE_L4_SRC_PORT_RANGE },
+    { MATCH_L4_DST_PORT_RANGE, (sai_acl_entry_attr_t)SAI_ACL_RANGE_TYPE_L4_DST_PORT_RANGE },
 };
 
 acl_rule_attr_lookup_t aclActionLookup =
 {
-    { ACTION_PACKET_ACTION, SAI_ACL_ENTRY_ATTR_PACKET_ACTION },
+    { ACTION_PACKET_ACTION, SAI_ACL_ENTRY_ATTR_ACTION_PACKET_ACTION },
     { ACTION_MIRROR_ACTION, SAI_ACL_ENTRY_ATTR_ACTION_MIRROR_INGRESS }
 };
 
@@ -55,10 +56,10 @@ static acl_ip_type_lookup_t aclIpTypeLookup =
     { IP_TYPE_ANY,         SAI_ACL_IP_TYPE_ANY },
     { IP_TYPE_IP,          SAI_ACL_IP_TYPE_IP },
     { IP_TYPE_NON_IP,      SAI_ACL_IP_TYPE_NON_IP },
-    { IP_TYPE_IPv4ANY,     SAI_ACL_IP_TYPE_IPv4ANY },
-    { IP_TYPE_NON_IPv4,    SAI_ACL_IP_TYPE_NON_IPv4 },
-    { IP_TYPE_IPv6ANY,     SAI_ACL_IP_TYPE_IPv6ANY },
-    { IP_TYPE_NON_IPv6,    SAI_ACL_IP_TYPE_NON_IPv6 },
+    { IP_TYPE_IPv4ANY,     SAI_ACL_IP_TYPE_IPV4ANY },
+    { IP_TYPE_NON_IPv4,    SAI_ACL_IP_TYPE_NON_IPV4 },
+    { IP_TYPE_IPv6ANY,     SAI_ACL_IP_TYPE_IPV6ANY },
+    { IP_TYPE_NON_IPv6,    SAI_ACL_IP_TYPE_NON_IPV6 },
     { IP_TYPE_ARP,         SAI_ACL_IP_TYPE_ARP },
     { IP_TYPE_ARP_REQUEST, SAI_ACL_IP_TYPE_ARP_REQUEST },
     { IP_TYPE_ARP_REPLY,   SAI_ACL_IP_TYPE_ARP_REPLY }
@@ -297,8 +298,8 @@ bool AclRule::create()
     for (auto it : m_matches)
     {
         // collect ranges and add them later as a list
-        if (((sai_acl_range_type_t)it.first == SAI_ACL_RANGE_L4_SRC_PORT_RANGE) ||
-            ((sai_acl_range_type_t)it.first == SAI_ACL_RANGE_L4_DST_PORT_RANGE))
+        if (((sai_acl_range_type_t)it.first == SAI_ACL_RANGE_TYPE_L4_SRC_PORT_RANGE) ||
+            ((sai_acl_range_type_t)it.first == SAI_ACL_RANGE_TYPE_L4_DST_PORT_RANGE))
         {
             SWSS_LOG_INFO("Creating range object %u..%u", it.second.u32range.min, it.second.u32range.max);
 
@@ -326,7 +327,7 @@ bool AclRule::create()
     // store ranges if any
     if (range_object_list.count > 0)
     {
-        attr.id = SAI_ACL_ENTRY_ATTR_FIELD_RANGE;
+        attr.id = SAI_ACL_ENTRY_ATTR_FIELD_ACL_RANGE_TYPE;
         attr.value.aclfield.enable = true;
         attr.value.aclfield.data.objlist = range_object_list;
         rule_attrs.push_back(attr);
@@ -340,7 +341,7 @@ bool AclRule::create()
         rule_attrs.push_back(attr);
     }
 
-    status = sai_acl_api->create_acl_entry(&m_ruleOid, rule_attrs.size(), rule_attrs.data());
+    status = sai_acl_api->create_acl_entry(&m_ruleOid, gSwitchId, rule_attrs.size(), rule_attrs.data());
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create ACL rule");
@@ -355,7 +356,7 @@ bool AclRule::remove()
     SWSS_LOG_ENTER();
     sai_status_t res;
 
-    if (sai_acl_api->delete_acl_entry(m_ruleOid) != SAI_STATUS_SUCCESS)
+    if (sai_acl_api->remove_acl_entry(m_ruleOid) != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to delete ACL rule");
         return false;
@@ -419,7 +420,7 @@ bool AclRule::createCounter()
     attr.value.booldata = true;
     counter_attrs.push_back(attr);
 
-    if (sai_acl_api->create_acl_counter(&m_counterOid, counter_attrs.size(), counter_attrs.data()) != SAI_STATUS_SUCCESS)
+    if (sai_acl_api->create_acl_counter(&m_counterOid, gSwitchId, counter_attrs.size(), counter_attrs.data()) != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create counter for the rule %s in table %s", m_id.c_str(), m_tableId.c_str());
         return false;
@@ -433,8 +434,8 @@ bool AclRule::removeRanges()
     SWSS_LOG_ENTER();
     for (auto it : m_matches)
     {
-        if (((sai_acl_range_type_t)it.first == SAI_ACL_RANGE_L4_SRC_PORT_RANGE) ||
-            ((sai_acl_range_type_t)it.first == SAI_ACL_RANGE_L4_DST_PORT_RANGE))
+        if (((sai_acl_range_type_t)it.first == SAI_ACL_RANGE_TYPE_L4_SRC_PORT_RANGE) ||
+            ((sai_acl_range_type_t)it.first == SAI_ACL_RANGE_TYPE_L4_DST_PORT_RANGE))
         {
             return AclRange::remove((sai_acl_range_type_t)it.first, it.second.u32range.min, it.second.u32range.max);
         }
@@ -451,7 +452,7 @@ bool AclRule::removeCounter()
         return true;
     }
 
-    if (sai_acl_api->delete_acl_counter(m_counterOid) != SAI_STATUS_SUCCESS)
+    if (sai_acl_api->remove_acl_entry(m_counterOid) != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to remove ACL counter for rule %s in table %s", m_id.c_str(), m_tableId.c_str());
         return false;
@@ -720,7 +721,7 @@ AclRange *AclRange::create(sai_acl_range_type_t type, int min, int max)
         attr.value.u32range.max = max;
         range_attrs.push_back(attr);
 
-        status = sai_acl_api->create_acl_range(&range_oid, range_attrs.size(), range_attrs.data());
+        status = sai_acl_api->create_acl_range(&range_oid, gSwitchId, range_attrs.size(), range_attrs.data());
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to create range object");
@@ -819,7 +820,7 @@ AclOrch::AclOrch(DBConnector *db, vector<string> tableNames, PortsOrch *portOrch
     };
 
     // get min/max allowed priority
-    if (sai_switch_api->get_switch_attribute(sizeof(attrs)/sizeof(attrs[0]), attrs) == SAI_STATUS_SUCCESS)
+    if (sai_switch_api->get_switch_attribute(gSwitchId, sizeof(attrs)/sizeof(attrs[0]), attrs) == SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_INFO("Got ACL entry priority values, min: %u, max: %u", attrs[0].value.u32, attrs[1].value.u32);
         AclRule::setRulePriorities(attrs[0].value.u32, attrs[1].value.u32);
@@ -1228,20 +1229,20 @@ sai_status_t AclOrch::createBindAclTable(AclTable &aclTable, sai_object_id_t &ta
     // workaround until SAI is fixed
 #if 0
     int32_t range_types_list[] =
-        { SAI_ACL_RANGE_L4_DST_PORT_RANGE,
-          SAI_ACL_RANGE_L4_SRC_PORT_RANGE
+        { SAI_ACL_RANGE_TYPE_L4_DST_PORT_RANGE,
+          SAI_ACL_RANGE_TYPE_L4_SRC_PORT_RANGE
         };
 #endif
 
-    attr.id = SAI_ACL_TABLE_ATTR_BIND_POINT;
-    attr.value.s32 = SAI_ACL_BIND_POINT_PORT;
+    attr.id = SAI_ACL_TABLE_ATTR_ACL_BIND_POINT_TYPE_LIST;
+    attr.value.s32 = SAI_ACL_BIND_POINT_TYPE_PORT;
     table_attrs.push_back(attr);
 
-    attr.id = SAI_ACL_TABLE_ATTR_STAGE;
+    attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
     attr.value.s32 = SAI_ACL_STAGE_INGRESS;
     table_attrs.push_back(attr);
 
-    attr.id = SAI_ACL_TABLE_ATTR_PRIORITY;
+    attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_PRIORITY;
     attr.value.u32 = DEFAULT_TABLE_PRIORITY;
     table_attrs.push_back(attr);
 
@@ -1249,7 +1250,7 @@ sai_status_t AclOrch::createBindAclTable(AclTable &aclTable, sai_object_id_t &ta
     attr.value.booldata = true;
     table_attrs.push_back(attr);
 
-    attr.id = SAI_ACL_TABLE_ATTR_FIELD_IP_TYPE;
+    attr.id = SAI_ACL_TABLE_ATTR_FIELD_ACL_IP_TYPE;
     attr.value.booldata = true;
     table_attrs.push_back(attr);
 
@@ -1284,7 +1285,7 @@ sai_status_t AclOrch::createBindAclTable(AclTable &aclTable, sai_object_id_t &ta
         table_attrs.push_back(attr);
     }
 
-    attr.id = SAI_ACL_TABLE_ATTR_FIELD_RANGE;
+    attr.id = SAI_ACL_TABLE_ATTR_FIELD_ACL_RANGE_TYPE;
     // workaround until SAI is fixed
 #if 0
     attr.value.s32list.count = sizeof(range_types_list) / sizeof(range_types_list[0]);
@@ -1295,7 +1296,7 @@ sai_status_t AclOrch::createBindAclTable(AclTable &aclTable, sai_object_id_t &ta
     table_attrs.push_back(attr);
 #endif
 
-    status = sai_acl_api->create_acl_table(&table_oid, table_attrs.size(), table_attrs.data());
+    status = sai_acl_api->create_acl_table(&table_oid, gSwitchId, table_attrs.size(), table_attrs.data());
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -1319,7 +1320,7 @@ sai_status_t AclOrch::deleteUnbindAclTable(sai_object_id_t table_oid)
         return status;
     }
 
-    return sai_acl_api->delete_acl_table(table_oid);
+    return sai_acl_api->remove_acl_table(table_oid);
 }
 
 void AclOrch::collectCountersThread(AclOrch* pAclOrch)
@@ -1391,7 +1392,7 @@ sai_status_t AclOrch::bindAclTable(sai_object_id_t table_oid, AclTable &aclTable
         auto& portAcls = m_portBind[portOid];
 
         sai_attribute_t attr;
-        attr.id = SAI_PORT_ATTR_INGRESS_ACL_LIST;
+        attr.id = SAI_PORT_ATTR_INGRESS_ACL;
 
         if (bind)
         {

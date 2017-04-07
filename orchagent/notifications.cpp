@@ -32,7 +32,7 @@ void on_fdb_event(uint32_t count, sai_fdb_event_notification_data_t *data)
 
         for (uint32_t j = 0; j < data[i].attr_count; ++j)
         {
-            if (data[i].attr[j].id == SAI_FDB_ENTRY_ATTR_PORT_ID)
+            if (data[i].attr[j].id == SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID)
             {
                 oid = data[i].attr[j].value.oid;
                 break;
@@ -77,6 +77,7 @@ void on_switch_shutdown_request()
     exit(EXIT_FAILURE);
 }
 
+/*
 sai_switch_notification_t switch_notifications
 {
     NULL,
@@ -86,3 +87,4 @@ sai_switch_notification_t switch_notifications
     on_switch_shutdown_request,
     NULL
 };
+*/

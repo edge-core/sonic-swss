@@ -7,6 +7,7 @@ extern sai_neighbor_api_t*         sai_neighbor_api;
 extern sai_next_hop_api_t*         sai_next_hop_api;
 
 extern PortsOrch *gPortsOrch;
+extern sai_object_id_t gSwitchId;
 
 NeighOrch::NeighOrch(DBConnector *db, string tableName, IntfsOrch *intfsOrch) :
         Orch(db, tableName), m_intfsOrch(intfsOrch)
@@ -28,14 +29,14 @@ bool NeighOrch::addNextHop(IpAddress ipAddress, string alias)
 
     sai_attribute_t next_hop_attrs[3];
     next_hop_attrs[0].id = SAI_NEXT_HOP_ATTR_TYPE;
-    next_hop_attrs[0].value.s32 = SAI_NEXT_HOP_IP;
+    next_hop_attrs[0].value.s32 = SAI_NEXT_HOP_TYPE_IP;
     next_hop_attrs[1].id = SAI_NEXT_HOP_ATTR_IP;
     copy(next_hop_attrs[1].value.ipaddr, ipAddress);
     next_hop_attrs[2].id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
     next_hop_attrs[2].value.oid = rif_id;
 
     sai_object_id_t next_hop_id;
-    sai_status_t status = sai_next_hop_api->create_next_hop(&next_hop_id, 3, next_hop_attrs);
+    sai_status_t status = sai_next_hop_api->create_next_hop(&next_hop_id, gSwitchId, 3, next_hop_attrs);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create next hop %s on %s, rv:%d",
@@ -222,7 +223,7 @@ bool NeighOrch::addNeighbor(NeighborEntry neighborEntry, MacAddress macAddress)
     copy(neighbor_entry.ip_address, ip_address);
 
     sai_attribute_t neighbor_attr;
-    neighbor_attr.id = SAI_NEIGHBOR_ATTR_DST_MAC_ADDRESS;
+    neighbor_attr.id = SAI_NEIGHBOR_ENTRY_ATTR_DST_MAC_ADDRESS;
     memcpy(neighbor_attr.value.mac, macAddress.getMac(), 6);
 
     if (m_syncdNeighbors.find(neighborEntry) == m_syncdNeighbors.end())
@@ -253,7 +254,7 @@ bool NeighOrch::addNeighbor(NeighborEntry neighborEntry, MacAddress macAddress)
     }
     else
     {
-        status = sai_neighbor_api->set_neighbor_attribute(&neighbor_entry, &neighbor_attr);
+        status = sai_neighbor_api->set_neighbor_entry_attribute(&neighbor_entry, &neighbor_attr);
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to update neighbor %s on %s, rv:%d",

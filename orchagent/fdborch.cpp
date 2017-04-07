@@ -32,6 +32,7 @@ void FdbOrch::update(sai_fdb_event_t type, const sai_fdb_entry_t* entry, sai_obj
         break;
     case SAI_FDB_EVENT_AGED:
     case SAI_FDB_EVENT_FLUSHED:
+    case SAI_FDB_EVENT_MOVE:
         update.add = false;
 
         (void)m_entries.erase(update.entry);
@@ -54,7 +55,7 @@ bool FdbOrch::getPort(const MacAddress& mac, uint16_t vlan, Port& port)
     entry.vlan_id = vlan;
 
     sai_attribute_t attr;
-    attr.id = SAI_FDB_ENTRY_ATTR_PORT_ID;
+    attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
 
     sai_status_t status = sai_fdb_api->get_fdb_entry_attribute(&entry, 1, &attr);
     if (status != SAI_STATUS_SUCCESS)
@@ -193,10 +194,11 @@ bool FdbOrch::addFdbEntry(const FdbEntry& entry, const string& port_name, const 
     vector<sai_attribute_t> attrs;
 
     attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
-    attr.value.s32 = (type == "dynamic") ? SAI_FDB_ENTRY_DYNAMIC : SAI_FDB_ENTRY_STATIC;
+    attr.value.s32 = (type == "dynamic") ? SAI_FDB_ENTRY_TYPE_DYNAMIC : SAI_FDB_ENTRY_TYPE_STATIC;
     attrs.push_back(attr);
 
-    attr.id = SAI_FDB_ENTRY_ATTR_PORT_ID;
+    attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    // FIXME: use bridge port
     attr.value.oid = port.m_port_id;
     attrs.push_back(attr);
 

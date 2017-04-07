@@ -16,6 +16,7 @@ extern sai_port_api_t *sai_port_api;
 extern sai_vlan_api_t *sai_vlan_api;
 extern sai_lag_api_t *sai_lag_api;
 extern sai_hostif_api_t* sai_hostif_api;
+extern sai_object_id_t gSwitchId;
 
 #define VLAN_PREFIX         "Vlan"
 #define DEFAULT_VLAN_ID     1
@@ -39,7 +40,7 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
     /* Get CPU port */
     attr.id = SAI_SWITCH_ATTR_CPU_PORT;
 
-    status = sai_switch_api->get_switch_attribute(1, &attr);
+    status = sai_switch_api->get_switch_attribute(gSwitchId, 1, &attr);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to get CPU port");
@@ -51,7 +52,7 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
     /* Get port number */
     attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
 
-    status = sai_switch_api->get_switch_attribute(1, &attr);
+    status = sai_switch_api->get_switch_attribute(gSwitchId, 1, &attr);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to get port number");
@@ -70,7 +71,7 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
     attr.value.objlist.count = port_list.size();
     attr.value.objlist.list = port_list.data();
 
-    status = sai_switch_api->get_switch_attribute(1, &attr);
+    status = sai_switch_api->get_switch_attribute(gSwitchId, 1, &attr);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to get port list");
@@ -110,8 +111,9 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
     /* Set port to hardware learn mode */
     for (i = 0; i < m_portCount; i++)
     {
-        attr.id = SAI_PORT_ATTR_FDB_LEARNING;
-        attr.value.s32 = SAI_PORT_LEARN_MODE_HW;
+        // TODO: find ??
+        // attr.id = SAI_PORT_ATTR_FDB_LEARNING;
+        // attr.value.s32 = SAI_PORT_LEARN_MODE_HW;
 
         status = sai_port_api->set_port_attribute(port_list[i], &attr);
         if (status != SAI_STATUS_SUCCESS)
@@ -824,7 +826,7 @@ void PortsOrch::initializePriorityGroups(Port &port)
     SWSS_LOG_ENTER();
 
     sai_attribute_t attr;
-    attr.id = SAI_PORT_ATTR_NUMBER_OF_PRIORITY_GROUPS;
+    attr.id = SAI_PORT_ATTR_NUMBER_OF_INGRESS_PRIORITY_GROUPS;
     sai_status_t status = sai_port_api->get_port_attribute(port.m_port_id, 1, &attr);
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -840,7 +842,7 @@ void PortsOrch::initializePriorityGroups(Port &port)
         return;
     }
 
-    attr.id = SAI_PORT_ATTR_PRIORITY_GROUP_LIST;
+    attr.id = SAI_PORT_ATTR_INGRESS_PRIORITY_GROUP_LIST;
     attr.value.objlist.count = port.m_priority_group_ids.size();
     attr.value.objlist.list = port.m_priority_group_ids.data();
 
@@ -901,7 +903,7 @@ bool PortsOrch::addHostIntfs(sai_object_id_t id, string alias, sai_object_id_t &
     attr.value.s32 = SAI_HOSTIF_TYPE_NETDEV;
     attrs.push_back(attr);
 
-    attr.id = SAI_HOSTIF_ATTR_RIF_OR_PORT_ID;
+    attr.id = SAI_HOSTIF_ATTR_OBJ_ID;
     attr.value.oid = id;
     attrs.push_back(attr);
 
@@ -909,7 +911,7 @@ bool PortsOrch::addHostIntfs(sai_object_id_t id, string alias, sai_object_id_t &
     strncpy((char *)&attr.value.chardata, alias.c_str(), HOSTIF_NAME_SIZE);
     attrs.push_back(attr);
 
-    sai_status_t status = sai_hostif_api->create_hostif(&host_intfs_id, attrs.size(), attrs.data());
+    sai_status_t status = sai_hostif_api->create_hostif(&host_intfs_id, gSwitchId, attrs.size(), attrs.data());
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create host interface for port %s", alias.c_str());
@@ -924,9 +926,15 @@ bool PortsOrch::addHostIntfs(sai_object_id_t id, string alias, sai_object_id_t &
 bool PortsOrch::addVlan(string vlan_alias)
 {
     SWSS_LOG_ENTER();
+    
+    // TODO: how to use vlan_oid??
+    sai_object_id_t vlan_oid;
 
     sai_vlan_id_t vlan_id = stoi(vlan_alias.substr(4));
-    sai_status_t status = sai_vlan_api->create_vlan(vlan_id);
+    sai_attribute_t attr;
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    attr.value.u16 = vlan_id;
+    sai_status_t status = sai_vlan_api->create_vlan(&vlan_oid, gSwitchId, 1, &attr);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -980,22 +988,22 @@ bool PortsOrch::addVlanMember(Port vlan, Port port, string& tagging_mode)
     attr.value.u16 = vlan.m_vlan_id;
     attrs.push_back(attr);
 
-    attr.id = SAI_VLAN_MEMBER_ATTR_PORT_ID;
+    attr.id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
     attr.value.oid = port.m_port_id;
     attrs.push_back(attr);
 
-    attr.id = SAI_VLAN_MEMBER_ATTR_TAGGING_MODE;
+    attr.id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;              
     if (tagging_mode == "untagged")
-        attr.value.s32 = SAI_VLAN_PORT_UNTAGGED;
+        attr.value.s32 = SAI_VLAN_TAGGING_MODE_UNTAGGED;
     else if (tagging_mode == "tagged")
-        attr.value.s32 = SAI_VLAN_PORT_TAGGED;
+        attr.value.s32 = SAI_VLAN_TAGGING_MODE_TAGGED;
     else if (tagging_mode == "priority_tagged")
-        attr.value.s32 = SAI_VLAN_PORT_PRIORITY_TAGGED;
+        attr.value.s32 = SAI_VLAN_TAGGING_MODE_PRIORITY_TAGGED;
     else assert(false);
     attrs.push_back(attr);
 
     sai_object_id_t vlan_member_id;
-    sai_status_t status = sai_vlan_api->create_vlan_member(&vlan_member_id, attrs.size(), attrs.data());
+    sai_status_t status = sai_vlan_api->create_vlan_member(&vlan_member_id, gSwitchId, attrs.size(), attrs.data());
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -1079,7 +1087,7 @@ bool PortsOrch::addLag(string lag_alias)
     SWSS_LOG_ENTER();
 
     sai_object_id_t lag_id;
-    sai_status_t status = sai_lag_api->create_lag(&lag_id, 0, NULL);
+    sai_status_t status = sai_lag_api->create_lag(&lag_id, gSwitchId, 0, NULL);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -1138,7 +1146,7 @@ bool PortsOrch::addLagMember(Port lag, Port port)
     attrs.push_back(attr);
 
     sai_object_id_t lag_member_id;
-    sai_status_t status = sai_lag_api->create_lag_member(&lag_member_id, attrs.size(), attrs.data());
+    sai_status_t status = sai_lag_api->create_lag_member(&lag_member_id, gSwitchId, attrs.size(), attrs.data());
 
     if (status != SAI_STATUS_SUCCESS)
     {

@@ -1,6 +1,8 @@
 #include <unistd.h>
 #include "orchdaemon.h"
 #include "logger.h"
+
+#define SAI_SWITCH_ATTR_CUSTOM_RANGE_BASE SAI_SWITCH_ATTR_CUSTOM_RANGE_START
 #include "sairedis.h"
 
 using namespace std;
@@ -10,6 +12,7 @@ using namespace swss;
 #define SELECT_TIMEOUT 1000
 
 extern sai_switch_api_t*           sai_switch_api;
+extern sai_object_id_t             gSwitchId;
 
 /* Global variable gPortsOrch declared */
 PortsOrch *gPortsOrch;
@@ -93,7 +96,7 @@ void OrchDaemon::flush()
 
     sai_attribute_t attr;
     attr.id = SAI_REDIS_SWITCH_ATTR_FLUSH;
-    sai_status_t status = sai_switch_api->set_switch_attribute(&attr);
+    sai_status_t status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to flush redis pipeline %d", status);

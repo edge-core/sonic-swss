@@ -19,6 +19,7 @@ extern sai_switch_api_t *sai_switch_api;
 extern sai_acl_api_t* sai_acl_api;
 
 extern PortsOrch *gPortsOrch;
+extern sai_object_id_t gSwitchId;
 
 map<string, sai_ecn_mark_mode_t> ecn_map = {
     {"ecn_none", SAI_ECN_MARK_MODE_NONE},
@@ -179,11 +180,11 @@ sai_object_id_t DscpToTcMapHandler::addQosItem(const vector<sai_attribute_t> &at
     sai_object_id_t sai_object;
     sai_attribute_t qos_map_attrs[2];
     qos_map_attrs[0].id = SAI_QOS_MAP_ATTR_TYPE;
-    qos_map_attrs[0].value.u32 = SAI_QOS_MAP_DSCP_TO_TC;
+    qos_map_attrs[0].value.u32 = SAI_QOS_MAP_TYPE_DSCP_TO_TC;
     qos_map_attrs[1].id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
     qos_map_attrs[1].value.qosmap.count = attributes[0].value.qosmap.count;
     qos_map_attrs[1].value.qosmap.list = attributes[0].value.qosmap.list;
-    sai_status = sai_qos_map_api->create_qos_map(&sai_object, 2, qos_map_attrs);
+    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, 2, qos_map_attrs);
     if (SAI_STATUS_SUCCESS != sai_status)
     {
         SWSS_LOG_ERROR("Failed to create dscp_to_tc map. status:%d", sai_status);
@@ -227,11 +228,11 @@ sai_object_id_t TcToQueueMapHandler::addQosItem(const vector<sai_attribute_t> &a
     sai_object_id_t sai_object;
     sai_attribute_t qos_map_attrs[2];
     qos_map_attrs[0].id = SAI_QOS_MAP_ATTR_TYPE;
-    qos_map_attrs[0].value.s32 = SAI_QOS_MAP_TC_TO_QUEUE;
+    qos_map_attrs[0].value.s32 = SAI_QOS_MAP_TYPE_TC_TO_QUEUE;
     qos_map_attrs[1].id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
     qos_map_attrs[1].value.qosmap.count = attributes[0].value.qosmap.count;
     qos_map_attrs[1].value.qosmap.list = attributes[0].value.qosmap.list;
-    sai_status = sai_qos_map_api->create_qos_map(&sai_object, 2, qos_map_attrs);
+    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, 2, qos_map_attrs);
     if (SAI_STATUS_SUCCESS != sai_status)
     {
         SWSS_LOG_ERROR("Failed to create tc_to_queue map. status:%d", sai_status);
@@ -393,7 +394,7 @@ sai_object_id_t WredMapHandler::addQosItem(const vector<sai_attribute_t> &attrib
     {
         attrs.push_back(attrib);
     }
-    sai_status = sai_wred_api->create_wred_profile(&sai_object, attrs.size(), attrs.data());
+    sai_status = sai_wred_api->create_wred(&sai_object, gSwitchId, attrs.size(), attrs.data());
     if (sai_status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create wred profile: %d", sai_status);
@@ -406,7 +407,7 @@ bool WredMapHandler::removeQosItem(sai_object_id_t sai_object)
 {
     SWSS_LOG_ENTER();
     sai_status_t sai_status;
-    sai_status = sai_wred_api->remove_wred_profile(sai_object);
+    sai_status = sai_wred_api->remove_wred(sai_object);
     if (SAI_STATUS_SUCCESS != sai_status)
     {
         SWSS_LOG_ERROR("Failed to remove scheduler profile, status:%d", sai_status);
@@ -449,11 +450,11 @@ sai_object_id_t TcToPgHandler::addQosItem(const vector<sai_attribute_t> &attribu
     sai_object_id_t sai_object;
     sai_attribute_t qos_map_attrs[2];
     qos_map_attrs[0].id = SAI_QOS_MAP_ATTR_TYPE;
-    qos_map_attrs[0].value.s32 = SAI_QOS_MAP_TC_TO_PRIORITY_GROUP;
+    qos_map_attrs[0].value.s32 = SAI_QOS_MAP_TYPE_TC_TO_PRIORITY_GROUP;
     qos_map_attrs[1].id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
     qos_map_attrs[1].value.qosmap.count = attributes[0].value.qosmap.count;
     qos_map_attrs[1].value.qosmap.list = attributes[0].value.qosmap.list;
-    sai_status = sai_qos_map_api->create_qos_map(&sai_object, 2, qos_map_attrs);
+    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, 2, qos_map_attrs);
     if (SAI_STATUS_SUCCESS != sai_status)
     {
         SWSS_LOG_ERROR("Failed to create tc_to_queue map. status:%d", sai_status);
@@ -497,11 +498,11 @@ sai_object_id_t PfcPrioToPgHandler::addQosItem(const vector<sai_attribute_t> &at
     sai_object_id_t sai_object;
     sai_attribute_t qos_map_attrs[2];
     qos_map_attrs[0].id = SAI_QOS_MAP_ATTR_TYPE;
-    qos_map_attrs[0].value.s32 = SAI_QOS_MAP_PFC_PRIORITY_TO_PRIORITY_GROUP;
+    qos_map_attrs[0].value.s32 = SAI_QOS_MAP_TYPE_PFC_PRIORITY_TO_PRIORITY_GROUP;
     qos_map_attrs[1].id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
     qos_map_attrs[1].value.qosmap.count = attributes[0].value.qosmap.count;
     qos_map_attrs[1].value.qosmap.list = attributes[0].value.qosmap.list;
-    sai_status = sai_qos_map_api->create_qos_map(&sai_object, 2, qos_map_attrs);
+    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, 2, qos_map_attrs);
     if (SAI_STATUS_SUCCESS != sai_status)
     {
         SWSS_LOG_ERROR("Failed to create tc_to_queue map. status:%d", sai_status);
@@ -545,11 +546,11 @@ sai_object_id_t PfcToQueueHandler::addQosItem(const vector<sai_attribute_t> &att
     sai_object_id_t sai_object;
     sai_attribute_t qos_map_attrs[2];
     qos_map_attrs[0].id = SAI_QOS_MAP_ATTR_TYPE;
-    qos_map_attrs[0].value.s32 = SAI_QOS_MAP_PFC_PRIORITY_TO_QUEUE;
+    qos_map_attrs[0].value.s32 = SAI_QOS_MAP_TYPE_PFC_PRIORITY_TO_QUEUE;
     qos_map_attrs[1].id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
     qos_map_attrs[1].value.qosmap.count = attributes[0].value.qosmap.count;
     qos_map_attrs[1].value.qosmap.list = attributes[0].value.qosmap.list;
-    sai_status = sai_qos_map_api->create_qos_map(&sai_object, 2, qos_map_attrs);
+    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, 2, qos_map_attrs);
     if (SAI_STATUS_SUCCESS != sai_status)
     {
         SWSS_LOG_ERROR("Failed to create tc_to_queue map. status:%d", sai_status);
@@ -616,15 +617,15 @@ sai_object_id_t QosOrch::initSystemAclTable()
     sai_status_t status;
 
     /* Create system ACL table */
-    attr.id = SAI_ACL_TABLE_ATTR_BIND_POINT;
-    attr.value.s32 = SAI_ACL_BIND_POINT_SWITCH;
+    attr.id = SAI_ACL_TABLE_ATTR_ACL_BIND_POINT_TYPE_LIST;
+    attr.value.s32 = SAI_ACL_BIND_POINT_TYPE_SWITCH;
     attrs.push_back(attr);
 
-    attr.id = SAI_ACL_TABLE_ATTR_STAGE;
+    attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
     attr.value.s32 = SAI_ACL_STAGE_INGRESS;
     attrs.push_back(attr);
 
-    attr.id = SAI_ACL_TABLE_ATTR_PRIORITY;
+    attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_PRIORITY;
     attr.value.u32 = 10;
     attrs.push_back(attr);
 
@@ -636,7 +637,7 @@ sai_object_id_t QosOrch::initSystemAclTable()
     attr.value.booldata = true;
     attrs.push_back(attr);
 
-    status = sai_acl_api->create_acl_table(&acl_table_id, attrs.size(), &attrs[0]);
+    status = sai_acl_api->create_acl_table(&acl_table_id, gSwitchId, attrs.size(), &attrs[0]);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create a system ACL table for ECN coloring, rv:%d", status);
@@ -644,11 +645,11 @@ sai_object_id_t QosOrch::initSystemAclTable()
     }
     SWSS_LOG_NOTICE("Create a system ACL table for ECN coloring");
 
-    attr.id = SAI_SWITCH_ATTR_DEFAULT_INGRESS_ACL_LIST;
+    attr.id = SAI_SWITCH_ATTR_INGRESS_ACL;
     attr.value.objlist.count = 1;
     attr.value.objlist.list = &acl_table_id;
 
-    status = sai_switch_api->set_switch_attribute(&attr);
+    status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to bind the system ACL table globally, rv:%d", status);
@@ -688,12 +689,12 @@ void QosOrch::initAclEntryForEcn(sai_object_id_t acl_table_id, sai_uint32_t prio
     attr.value.aclfield.mask.u8 = 0xff;
     attrs.push_back(attr);
 
-    attr.id = SAI_ACL_ENTRY_ATTR_ACTION_SET_COLOR;
+    attr.id = SAI_ACL_ENTRY_ATTR_ACTION_SET_PACKET_COLOR;
     attr.value.aclaction.enable = true;
     attr.value.aclaction.parameter.s32 = color;
     attrs.push_back(attr);
 
-    status = sai_acl_api->create_acl_entry(&acl_entry_id, attrs.size(), attrs.data());
+    status = sai_acl_api->create_acl_entry(&acl_entry_id, gSwitchId, attrs.size(), attrs.data());
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create a system ACL entry for ECN coloring, rv=%d", status);
@@ -746,18 +747,18 @@ task_process_status QosOrch::handleSchedulerTable(Consumer& consumer)
         {
             if (fvField(*i) == scheduler_algo_type_field_name)
             {
-                attr.id = SAI_SCHEDULER_ATTR_SCHEDULING_ALGORITHM;
+                attr.id = SAI_SCHEDULER_ATTR_SCHEDULING_TYPE;
                 if (fvValue(*i) == scheduler_algo_DWRR)
                 {
-                    attr.value.s32 = SAI_SCHEDULING_DWRR;
+                    attr.value.s32 = SAI_SCHEDULING_TYPE_DWRR;
                 }
                 else if (fvValue(*i) == scheduler_algo_WRR)
                 {
-                    attr.value.s32 = SAI_SCHEDULING_WRR;
+                    attr.value.s32 = SAI_SCHEDULING_TYPE_WRR;
                 }
                 else if (fvValue(*i) == scheduler_algo_STRICT)
                 {
-                    attr.value.s32 = SAI_SCHEDULING_STRICT;
+                    attr.value.s32 = SAI_SCHEDULING_TYPE_STRICT;
                 }
                 else {
                     SWSS_LOG_ERROR("Unknown scheduler type value:%s", fvField(*i).c_str());
@@ -796,7 +797,7 @@ task_process_status QosOrch::handleSchedulerTable(Consumer& consumer)
         }
         else
         {
-            sai_status = sai_scheduler_api->create_scheduler_profile(&sai_object, sai_attr_list.size(), sai_attr_list.data());
+            sai_status = sai_scheduler_api->create_scheduler(&sai_object, gSwitchId, sai_attr_list.size(), sai_attr_list.data());
             if (sai_status != SAI_STATUS_SUCCESS)
             {
                 SWSS_LOG_ERROR("Failed to create scheduler profile [%s:%s], rv:%d",
@@ -814,7 +815,7 @@ task_process_status QosOrch::handleSchedulerTable(Consumer& consumer)
             SWSS_LOG_ERROR("Object with name:%s not found.", qos_object_name.c_str());
             return task_process_status::task_invalid_entry;
         }
-        sai_status = sai_scheduler_api->remove_scheduler_profile(sai_object);
+        sai_status = sai_scheduler_api->remove_scheduler(sai_object);
         if (SAI_STATUS_SUCCESS != sai_status)
         {
             SWSS_LOG_ERROR("Failed to remove scheduler profile. db name:%s sai object:%lx", qos_object_name.c_str(), sai_object);
@@ -850,7 +851,7 @@ bool QosOrch::applySchedulerToQueueSchedulerGroup(Port &port, size_t queue_ind, 
 
     /* Get max child groups count */
     attr.id = SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_CHILDS_PER_SCHEDULER_GROUP;
-    sai_status = sai_switch_api->get_switch_attribute(1, &attr);
+    sai_status = sai_switch_api->get_switch_attribute(gSwitchId, 1, &attr);
     if (SAI_STATUS_SUCCESS != sai_status)
     {
         SWSS_LOG_ERROR("Failed to get number of childs per scheduler group for port:%s", port.m_alias.c_str());
