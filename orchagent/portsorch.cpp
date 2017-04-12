@@ -12,6 +12,7 @@
 #include "schema.h"
 
 extern sai_switch_api_t *sai_switch_api;
+extern sai_bridge_api_t *sai_bridge_api;
 extern sai_port_api_t *sai_port_api;
 extern sai_vlan_api_t *sai_vlan_api;
 extern sai_lag_api_t *sai_lag_api;
@@ -111,9 +112,8 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
     /* Set port to hardware learn mode */
     for (i = 0; i < m_portCount; i++)
     {
-        // TODO: find ??
-        // attr.id = SAI_PORT_ATTR_FDB_LEARNING;
-        // attr.value.s32 = SAI_PORT_LEARN_MODE_HW;
+        attr.id = SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE;
+        attr.value.s32 = SAI_BRIDGE_PORT_FDB_LEARNING_MODE_HW;
 
         status = sai_port_api->set_port_attribute(port_list[i], &attr);
         if (status != SAI_STATUS_SUCCESS)
@@ -124,28 +124,36 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
         SWSS_LOG_NOTICE("Set port to hardware learn mode pid:%lx", port_list[i]);
     }
 
-    /* Get default VLAN member list */
-    vector<sai_object_id_t> vlan_member_list;
-    vlan_member_list.resize(m_portCount);
-
-    attr.id = SAI_VLAN_ATTR_MEMBER_LIST;
-    attr.value.objlist.count = vlan_member_list.size();
-    attr.value.objlist.list = vlan_member_list.data();
-
-    status = sai_vlan_api->get_vlan_attribute(DEFAULT_VLAN_ID, 1, &attr);
+    // Get default bridge id
+    sai_attribute_t switch_attr;
+    switch_attr.id = SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID;
+    status = sai_switch_api->get_switch_attribute(gSwitchId, 1, &switch_attr);
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to get default VLAN member list");
+        SWSS_LOG_ERROR("Failed to get default 1Q_BRIDGE: %d", status);
+        throw "PortsOrch initialization failure";
+    }
+    sai_object_id_t bridge_id = switch_attr.value.oid;
+
+    // Get bridge port list for default bridge id
+    sai_attribute_t bridge_attr;
+    bridge_attr.id = SAI_BRIDGE_ATTR_PORT_LIST;
+    bridge_attr.value.objlist.count = 100;
+    status = sai_bridge_api->get_bridge_attribute(bridge_id, 1, &bridge_attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to get default 1Q_BRIDGE: %d", status);
         throw "PortsOrch initialization failure";
     }
 
-    /* Remove port from default VLAN */
-    for (i = 0; i < attr.value.objlist.count; i++)
+    // Remove every bridge port from default bridge
+    for (i = 0; i < bridge_attr.value.objlist.count; ++i)
     {
-        status = sai_vlan_api->remove_vlan_member(vlan_member_list[i]);
+        sai_object_id_t bridge_port_id = bridge_attr.value.objlist.list[i];
+        status = sai_bridge_api->remove_bridge_port(bridge_port_id);
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("Failed to remove port from default VLAN %d", i);
+            SWSS_LOG_ERROR("Failed to remove port %lx from default 1Q_BRIDGE: %d", bridge_port_id, status);
             throw "PortsOrch initialization failure";
         }
     }
@@ -926,7 +934,7 @@ bool PortsOrch::addHostIntfs(sai_object_id_t id, string alias, sai_object_id_t &
 bool PortsOrch::addVlan(string vlan_alias)
 {
     SWSS_LOG_ENTER();
-    
+
     // TODO: how to use vlan_oid??
     sai_object_id_t vlan_oid;
 

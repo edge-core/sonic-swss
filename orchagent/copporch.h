@@ -23,7 +23,7 @@ const string copp_policer_action_yellow_field = "yellow_action";
 /* TrapGroupPolicerTable: trap group ID, policer ID */
 typedef map<sai_object_id_t, sai_object_id_t> TrapGroupPolicerTable;
 /* TrapIdTrapGroupTable: trap ID, trap group ID */
-typedef map<sai_hostif_trap_type_t, sai_object_id_t> TrapIdTrapGroupTable;
+typedef map<sai_hostif_trap_type_t, sai_object_id_t> TrapIdTrapGroupTable, TrapTypeMap;
 
 class CoppOrch : public Orch
 {
@@ -31,6 +31,7 @@ public:
     CoppOrch(DBConnector *db, string tableName);
 protected:
     object_map m_trap_group_map;
+    TrapTypeMap m_trap_type_map;
 
     TrapGroupPolicerTable m_trap_group_policer_map;
     TrapIdTrapGroupTable m_syncdTrapIds;

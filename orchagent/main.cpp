@@ -26,6 +26,7 @@ void on_fdb_event(uint32_t count, sai_fdb_event_notification_data_t *data);
 
 /* Initialize all global api pointers */
 sai_switch_api_t*           sai_switch_api;
+sai_bridge_api_t*           sai_bridge_api;
 sai_virtual_router_api_t*   sai_virtual_router_api;
 sai_port_api_t*             sai_port_api;
 sai_vlan_api_t*             sai_vlan_api;
@@ -122,6 +123,7 @@ void initSaiApi()
     sai_api_initialize(0, (service_method_table_t *)&test_services);
 
     sai_api_query(SAI_API_SWITCH,               (void **)&sai_switch_api);
+    sai_api_query(SAI_API_BRIDGE,               (void **)&sai_bridge_api);
     sai_api_query(SAI_API_VIRTUAL_ROUTER,       (void **)&sai_virtual_router_api);
     sai_api_query(SAI_API_PORT,                 (void **)&sai_port_api);
     sai_api_query(SAI_API_FDB,                  (void **)&sai_fdb_api);
@@ -145,6 +147,7 @@ void initSaiApi()
     sai_api_query(SAI_API_ACL,                  (void **)&sai_acl_api);
 
     sai_log_set(SAI_API_SWITCH,                 SAI_LOG_LEVEL_NOTICE);
+    sai_log_set(SAI_API_BRIDGE,                 SAI_LOG_LEVEL_NOTICE);
     sai_log_set(SAI_API_VIRTUAL_ROUTER,         SAI_LOG_LEVEL_NOTICE);
     sai_log_set(SAI_API_PORT,                   SAI_LOG_LEVEL_NOTICE);
     sai_log_set(SAI_API_FDB,                    SAI_LOG_LEVEL_NOTICE);
@@ -261,10 +264,12 @@ int main(int argc, char **argv)
 
     SWSS_LOG_NOTICE("sai_switch_api: create a switch");
 
-    sai_attribute_t switch_attr;
-    switch_attr.id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
-    switch_attr.value.ptr = (void *)on_fdb_event;
-    status = sai_switch_api->create_switch(&gSwitchId, 1, &switch_attr);
+    sai_attribute_t switch_attrs[2];
+    switch_attrs[0].id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
+    switch_attrs[0].value.ptr = (void *)on_fdb_event;
+    switch_attrs[1].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    switch_attrs[1].value.booldata = true;
+    status = sai_switch_api->create_switch(&gSwitchId, 2, switch_attrs);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create a switch %d", status);

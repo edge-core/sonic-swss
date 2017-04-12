@@ -106,12 +106,6 @@ void CoppOrch::initDefaultTrapIds()
     attr.value.oid = m_trap_group_map[default_trap_group];
     trap_id_attrs.push_back(attr);
 
-    /* Receive packets via OS net device */
-    // TODO: double check semantics
-    attr.id = SAI_HOSTIF_ATTR_TYPE;
-    attr.value.s32 = SAI_HOSTIF_TYPE_NETDEV;
-    trap_id_attrs.push_back(attr);
-
     if (!applyAttributesToTrapIds(m_trap_group_map[default_trap_group], default_trap_ids, trap_id_attrs))
     {
         SWSS_LOG_ERROR("Failed to set attributes to default trap IDs");
@@ -154,17 +148,52 @@ bool CoppOrch::applyAttributesToTrapIds(sai_object_id_t trap_group_id,
                                         const vector<sai_hostif_trap_type_t> &trap_id_list,
                                         vector<sai_attribute_t> &trap_id_attribs)
 {
+    sai_status_t status;
+
+    vector<sai_attribute_t> attrs(2);
+    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    attrs[0].value.oid = trap_group_id;
+    attrs[1].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+
     for (auto trap_id : trap_id_list)
     {
-        for (auto attr : trap_id_attribs)
+        auto found = m_trap_type_map.find(trap_id);
+        if (found == m_trap_type_map.end())
         {
-            sai_status_t status = sai_hostif_api->set_hostif_trap_attribute(trap_id, &attr);
+            attrs.resize(2);
+            attrs[1].value.s32 = trap_id;
+            attrs.insert(attrs.end(), trap_id_attribs.begin(), trap_id_attribs.end());
+
+            sai_object_id_t hostif_trap_id;
+            status = sai_hostif_api->create_hostif_trap(&hostif_trap_id, gSwitchId, attrs.size(), attrs.data());
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("Failed to set attribute %d to trap %d, rc=%d", attr.id, trap_id, status);
+                SWSS_LOG_ERROR("Failed to create trap %d, rc=%d", trap_id, status);
+                return false;
+            }
+            m_syncdTrapIds[trap_id] = hostif_trap_id;
+        }
+        else
+        {
+            // Set caller provided attributes
+            for (auto attr : trap_id_attribs)
+            {
+                status = sai_hostif_api->set_hostif_trap_attribute(trap_id, &attr);
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("Failed to set attribute %d to trap %d, rc=%d", attr.id, trap_id, status);
+                    return false;
+                }
+            }
+            // Set the trap group attribute
+            status = sai_hostif_api->set_hostif_trap_attribute(trap_id, &attrs[1]);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to set trap group attribute to trap %d, rc=%d", trap_id, status);
                 return false;
             }
         }
+
         m_syncdTrapIds[trap_id] = trap_group_id;
     }
 
@@ -181,12 +210,6 @@ bool CoppOrch::applyTrapIds(sai_object_id_t trap_group, vector<string> &trap_id_
     sai_attribute_t attr;
     attr.id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
     attr.value.oid = trap_group;
-    trap_id_attribs.push_back(attr);
-
-    /* Receive packets via OS net device */
-    // TODO: double check semantics
-    attr.id = SAI_HOSTIF_ATTR_TYPE;
-    attr.value.s32 = SAI_HOSTIF_TYPE_NETDEV;
     trap_id_attribs.push_back(attr);
 
     return applyAttributesToTrapIds(trap_group, trap_id_list, trap_id_attribs);
@@ -594,4 +617,3 @@ void CoppOrch::doTask(Consumer &consumer)
         }
     }
 }
-

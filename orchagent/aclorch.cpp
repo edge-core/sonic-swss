@@ -1226,13 +1226,10 @@ sai_status_t AclOrch::createBindAclTable(AclTable &aclTable, sai_object_id_t &ta
     sai_status_t status;
     sai_attribute_t attr;
     vector<sai_attribute_t> table_attrs;
-    // workaround until SAI is fixed
-#if 0
     int32_t range_types_list[] =
         { SAI_ACL_RANGE_TYPE_L4_DST_PORT_RANGE,
           SAI_ACL_RANGE_TYPE_L4_SRC_PORT_RANGE
         };
-#endif
 
     attr.id = SAI_ACL_TABLE_ATTR_ACL_BIND_POINT_TYPE_LIST;
     attr.value.s32 = SAI_ACL_BIND_POINT_TYPE_PORT;
@@ -1286,15 +1283,9 @@ sai_status_t AclOrch::createBindAclTable(AclTable &aclTable, sai_object_id_t &ta
     }
 
     attr.id = SAI_ACL_TABLE_ATTR_FIELD_ACL_RANGE_TYPE;
-    // workaround until SAI is fixed
-#if 0
     attr.value.s32list.count = sizeof(range_types_list) / sizeof(range_types_list[0]);
     attr.value.s32list.list = range_types_list;
     table_attrs.push_back(attr);
-#else
-    attr.value.s32list.count = 0;
-    table_attrs.push_back(attr);
-#endif
 
     status = sai_acl_api->create_acl_table(&table_oid, gSwitchId, table_attrs.size(), table_attrs.data());
 
