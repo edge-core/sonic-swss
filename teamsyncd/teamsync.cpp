@@ -60,6 +60,9 @@ void TeamSync::addLag(const string &lagName, int ifindex, bool admin_state,
     fvVector.push_back(m);
     m_lagTable.set(lagName, fvVector);
 
+    SWSS_LOG_INFO("Add %s admin_status:%s oper_status:%s mtu:%d",
+                   lagName.c_str(), admin_state ? "up" : "down", oper_state ? "up" : "down", mtu);
+
     /* Return when the team instance has already been tracked */
     if (m_teamPorts.find(lagName) != m_teamPorts.end())
         return;
@@ -74,6 +77,8 @@ void TeamSync::removeLag(const string &lagName)
 {
     /* Delete the LAG */
     m_lagTable.del(lagName);
+
+    SWSS_LOG_INFO("Remove %s", lagName.c_str());
 
     /* Return when the team instance hasn't been tracked before */
     if (m_teamPorts.find(lagName) == m_teamPorts.end())
