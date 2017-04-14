@@ -36,6 +36,7 @@ protected:
     TrapGroupPolicerTable m_trap_group_policer_map;
     TrapIdTrapGroupTable m_syncdTrapIds;
 
+    void initDefaultHostTable();
     void initDefaultTrapGroup();
     void initDefaultTrapIds();
 

@@ -16,11 +16,10 @@ extern "C" {
 #include <sairedis.h>
 #include "orchdaemon.h"
 #include "logger.h"
+#include "notifications.h"
 
 using namespace std;
 using namespace swss;
-
-void on_fdb_event(uint32_t count, sai_fdb_event_notification_data_t *data);
 
 #define UNREFERENCED_PARAMETER(P)       (P)
 
@@ -264,11 +263,16 @@ int main(int argc, char **argv)
 
     SWSS_LOG_NOTICE("sai_switch_api: create a switch");
 
-    sai_attribute_t switch_attrs[2];
-    switch_attrs[0].id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
-    switch_attrs[0].value.ptr = (void *)on_fdb_event;
-    switch_attrs[1].id = SAI_SWITCH_ATTR_INIT_SWITCH;
-    switch_attrs[1].value.booldata = true;
+    sai_attribute_t switch_attrs[4];
+    switch_attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    switch_attrs[0].value.booldata = true;
+    switch_attrs[1].id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
+    switch_attrs[1].value.ptr = (void *)on_fdb_event;
+    switch_attrs[2].id = SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY;
+    switch_attrs[2].value.ptr = (void *)on_port_state_change;
+    switch_attrs[3].id = SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY;
+    switch_attrs[3].value.ptr = (void *)on_switch_shutdown_request;
+
     status = sai_switch_api->create_switch(&gSwitchId, 2, switch_attrs);
     if (status != SAI_STATUS_SUCCESS)
     {

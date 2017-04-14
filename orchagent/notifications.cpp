@@ -9,6 +9,7 @@ extern "C" {
 }
 
 #include "logger.h"
+#include "notifications.h"
 
 extern mutex gDbMutex;
 extern PortsOrch *gPortsOrch;
@@ -76,15 +77,3 @@ void on_switch_shutdown_request()
 
     exit(EXIT_FAILURE);
 }
-
-/*
-sai_switch_notification_t switch_notifications
-{
-    NULL,
-    on_fdb_event,
-    on_port_state_change,
-    NULL,
-    on_switch_shutdown_request,
-    NULL
-};
-*/

@@ -6,6 +6,7 @@
 #include <thread>
 #include <mutex>
 #include <tuple>
+#include <map>
 #include <condition_variable>
 #include "orch.h"
 #include "portsorch.h"
@@ -259,8 +260,10 @@ private:
 
     //vector <AclTable> m_AclTables;
     map <sai_object_id_t, AclTable> m_AclTables;
-    // Port OID to vector of ACL OIDs
-    map <sai_object_id_t, vector<sai_object_id_t>> m_portBind;
+    // ACL table OID to multiple ACL table group member
+    multimap <sai_object_id_t, sai_object_id_t> m_AclTableGroupMembers;
+    // Port OID to vector of ACL table group OID
+    map <sai_object_id_t, sai_object_id_t> m_portBind;
 
     static mutex m_countersMutex;
     static condition_variable m_sleepGuard;
