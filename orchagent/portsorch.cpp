@@ -17,6 +17,7 @@ extern sai_port_api_t *sai_port_api;
 extern sai_vlan_api_t *sai_vlan_api;
 extern sai_lag_api_t *sai_lag_api;
 extern sai_hostif_api_t* sai_hostif_api;
+extern sai_acl_api_t* sai_acl_api;
 extern sai_object_id_t gSwitchId;
 
 #define VLAN_PREFIX         "Vlan"
@@ -162,6 +163,11 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
 bool PortsOrch::isInitDone()
 {
     return m_initDone;
+}
+
+map<string, Port>& PortsOrch::getAllPorts()
+{
+    return m_portList;
 }
 
 bool PortsOrch::getPort(string alias, Port &p)

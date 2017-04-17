@@ -262,8 +262,6 @@ private:
     map <sai_object_id_t, AclTable> m_AclTables;
     // ACL table OID to multiple ACL table group member
     multimap <sai_object_id_t, sai_object_id_t> m_AclTableGroupMembers;
-    // Port OID to vector of ACL table group OID
-    map <sai_object_id_t, sai_object_id_t> m_portBind;
 
     static mutex m_countersMutex;
     static condition_variable m_sleepGuard;

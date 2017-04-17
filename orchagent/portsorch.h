@@ -42,6 +42,7 @@ public:
 
     bool isInitDone();
 
+    map<string, Port>& getAllPorts();
     bool getPort(string alias, Port &port);
     bool getPort(sai_object_id_t id, Port &port);
     void setPort(string alias, Port port);
