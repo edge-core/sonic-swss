@@ -618,7 +618,7 @@ sai_object_id_t QosOrch::initSystemAclTable()
 
     /* Create system ACL table */
     attr.id = SAI_ACL_TABLE_ATTR_ACL_BIND_POINT_TYPE_LIST;
-    attr.value.s32 = SAI_ACL_BIND_POINT_TYPE_SWITCH;
+    attr.value.s32 = SAI_ACL_BIND_POINT_TYPE_PORT;
     attrs.push_back(attr);
 
     attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
@@ -645,16 +645,22 @@ sai_object_id_t QosOrch::initSystemAclTable()
     }
     SWSS_LOG_NOTICE("Create a system ACL table for ECN coloring");
 
-    attr.id = SAI_SWITCH_ATTR_INGRESS_ACL;
-    attr.value.objlist.count = 1;
-    attr.value.objlist.list = &acl_table_id;
-
-    status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
-    if (status != SAI_STATUS_SUCCESS)
+    for (auto& pair: gPortsOrch->getAllPorts())
     {
-        SWSS_LOG_ERROR("Failed to bind the system ACL table globally, rv:%d", status);
-        throw runtime_error("Failed to bind the system ACL table globally");
+        auto& port = pair.second;
+        if (port.m_type != Port::PHY) continue;
+
+        sai_object_id_t group_member_oid;
+        // Note: group member OID is discarded
+        status = port.bindAclTable(group_member_oid, acl_table_id);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to bind the system ACL table globally, rv:%d", status);
+            throw runtime_error("Failed to bind the system ACL table globally");
+        }
     }
+
+
     SWSS_LOG_NOTICE("Bind the system ACL table globally");
 
     return acl_table_id;
