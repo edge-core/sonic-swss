@@ -110,21 +110,6 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
         m_portListLaneMap[tmp_lane_set] = port_list[i];
     }
 
-    /* Set port to hardware learn mode */
-    for (i = 0; i < m_portCount; i++)
-    {
-        attr.id = SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE;
-        attr.value.s32 = SAI_BRIDGE_PORT_FDB_LEARNING_MODE_HW;
-
-        status = sai_port_api->set_port_attribute(port_list[i], &attr);
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("Failed to set port to hardware learn mode pid:%lx", port_list[i]);
-            throw "PortsOrch initialization failure";
-        }
-        SWSS_LOG_NOTICE("Set port to hardware learn mode pid:%lx", port_list[i]);
-    }
-
     // Get default bridge id
     sai_attribute_t switch_attr;
     switch_attr.id = SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID;
@@ -134,13 +119,13 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
         SWSS_LOG_ERROR("Failed to get default 1Q_BRIDGE: %d", status);
         throw "PortsOrch initialization failure";
     }
-    sai_object_id_t bridge_id = switch_attr.value.oid;
+    m_default1QBridge = switch_attr.value.oid;
 
     // Get bridge port list for default bridge id
     sai_attribute_t bridge_attr;
     bridge_attr.id = SAI_BRIDGE_ATTR_PORT_LIST;
     bridge_attr.value.objlist.count = 100;
-    status = sai_bridge_api->get_bridge_attribute(bridge_id, 1, &bridge_attr);
+    status = sai_bridge_api->get_bridge_attribute(m_default1QBridge, 1, &bridge_attr);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to get default 1Q_BRIDGE: %d", status);
@@ -958,6 +943,16 @@ bool PortsOrch::addVlan(string vlan_alias)
 
     SWSS_LOG_NOTICE("Create an empty VLAN %s vid:%hu", vlan_alias.c_str(), vlan_id);
 
+/*
+    // create vlan rif(s)
+    sai_attribute_t rif_attr_list[2];
+    rif_attr_list[0].id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+    rif_attr_list[0].value = vlan_id;
+    rif_attr_list[1].id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+    rif_attr_list[1].value = mac;
+    sai_create_rif_fn(&rif1, 2, rif_list);
+*/
+
     Port vlan(vlan_alias, Port::VLAN);
     vlan.m_vlan_id = vlan_id;
     vlan.m_members = set<string>();
@@ -1018,33 +1013,50 @@ bool PortsOrch::addVlanMember(Port vlan, Port port, string& tagging_mode)
 
     sai_object_id_t vlan_member_id;
     sai_status_t status = sai_vlan_api->create_vlan_member(&vlan_member_id, gSwitchId, attrs.size(), attrs.data());
-
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to add member %s to VLAN %s vid:%hu pid:%lx",
                 port.m_alias.c_str(), vlan.m_alias.c_str(), vlan.m_vlan_id, port.m_port_id);
         return false;
     }
-
     SWSS_LOG_NOTICE("Add member %s to VLAN %s vid:%hu pid%lx",
             port.m_alias.c_str(), vlan.m_alias.c_str(), vlan.m_vlan_id, port.m_port_id);
 
-    attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
-    attr.value.u16 = vlan.m_vlan_id;
-
-    status = sai_port_api->set_port_attribute(port.m_port_id, &attr);
+    // Set port bind mode
+    sai_attribute_t port_attr;
+    port_attr.id = SAI_PORT_ATTR_BIND_MODE;
+    port_attr.value.s32 = SAI_PORT_BIND_MODE_PORT;
+    status = sai_port_api->set_port_attribute(port.m_port_id, &port_attr);
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to set port VLAN ID vid:%hu pid:%lx",
-                vlan.m_vlan_id, port.m_port_id);
+        SWSS_LOG_ERROR("Failed to set port pid:%lx bind mode to port: %d",
+                port.m_port_id, status);
         return false;
     }
 
-    SWSS_LOG_INFO("Set port %s VLAN ID to %hu", port.m_alias.c_str(), vlan.m_vlan_id);
+    // Create bridge ports and add ports to bridge
+    sai_object_id_t bport;
+    sai_attribute_t bport_attr[4];
+    bport_attr[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+    bport_attr[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
+    bport_attr[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+    bport_attr[1].value.s32 = port.m_port_id;
+    bport_attr[2].id = SAI_BRIDGE_PORT_ATTR_BRIDGE_ID;
+    bport_attr[2].value.oid = m_default1QBridge;
+    bport_attr[3].id = SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE;
+    bport_attr[3].value.s32 = SAI_BRIDGE_PORT_FDB_LEARNING_MODE_HW;
+    status = sai_bridge_api->create_bridge_port(&bport, gSwitchId, 4, bport_attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to create default 1Q bridge port for pid:%lx: %d",
+                port.m_port_id, status);
+        return false;
+    }
 
     port.m_vlan_id = vlan.m_vlan_id;
     port.m_port_vlan_id = vlan.m_vlan_id;
     port.m_vlan_member_id = vlan_member_id;
+    port.m_bridge_port_id = bport;
     m_portList[port.m_alias] = port;
     vlan.m_members.insert(port.m_alias);
     m_portList[vlan.m_alias] = vlan;

@@ -10,11 +10,11 @@ else
 DBGFLAGS = -g -DNDEBUG
 endif
 
-orchagent_SOURCES = main.cpp orchdaemon.cpp orch.cpp notifications.cpp routeorch.cpp neighorch.cpp intfsorch.cpp portsorch.cpp copporch.cpp tunneldecaporch.cpp qosorch.cpp bufferorch.cpp mirrororch.cpp fdborch.cpp aclorch.cpp
+orchagent_SOURCES = main.cpp port.cpp orchdaemon.cpp orch.cpp notifications.cpp routeorch.cpp neighorch.cpp intfsorch.cpp portsorch.cpp copporch.cpp tunneldecaporch.cpp qosorch.cpp bufferorch.cpp mirrororch.cpp fdborch.cpp aclorch.cpp
 
 orchagent_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) $(CFLAGS_COMMON) $(CFLAGS_SAI)
 orchagent_CPPFLAGS = $(DBGFLAGS) $(AM_CFLAGS) $(CFLAGS_COMMON) $(CFLAGS_SAI)
-orchagent_LDADD = -lnl-3 -lnl-route-3 -lpthread -lsairedis -lsaimetadata -lswsscommon
+orchagent_LDADD = -lnl-3 -lnl-route-3 -lpthread -lsai -lsaimetadata -lswsscommon
 
 routeresync_SOURCES = routeresync.cpp
 routeresync_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) $(CFLAGS_COMMON)

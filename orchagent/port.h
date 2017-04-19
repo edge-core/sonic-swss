@@ -62,6 +62,7 @@ public:
     sai_object_id_t     m_lag_id = 0;
     sai_object_id_t     m_lag_member_id = 0;
     sai_object_id_t     m_acl_table_group_id = 0;
+    sai_object_id_t     m_bridge_port_id;
     std::set<std::string> m_members;
     std::vector<sai_object_id_t> m_queue_ids;
     std::vector<sai_object_id_t> m_priority_group_ids;

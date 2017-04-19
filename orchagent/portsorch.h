@@ -56,6 +56,7 @@ private:
 
     bool m_initDone = false;
     sai_object_id_t m_cpuPort;
+    sai_object_id_t m_default1QBridge;
 
     sai_uint32_t m_portCount;
     map<set<int>, sai_object_id_t> m_portListLaneMap;
