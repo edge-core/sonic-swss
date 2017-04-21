@@ -155,6 +155,22 @@ map<string, Port>& PortsOrch::getAllPorts()
     return m_portList;
 }
 
+bool PortsOrch::getBridgePort(sai_object_id_t id, Port &port)
+{
+    // TODO: optimize by dictionary query
+    for (auto& pair: m_portList)
+    {
+        auto& port1 = pair.second;
+        if (port1.m_bridge_port_id == id)
+        {
+            port = port1;
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool PortsOrch::getPort(string alias, Port &p)
 {
     SWSS_LOG_ENTER();
@@ -998,7 +1014,7 @@ bool PortsOrch::addVlanMember(Port vlan, Port port, string& tagging_mode)
     attrs.push_back(attr);
 
     attr.id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
-    attr.value.oid = port.m_port_id;
+    attr.value.oid = port.m_bridge_port_id;
     attrs.push_back(attr);
 
     attr.id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;              

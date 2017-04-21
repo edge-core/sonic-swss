@@ -19,14 +19,16 @@ sai_status_t Port::bindAclTable(sai_object_id_t& group_member_oid, sai_object_id
     // If port ACL table group does not exist, create one
     if (m_acl_table_group_id == 0)
     {
+        sai_object_id_t bp_list[] = { SAI_ACL_BIND_POINT_TYPE_PORT };
+
         sai_attribute_t group_attrs[3];
         group_attrs[0].id = SAI_ACL_TABLE_GROUP_ATTR_ACL_STAGE;
         group_attrs[0].value.s32 = SAI_ACL_STAGE_INGRESS; // TODO: double check
         group_attrs[1].id = SAI_ACL_TABLE_GROUP_ATTR_ACL_BIND_POINT_TYPE_LIST;
         group_attrs[1].value.objlist.count = 1;
-        group_attrs[1].value.objlist.list[0] = SAI_ACL_BIND_POINT_TYPE_PORT;
+        group_attrs[1].value.objlist.list = bp_list;
         group_attrs[2].id = SAI_ACL_TABLE_GROUP_ATTR_TYPE;
-        group_attrs[2].value.s32 = SAI_ACL_TABLE_GROUP_TYPE_SEQUENTIAL; // TODO: double check
+        group_attrs[2].value.s32 = SAI_ACL_TABLE_GROUP_TYPE_PARALLEL;
 
         status = sai_acl_api->create_acl_table_group(&groupOid, gSwitchId, 3, group_attrs);
         if (status != SAI_STATUS_SUCCESS)

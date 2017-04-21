@@ -19,7 +19,7 @@ void FdbOrch::update(sai_fdb_event_t type, const sai_fdb_entry_t* entry, sai_obj
     switch (type)
     {
     case SAI_FDB_EVENT_LEARNED:
-        if (!m_portsOrch->getPort(portOid, update.port))
+        if (!m_portsOrch->getBridgePort(portOid, update.port))
         {
             SWSS_LOG_ERROR("Failed to get port for %lu OID", portOid);
             return;
@@ -64,7 +64,7 @@ bool FdbOrch::getPort(const MacAddress& mac, uint16_t vlan, Port& port)
         return false;
     }
 
-    if (!m_portsOrch->getPort(attr.value.oid, port))
+    if (!m_portsOrch->getBridgePort(attr.value.oid, port))
     {
         SWSS_LOG_ERROR("Failed to get port for %lu OID", attr.value.oid);
         return false;

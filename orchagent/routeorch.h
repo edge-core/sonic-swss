@@ -15,10 +15,17 @@
 using namespace std;
 using namespace swss;
 
+/* Maximum next hop group number */
+#define NHGRP_MAX_SIZE 128
+
+/* NextHopGroupMember: next_hop_id, next_hop_group_member */
+typedef map<sai_object_id_t, sai_object_id_t> NextHopGroupMember;
+
 struct NextHopGroupEntry
 {
     sai_object_id_t     next_hop_group_id;  // next hop group id
     int                 ref_count;          // reference count
+    NextHopGroupMember  next_hop_group_members;
 };
 
 struct NextHopUpdate
