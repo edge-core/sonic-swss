@@ -178,13 +178,19 @@ sai_object_id_t DscpToTcMapHandler::addQosItem(const vector<sai_attribute_t> &at
     SWSS_LOG_ENTER();
     sai_status_t sai_status;
     sai_object_id_t sai_object;
-    sai_attribute_t qos_map_attrs[2];
-    qos_map_attrs[0].id = SAI_QOS_MAP_ATTR_TYPE;
-    qos_map_attrs[0].value.u32 = SAI_QOS_MAP_TYPE_DSCP_TO_TC;
-    qos_map_attrs[1].id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
-    qos_map_attrs[1].value.qosmap.count = attributes[0].value.qosmap.count;
-    qos_map_attrs[1].value.qosmap.list = attributes[0].value.qosmap.list;
-    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, 2, qos_map_attrs);
+    vector<sai_attribute_t> qos_map_attrs;
+
+    sai_attribute_t qos_map_attr;
+    qos_map_attr.id = SAI_QOS_MAP_ATTR_TYPE;
+    qos_map_attr.value.u32 = SAI_QOS_MAP_TYPE_DSCP_TO_TC;
+    qos_map_attrs.push_back(qos_map_attr);
+
+    qos_map_attr.id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
+    qos_map_attr.value.qosmap.count = attributes[0].value.qosmap.count;
+    qos_map_attr.value.qosmap.list = attributes[0].value.qosmap.list;
+    qos_map_attrs.push_back(qos_map_attr);
+
+    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, qos_map_attrs.size(), qos_map_attrs.data());
     if (SAI_STATUS_SUCCESS != sai_status)
     {
         SWSS_LOG_ERROR("Failed to create dscp_to_tc map. status:%d", sai_status);
@@ -226,13 +232,19 @@ sai_object_id_t TcToQueueMapHandler::addQosItem(const vector<sai_attribute_t> &a
     SWSS_LOG_ENTER();
     sai_status_t sai_status;
     sai_object_id_t sai_object;
-    sai_attribute_t qos_map_attrs[2];
-    qos_map_attrs[0].id = SAI_QOS_MAP_ATTR_TYPE;
-    qos_map_attrs[0].value.s32 = SAI_QOS_MAP_TYPE_TC_TO_QUEUE;
-    qos_map_attrs[1].id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
-    qos_map_attrs[1].value.qosmap.count = attributes[0].value.qosmap.count;
-    qos_map_attrs[1].value.qosmap.list = attributes[0].value.qosmap.list;
-    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, 2, qos_map_attrs);
+    vector<sai_attribute_t> qos_map_attrs;
+    sai_attribute_t qos_map_attr;
+
+    qos_map_attr.id = SAI_QOS_MAP_ATTR_TYPE;
+    qos_map_attr.value.s32 = SAI_QOS_MAP_TYPE_TC_TO_QUEUE;
+    qos_map_attrs.push_back(qos_map_attr);
+
+    qos_map_attr.id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
+    qos_map_attr.value.qosmap.count = attributes[0].value.qosmap.count;
+    qos_map_attr.value.qosmap.list = attributes[0].value.qosmap.list;
+    qos_map_attrs.push_back(qos_map_attr);
+
+    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, qos_map_attrs.size(), qos_map_attrs.data());
     if (SAI_STATUS_SUCCESS != sai_status)
     {
         SWSS_LOG_ERROR("Failed to create tc_to_queue map. status:%d", sai_status);
@@ -448,13 +460,18 @@ sai_object_id_t TcToPgHandler::addQosItem(const vector<sai_attribute_t> &attribu
     SWSS_LOG_ENTER();
     sai_status_t sai_status;
     sai_object_id_t sai_object;
-    sai_attribute_t qos_map_attrs[2];
-    qos_map_attrs[0].id = SAI_QOS_MAP_ATTR_TYPE;
-    qos_map_attrs[0].value.s32 = SAI_QOS_MAP_TYPE_TC_TO_PRIORITY_GROUP;
-    qos_map_attrs[1].id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
-    qos_map_attrs[1].value.qosmap.count = attributes[0].value.qosmap.count;
-    qos_map_attrs[1].value.qosmap.list = attributes[0].value.qosmap.list;
-    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, 2, qos_map_attrs);
+    vector<sai_attribute_t> qos_map_attrs;
+    sai_attribute_t qos_map_attr;
+
+    qos_map_attr.id = SAI_QOS_MAP_ATTR_TYPE;
+    qos_map_attr.value.s32 = SAI_QOS_MAP_TYPE_TC_TO_PRIORITY_GROUP;
+    qos_map_attrs.push_back(qos_map_attr);
+    qos_map_attr.id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
+    qos_map_attr.value.qosmap.count = attributes[0].value.qosmap.count;
+    qos_map_attr.value.qosmap.list = attributes[0].value.qosmap.list;
+    qos_map_attrs.push_back(qos_map_attr);
+
+    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, qos_map_attrs.size(), qos_map_attrs.data());
     if (SAI_STATUS_SUCCESS != sai_status)
     {
         SWSS_LOG_ERROR("Failed to create tc_to_queue map. status:%d", sai_status);
@@ -496,13 +513,19 @@ sai_object_id_t PfcPrioToPgHandler::addQosItem(const vector<sai_attribute_t> &at
     SWSS_LOG_ENTER();
     sai_status_t sai_status;
     sai_object_id_t sai_object;
-    sai_attribute_t qos_map_attrs[2];
-    qos_map_attrs[0].id = SAI_QOS_MAP_ATTR_TYPE;
-    qos_map_attrs[0].value.s32 = SAI_QOS_MAP_TYPE_PFC_PRIORITY_TO_PRIORITY_GROUP;
-    qos_map_attrs[1].id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
-    qos_map_attrs[1].value.qosmap.count = attributes[0].value.qosmap.count;
-    qos_map_attrs[1].value.qosmap.list = attributes[0].value.qosmap.list;
-    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, 2, qos_map_attrs);
+    vector<sai_attribute_t> qos_map_attrs;
+    sai_attribute_t qos_map_attr;
+
+    qos_map_attr.id = SAI_QOS_MAP_ATTR_TYPE;
+    qos_map_attr.value.s32 = SAI_QOS_MAP_TYPE_PFC_PRIORITY_TO_PRIORITY_GROUP;
+    qos_map_attrs.push_back(qos_map_attr);
+
+    qos_map_attr.id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
+    qos_map_attr.value.qosmap.count = attributes[0].value.qosmap.count;
+    qos_map_attr.value.qosmap.list = attributes[0].value.qosmap.list;
+    qos_map_attrs.push_back(qos_map_attr);
+
+    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, qos_map_attrs.size(), qos_map_attrs.data());
     if (SAI_STATUS_SUCCESS != sai_status)
     {
         SWSS_LOG_ERROR("Failed to create tc_to_queue map. status:%d", sai_status);
@@ -544,13 +567,20 @@ sai_object_id_t PfcToQueueHandler::addQosItem(const vector<sai_attribute_t> &att
     SWSS_LOG_ENTER();
     sai_status_t sai_status;
     sai_object_id_t sai_object;
-    sai_attribute_t qos_map_attrs[2];
-    qos_map_attrs[0].id = SAI_QOS_MAP_ATTR_TYPE;
-    qos_map_attrs[0].value.s32 = SAI_QOS_MAP_TYPE_PFC_PRIORITY_TO_QUEUE;
-    qos_map_attrs[1].id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
-    qos_map_attrs[1].value.qosmap.count = attributes[0].value.qosmap.count;
-    qos_map_attrs[1].value.qosmap.list = attributes[0].value.qosmap.list;
-    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, 2, qos_map_attrs);
+
+    vector<sai_attribute_t> qos_map_attrs;
+    sai_attribute_t qos_map_attr;
+
+    qos_map_attr.id = SAI_QOS_MAP_ATTR_TYPE;
+    qos_map_attr.value.s32 = SAI_QOS_MAP_TYPE_PFC_PRIORITY_TO_QUEUE;
+    qos_map_attrs.push_back(qos_map_attr);
+
+    qos_map_attr.id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
+    qos_map_attr.value.qosmap.count = attributes[0].value.qosmap.count;
+    qos_map_attr.value.qosmap.list = attributes[0].value.qosmap.list;
+    qos_map_attrs.push_back(qos_map_attr);
+
+    sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, qos_map_attrs.size(), qos_map_attrs.data());
     if (SAI_STATUS_SUCCESS != sai_status)
     {
         SWSS_LOG_ERROR("Failed to create tc_to_queue map. status:%d", sai_status);
@@ -637,7 +667,7 @@ sai_object_id_t QosOrch::initSystemAclTable()
     attr.value.booldata = true;
     attrs.push_back(attr);
 
-    status = sai_acl_api->create_acl_table(&acl_table_id, gSwitchId, attrs.size(), &attrs[0]);
+    status = sai_acl_api->create_acl_table(&acl_table_id, gSwitchId, attrs.size(), attrs.data());
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create a system ACL table for ECN coloring, rv:%d", status);

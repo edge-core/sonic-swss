@@ -97,16 +97,19 @@ void CoppOrch::initDefaultHostTable()
     SWSS_LOG_ENTER();
 
     sai_object_id_t host_table_entry[4];
-    sai_attribute_t sai_if_channel_attr[2];
+    vector<sai_attribute_t> sai_if_channel_attrs;
 
-    sai_if_channel_attr[0].id = SAI_HOSTIF_TABLE_ENTRY_ATTR_TYPE;
-    sai_if_channel_attr[0].value.s32 = SAI_HOSTIF_TABLE_ENTRY_TYPE_WILDCARD;
+    sai_attribute_t sai_if_channel_attr;
+    sai_if_channel_attr.id = SAI_HOSTIF_TABLE_ENTRY_ATTR_TYPE;
+    sai_if_channel_attr.value.s32 = SAI_HOSTIF_TABLE_ENTRY_TYPE_WILDCARD;
+    sai_if_channel_attrs.push_back(sai_if_channel_attr);
 
-    sai_if_channel_attr[1].id = SAI_HOSTIF_TABLE_ENTRY_ATTR_CHANNEL_TYPE;
-    sai_if_channel_attr[1].value.s32 = SAI_HOSTIF_TABLE_ENTRY_CHANNEL_TYPE_NETDEV_PHYSICAL_PORT;
+    sai_if_channel_attr.id = SAI_HOSTIF_TABLE_ENTRY_ATTR_CHANNEL_TYPE;
+    sai_if_channel_attr.value.s32 = SAI_HOSTIF_TABLE_ENTRY_CHANNEL_TYPE_NETDEV_PHYSICAL_PORT;
+    sai_if_channel_attrs.push_back(sai_if_channel_attr);
 
     sai_status_t status = sai_hostif_api->create_hostif_table_entry(
-        &host_table_entry[0], gSwitchId, 2, sai_if_channel_attr);
+        &host_table_entry[0], gSwitchId, sai_if_channel_attrs.size(), sai_if_channel_attrs.data());
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create hostif table entry, rc=%d", status);

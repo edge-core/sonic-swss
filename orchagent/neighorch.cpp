@@ -27,16 +27,23 @@ bool NeighOrch::addNextHop(IpAddress ipAddress, string alias)
     assert(!hasNextHop(ipAddress));
     sai_object_id_t rif_id = m_intfsOrch->getRouterIntfsId(alias);
 
-    sai_attribute_t next_hop_attrs[3];
-    next_hop_attrs[0].id = SAI_NEXT_HOP_ATTR_TYPE;
-    next_hop_attrs[0].value.s32 = SAI_NEXT_HOP_TYPE_IP;
-    next_hop_attrs[1].id = SAI_NEXT_HOP_ATTR_IP;
-    copy(next_hop_attrs[1].value.ipaddr, ipAddress);
-    next_hop_attrs[2].id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
-    next_hop_attrs[2].value.oid = rif_id;
+    vector<sai_attribute_t> next_hop_attrs;
+
+    sai_attribute_t next_hop_attr;
+    next_hop_attr.id = SAI_NEXT_HOP_ATTR_TYPE;
+    next_hop_attr.value.s32 = SAI_NEXT_HOP_TYPE_IP;
+    next_hop_attrs.push_back(next_hop_attr);
+
+    next_hop_attr.id = SAI_NEXT_HOP_ATTR_IP;
+    copy(next_hop_attr.value.ipaddr, ipAddress);
+    next_hop_attrs.push_back(next_hop_attr);
+
+    next_hop_attr.id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
+    next_hop_attr.value.oid = rif_id;
+    next_hop_attrs.push_back(next_hop_attr);
 
     sai_object_id_t next_hop_id;
-    sai_status_t status = sai_next_hop_api->create_next_hop(&next_hop_id, gSwitchId, 3, next_hop_attrs);
+    sai_status_t status = sai_next_hop_api->create_next_hop(&next_hop_id, gSwitchId, next_hop_attrs.size(), next_hop_attrs.data());
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create next hop %s on %s, rv:%d",

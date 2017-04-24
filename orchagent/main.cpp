@@ -263,17 +263,26 @@ int main(int argc, char **argv)
 
     SWSS_LOG_NOTICE("sai_switch_api: create a switch");
 
-    sai_attribute_t switch_attrs[4];
-    switch_attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
-    switch_attrs[0].value.booldata = true;
-    switch_attrs[1].id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
-    switch_attrs[1].value.ptr = (void *)on_fdb_event;
-    switch_attrs[2].id = SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY;
-    switch_attrs[2].value.ptr = (void *)on_port_state_change;
-    switch_attrs[3].id = SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY;
-    switch_attrs[3].value.ptr = (void *)on_switch_shutdown_request;
+    vector<sai_attribute_t> switch_attrs;
 
-    status = sai_switch_api->create_switch(&gSwitchId, 2, switch_attrs);
+    sai_attribute_t switch_attr;
+    switch_attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    switch_attr.value.booldata = true;
+    switch_attrs.push_back(switch_attr);
+
+    switch_attr.id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
+    switch_attr.value.ptr = (void *)on_fdb_event;
+    switch_attrs.push_back(switch_attr);
+
+    switch_attr.id = SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY;
+    switch_attr.value.ptr = (void *)on_port_state_change;
+    switch_attrs.push_back(switch_attr);
+
+    switch_attr.id = SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY;
+    switch_attr.value.ptr = (void *)on_switch_shutdown_request;
+    switch_attrs.push_back(switch_attr);
+
+    status = sai_switch_api->create_switch(&gSwitchId, switch_attrs.size(), switch_attrs.data());
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create a switch %d", status);
@@ -382,13 +391,18 @@ int main(int argc, char **argv)
     SWSS_LOG_NOTICE("Get switch virtual router ID %lx", gVirtualRouterId);
 
     /* Create a loopback underlay router interface */
-    sai_attribute_t underlay_intf_attrs[2];
-    underlay_intf_attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
-    underlay_intf_attrs[0].value.oid = gVirtualRouterId;
-    underlay_intf_attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
-    underlay_intf_attrs[1].value.s32 = SAI_ROUTER_INTERFACE_TYPE_LOOPBACK;
+    vector<sai_attribute_t> underlay_intf_attrs;
 
-    status = sai_router_intfs_api->create_router_interface(&gUnderlayIfId, gSwitchId, 2, underlay_intf_attrs);
+    sai_attribute_t underlay_intf_attr;
+    underlay_intf_attr.id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+    underlay_intf_attr.value.oid = gVirtualRouterId;
+    underlay_intf_attrs.push_back(underlay_intf_attr);
+
+    underlay_intf_attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    underlay_intf_attr.value.s32 = SAI_ROUTER_INTERFACE_TYPE_LOOPBACK;
+    underlay_intf_attrs.push_back(underlay_intf_attr);
+
+    status = sai_router_intfs_api->create_router_interface(&gUnderlayIfId, gSwitchId, underlay_intf_attrs.size(), underlay_intf_attrs.data());
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to create underlay router interface %d", status);

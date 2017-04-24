@@ -1,9 +1,13 @@
+#include <vector>
+
 extern "C" {
 #include "sai.h"
 }
 
 #include "port.h"
 #include "swss/logger.h"
+
+using namespace std;
 
 extern sai_port_api_t *sai_port_api;
 extern sai_acl_api_t* sai_acl_api;
@@ -21,16 +25,23 @@ sai_status_t Port::bindAclTable(sai_object_id_t& group_member_oid, sai_object_id
     {
         sai_object_id_t bp_list[] = { SAI_ACL_BIND_POINT_TYPE_PORT };
 
-        sai_attribute_t group_attrs[3];
-        group_attrs[0].id = SAI_ACL_TABLE_GROUP_ATTR_ACL_STAGE;
-        group_attrs[0].value.s32 = SAI_ACL_STAGE_INGRESS; // TODO: double check
-        group_attrs[1].id = SAI_ACL_TABLE_GROUP_ATTR_ACL_BIND_POINT_TYPE_LIST;
-        group_attrs[1].value.objlist.count = 1;
-        group_attrs[1].value.objlist.list = bp_list;
-        group_attrs[2].id = SAI_ACL_TABLE_GROUP_ATTR_TYPE;
-        group_attrs[2].value.s32 = SAI_ACL_TABLE_GROUP_TYPE_PARALLEL;
+        vector<sai_attribute_t> group_attrs;
+        sai_attribute_t group_attr;
 
-        status = sai_acl_api->create_acl_table_group(&groupOid, gSwitchId, 3, group_attrs);
+        group_attr.id = SAI_ACL_TABLE_GROUP_ATTR_ACL_STAGE;
+        group_attr.value.s32 = SAI_ACL_STAGE_INGRESS; // TODO: double check
+        group_attrs.push_back(group_attr);
+
+        group_attr.id = SAI_ACL_TABLE_GROUP_ATTR_ACL_BIND_POINT_TYPE_LIST;
+        group_attr.value.objlist.count = 1;
+        group_attr.value.objlist.list = bp_list;
+        group_attrs.push_back(group_attr);
+
+        group_attr.id = SAI_ACL_TABLE_GROUP_ATTR_TYPE;
+        group_attr.value.s32 = SAI_ACL_TABLE_GROUP_TYPE_PARALLEL;
+        group_attrs.push_back(group_attr);
+
+        status = sai_acl_api->create_acl_table_group(&groupOid, gSwitchId, group_attrs.size(), group_attrs.data());
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to create ACL table group: %d", status);
@@ -57,15 +68,22 @@ sai_status_t Port::bindAclTable(sai_object_id_t& group_member_oid, sai_object_id
     }
 
     // Create an ACL group member with table_oid and groupOid
-    sai_attribute_t member_attr[2];
-    member_attr[0].id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_GROUP_ID;
-    member_attr[0].value.s32 = groupOid;
-    member_attr[1].id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID;
-    member_attr[1].value.s32 = table_oid;
-    member_attr[1].id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_PRIORITY;
-    member_attr[1].value.s32 = 100; // TODO: double check!
+    vector<sai_attribute_t> member_attrs;
 
-    status = sai_acl_api->create_acl_table_group_member(&group_member_oid, gSwitchId, 2, member_attr);
+    sai_attribute_t member_attr;
+    member_attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_GROUP_ID;
+    member_attr.value.s32 = groupOid;
+    member_attrs.push_back(member_attr);
+
+    member_attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID;
+    member_attr.value.s32 = table_oid;
+    member_attrs.push_back(member_attr);
+
+    member_attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_PRIORITY;
+    member_attr.value.s32 = 100; // TODO: double check!
+    member_attrs.push_back(member_attr);
+
+    status = sai_acl_api->create_acl_table_group_member(&group_member_oid, gSwitchId, member_attrs.size(), member_attrs.data());
     if (status != SAI_STATUS_SUCCESS) {
         SWSS_LOG_ERROR("Failed to create member table %lu for ACL table group %lu: %d",
                 table_oid, groupOid, status);
