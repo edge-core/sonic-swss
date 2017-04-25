@@ -277,20 +277,20 @@ bool AclRule::create()
     SWSS_LOG_INFO("Created counter for the rule %s in table %s", m_id.c_str(), m_tableId.c_str());
 
     // store table oid this rule belongs to
-    attr.id =  SAI_ACL_ENTRY_ATTR_TABLE_ID;
+    attr.id = SAI_ACL_ENTRY_ATTR_TABLE_ID;
     attr.value.oid = table_oid;
     rule_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_ENTRY_ATTR_PRIORITY;
+    attr.id = SAI_ACL_ENTRY_ATTR_PRIORITY;
     attr.value.u32 = m_priority;
     rule_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_ENTRY_ATTR_ADMIN_STATE;
+    attr.id = SAI_ACL_ENTRY_ATTR_ADMIN_STATE;
     attr.value.booldata = true;
     rule_attrs.push_back(attr);
 
     // add reference to the counter
-    attr.id =  SAI_ACL_ENTRY_ATTR_ACTION_COUNTER;
+    attr.id = SAI_ACL_ENTRY_ATTR_ACTION_COUNTER;
     attr.value.aclaction.parameter.oid = m_counterOid;
     attr.value.aclaction.enable = true;
     rule_attrs.push_back(attr);
@@ -302,7 +302,7 @@ bool AclRule::create()
         if (((sai_acl_range_type_t)it.first == SAI_ACL_RANGE_L4_SRC_PORT_RANGE) ||
             ((sai_acl_range_type_t)it.first == SAI_ACL_RANGE_L4_DST_PORT_RANGE))
         {
-            SWSS_LOG_DEBUG("Creating range object %u..%u", it.second.u32range.min, it.second.u32range.max);
+            SWSS_LOG_INFO("Creating range object %u..%u", it.second.u32range.min, it.second.u32range.max);
 
             AclRange *range = AclRange::create((sai_acl_range_type_t)it.first, it.second.u32range.min, it.second.u32range.max);
             if (!range)
@@ -411,15 +411,15 @@ bool AclRule::createCounter()
     sai_attribute_t attr;
     vector<sai_attribute_t> counter_attrs;
 
-    attr.id =  SAI_ACL_COUNTER_ATTR_TABLE_ID;
+    attr.id = SAI_ACL_COUNTER_ATTR_TABLE_ID;
     attr.value.oid = m_tableOid;
     counter_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_COUNTER_ATTR_ENABLE_BYTE_COUNT;
+    attr.id = SAI_ACL_COUNTER_ATTR_ENABLE_BYTE_COUNT;
     attr.value.booldata = true;
     counter_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_COUNTER_ATTR_ENABLE_PACKET_COUNT;
+    attr.id = SAI_ACL_COUNTER_ATTR_ENABLE_PACKET_COUNT;
     attr.value.booldata = true;
     counter_attrs.push_back(attr);
 
@@ -698,11 +698,11 @@ AclRange *AclRange::create(sai_acl_range_type_t type, int min, int max)
             }
         }
 
-        attr.id =  SAI_ACL_RANGE_ATTR_TYPE;
+        attr.id = SAI_ACL_RANGE_ATTR_TYPE;
         attr.value.s32 = type;
         range_attrs.push_back(attr);
 
-        attr.id =  SAI_ACL_RANGE_ATTR_LIMIT;
+        attr.id = SAI_ACL_RANGE_ATTR_LIMIT;
         attr.value.u32range.min = min;
         attr.value.u32range.max = max;
         range_attrs.push_back(attr);
@@ -773,7 +773,7 @@ bool AclRange::remove()
 
     if (m_refCnt == 0)
     {
-        SWSS_LOG_DEBUG("Range object oid %lX ref count is %d, removing..", m_oid, m_refCnt);
+        SWSS_LOG_INFO("Range object oid %lX ref count is %d, removing..", m_oid, m_refCnt);
         if (sai_acl_api->remove_acl_range(m_oid) != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to delete ACL Range object oid: %lX", m_oid);
@@ -786,7 +786,7 @@ bool AclRange::remove()
     }
     else
     {
-        SWSS_LOG_DEBUG("Range object oid %lX ref count decreased to %d", m_oid, m_refCnt);
+        SWSS_LOG_INFO("Range object oid %lX ref count decreased to %d", m_oid, m_refCnt);
     }
 
     return true;
@@ -997,7 +997,7 @@ void AclOrch::doAclRuleTask(Consumer &consumer)
         string rule_id = key.substr(found + 1);
         string op = kfvOp(t);
 
-        SWSS_LOG_DEBUG("OP: %s, TABLE_ID: %s, RULE_ID: %s", op.c_str(), table_id.c_str(), rule_id.c_str());
+        SWSS_LOG_INFO("OP: %s, TABLE_ID: %s, RULE_ID: %s", op.c_str(), table_id.c_str(), rule_id.c_str());
 
         if (op == SET_COMMAND)
         {
@@ -1019,7 +1019,7 @@ void AclOrch::doAclRuleTask(Consumer &consumer)
                     string attr_name = toUpper(fvField(itr));
                     string attr_value = fvValue(itr);
 
-                    SWSS_LOG_DEBUG("ATTRIBUTE: %s %s", attr_name.c_str(), attr_value.c_str());
+                    SWSS_LOG_INFO("ATTRIBUTE: %s %s", attr_name.c_str(), attr_value.c_str());
 
                     if (newRule->validateAddPriority(attr_name, attr_value))
                     {
@@ -1214,54 +1214,54 @@ sai_status_t AclOrch::createBindAclTable(AclTable &aclTable, sai_object_id_t &ta
     attr.value.s32 = SAI_ACL_BIND_POINT_PORT;
     table_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_TABLE_ATTR_STAGE;
+    attr.id = SAI_ACL_TABLE_ATTR_STAGE;
     attr.value.s32 = SAI_ACL_STAGE_INGRESS;
     table_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_TABLE_ATTR_PRIORITY;
+    attr.id = SAI_ACL_TABLE_ATTR_PRIORITY;
     attr.value.u32 = DEFAULT_TABLE_PRIORITY;
     table_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_TABLE_ATTR_FIELD_ETHER_TYPE;
+    attr.id = SAI_ACL_TABLE_ATTR_FIELD_ETHER_TYPE;
     attr.value.booldata = true;
     table_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_TABLE_ATTR_FIELD_IP_TYPE;
+    attr.id = SAI_ACL_TABLE_ATTR_FIELD_IP_TYPE;
     attr.value.booldata = true;
     table_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_TABLE_ATTR_FIELD_IP_PROTOCOL;
+    attr.id = SAI_ACL_TABLE_ATTR_FIELD_IP_PROTOCOL;
     attr.value.booldata = true;
     table_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_TABLE_ATTR_FIELD_SRC_IP;
+    attr.id = SAI_ACL_TABLE_ATTR_FIELD_SRC_IP;
     attr.value.booldata = true;
     table_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_TABLE_ATTR_FIELD_DST_IP;
+    attr.id = SAI_ACL_TABLE_ATTR_FIELD_DST_IP;
     attr.value.booldata = true;
     table_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_TABLE_ATTR_FIELD_L4_SRC_PORT;
+    attr.id = SAI_ACL_TABLE_ATTR_FIELD_L4_SRC_PORT;
     attr.value.booldata = true;
     table_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_TABLE_ATTR_FIELD_L4_DST_PORT;
+    attr.id = SAI_ACL_TABLE_ATTR_FIELD_L4_DST_PORT;
     attr.value.booldata = true;
     table_attrs.push_back(attr);
 
-    attr.id =  SAI_ACL_TABLE_ATTR_FIELD_TCP_FLAGS;
+    attr.id = SAI_ACL_TABLE_ATTR_FIELD_TCP_FLAGS;
     attr.value.booldata = true;
     table_attrs.push_back(attr);
 
     if (aclTable.type == ACL_TABLE_MIRROR)
     {
-        attr.id =  SAI_ACL_TABLE_ATTR_FIELD_DSCP;
+        attr.id = SAI_ACL_TABLE_ATTR_FIELD_DSCP;
         attr.value.booldata = true;
         table_attrs.push_back(attr);
     }
 
-    attr.id =  SAI_ACL_TABLE_ATTR_FIELD_RANGE;
+    attr.id = SAI_ACL_TABLE_ATTR_FIELD_RANGE;
     // workaround until SAI is fixed
 #if 0
     attr.value.s32list.count = sizeof(range_types_list) / sizeof(range_types_list[0]);
