@@ -234,7 +234,6 @@ bool AclRule::validateAddMatch(string attr_name, string attr_value)
         return false;
     }
 
-    value.aclfield.enable = true;
     m_matches[aclMatchLookup[attr_name]] = value;
 
     return true;
@@ -321,6 +320,7 @@ bool AclRule::create()
         {
             attr.id = it.first;
             attr.value = it.second;
+            attr.value.aclfield.enable = true;
             rule_attrs.push_back(attr);
         }
     }
@@ -329,6 +329,7 @@ bool AclRule::create()
     if (range_object_list.count > 0)
     {
         attr.id = SAI_ACL_ENTRY_ATTR_FIELD_RANGE;
+        attr.value.aclfield.enable = true;
         attr.value.aclfield.data.objlist = range_object_list;
         rule_attrs.push_back(attr);
     }
