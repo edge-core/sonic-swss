@@ -61,10 +61,12 @@ private:
     bool m_initDone = false;
     sai_object_id_t m_cpuPort;
     sai_object_id_t m_default1QBridge;
+    sai_object_id_t m_defaultVlan;
 
     sai_uint32_t m_portCount;
     map<set<int>, sai_object_id_t> m_portListLaneMap;
     boost::bimap<sai_object_id_t, sai_object_id_t> m_bridgePort; // port id -> bridge port id
+    map<sai_object_id_t, sai_object_id_t> m_bridgePortVlanMember; // bridge port id -> vlan member id
     map<string, Port> m_portList;
 
     void doTask(Consumer &consumer);
