@@ -124,7 +124,9 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
     // Get list bridge ports in the default 1Q bridge
     sai_attribute_t bridge_attr;
     bridge_attr.id = SAI_BRIDGE_ATTR_PORT_LIST;
-    bridge_attr.value.objlist.count = 100;
+    vector<sai_object_id_t> bp_list(100);
+    bridge_attr.value.objlist.list = bp_list.data();
+    bridge_attr.value.objlist.count = bp_list.size();
     status = sai_bridge_api->get_bridge_attribute(m_default1QBridge, 1, &bridge_attr);
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -137,8 +139,19 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
     {
         sai_object_id_t bridge_port_id = bridge_attr.value.objlist.list[i];
 
-        // Set the learning_mode
+        // Get the bridge port attributes
         sai_attribute_t bport_attr;
+        bport_attr.id = SAI_BRIDGE_PORT_ATTR_TYPE;
+        status = sai_bridge_api->get_bridge_port_attribute(bridge_port_id, 1, &bport_attr);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to get bridge port %lx type attribute: %d", bridge_port_id, status);
+            throw "PortsOrch initialization failure";
+        }
+
+        if (bport_attr.value.s32 != SAI_BRIDGE_PORT_TYPE_PORT) continue;
+
+        // Set the learning_mode
         bport_attr.id = SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE;
         bport_attr.value.s32 = SAI_BRIDGE_PORT_FDB_LEARNING_MODE_HW;
         status = sai_bridge_api->set_bridge_port_attribute(bridge_port_id, &bport_attr);

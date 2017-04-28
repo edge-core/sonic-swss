@@ -175,18 +175,17 @@ bool CoppOrch::applyAttributesToTrapIds(sai_object_id_t trap_group_id,
 {
     sai_status_t status;
 
-    vector<sai_attribute_t> attrs(2);
-    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
-    attrs[0].value.oid = trap_group_id;
-    attrs[1].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    vector<sai_attribute_t> attrs(1);
+    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
 
     for (auto trap_id : trap_id_list)
     {
         auto found = m_trap_type_map.find(trap_id);
         if (found == m_trap_type_map.end())
         {
-            attrs.resize(2);
-            attrs[1].value.s32 = trap_id;
+            // Reuse the first element in attrs list
+            attrs.resize(1);
+            attrs[0].value.s32 = trap_id;
             attrs.insert(attrs.end(), trap_id_attribs.begin(), trap_id_attribs.end());
 
             sai_object_id_t hostif_trap_id;

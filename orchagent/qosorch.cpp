@@ -648,7 +648,10 @@ sai_object_id_t QosOrch::initSystemAclTable()
 
     /* Create system ACL table */
     attr.id = SAI_ACL_TABLE_ATTR_ACL_BIND_POINT_TYPE_LIST;
-    attr.value.s32 = SAI_ACL_BIND_POINT_TYPE_PORT;
+    vector<int32_t> bpoint_list;
+    bpoint_list.push_back(SAI_ACL_BIND_POINT_TYPE_PORT);
+    attr.value.s32list.count = 1;
+    attr.value.s32list.list = bpoint_list.data();
     attrs.push_back(attr);
 
     attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
@@ -716,13 +719,13 @@ void QosOrch::initAclEntryForEcn(sai_object_id_t acl_table_id, sai_uint32_t prio
     attr.id = SAI_ACL_TABLE_ATTR_FIELD_ECN;
     attr.value.aclfield.enable = true;
     attr.value.aclfield.data.u8 = ecn_field;
-    attr.value.aclfield.mask.u8 = 0xff;
+    attr.value.aclfield.mask.u8 = 0x3;
     attrs.push_back(attr);
 
     attr.id = SAI_ACL_TABLE_ATTR_FIELD_DSCP;
     attr.value.aclfield.enable = true;
     attr.value.aclfield.data.u8 = dscp_field;
-    attr.value.aclfield.mask.u8 = 0xff;
+    attr.value.aclfield.mask.u8 = 0x3f;
     attrs.push_back(attr);
 
     attr.id = SAI_ACL_ENTRY_ATTR_ACTION_SET_PACKET_COLOR;

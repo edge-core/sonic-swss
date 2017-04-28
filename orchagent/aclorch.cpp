@@ -1233,7 +1233,10 @@ sai_status_t AclOrch::createBindAclTable(AclTable &aclTable, sai_object_id_t &ta
         };
 
     attr.id = SAI_ACL_TABLE_ATTR_ACL_BIND_POINT_TYPE_LIST;
-    attr.value.s32 = SAI_ACL_BIND_POINT_TYPE_PORT;
+    vector<int32_t> bpoint_list;
+    bpoint_list.push_back(SAI_ACL_BIND_POINT_TYPE_PORT);
+    attr.value.s32list.count = 1;
+    attr.value.s32list.list = bpoint_list.data();
     table_attrs.push_back(attr);
 
     attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
