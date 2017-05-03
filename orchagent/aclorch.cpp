@@ -817,6 +817,10 @@ AclOrch::AclOrch(DBConnector *db, vector<string> tableNames, PortsOrch *portOrch
     }
 
     m_mirrorOrch->attach(this);
+
+    // Should be initialized last to guaranty that object is
+    // initialized before thread start.
+    m_countersThread = thread(AclOrch::collectCountersThread, this);
 }
 
 AclOrch::~AclOrch()
@@ -825,6 +829,8 @@ AclOrch::~AclOrch()
 
     m_bCollectCounters = false;
     m_sleepGuard.notify_all();
+
+    m_countersThread.join();
 }
 
 void AclOrch::update(SubjectType type, void *cntx)

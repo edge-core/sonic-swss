@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <thread>
 #include <mutex>
 #include <tuple>
 #include <condition_variable>
@@ -274,6 +275,8 @@ private:
 
     PortsOrch *m_portOrch;
     MirrorOrch *m_mirrorOrch;
+
+    thread m_countersThread;
 };
 
 #endif /* SWSS_ACLORCH_H */
