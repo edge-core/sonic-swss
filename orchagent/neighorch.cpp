@@ -227,6 +227,7 @@ bool NeighOrch::addNeighbor(NeighborEntry neighborEntry, MacAddress macAddress)
 
     sai_neighbor_entry_t neighbor_entry;
     neighbor_entry.rif_id = rif_id;
+    neighbor_entry.switch_id = gSwitchId;
     copy(neighbor_entry.ip_address, ip_address);
 
     sai_attribute_t neighbor_attr;
@@ -301,6 +302,7 @@ bool NeighOrch::removeNeighbor(NeighborEntry neighborEntry)
 
     sai_neighbor_entry_t neighbor_entry;
     neighbor_entry.rif_id = rif_id;
+    neighbor_entry.switch_id = gSwitchId;
     copy(neighbor_entry.ip_address, ip_address);
 
     sai_object_id_t next_hop_id = m_syncdNextHops[ip_address].next_hop_id;

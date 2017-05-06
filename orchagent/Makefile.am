@@ -14,7 +14,7 @@ orchagent_SOURCES = main.cpp port.cpp orchdaemon.cpp orch.cpp notifications.cpp 
 
 orchagent_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) $(CFLAGS_COMMON) $(CFLAGS_SAI)
 orchagent_CPPFLAGS = $(DBGFLAGS) $(AM_CFLAGS) $(CFLAGS_COMMON) $(CFLAGS_SAI)
-orchagent_LDADD = -lnl-3 -lnl-route-3 -lpthread -lsai -lsaimetadata -lswsscommon
+orchagent_LDADD = -lnl-3 -lnl-route-3 -lpthread -lsairedis -lswsscommon -lsaimetadata
 
 routeresync_SOURCES = routeresync.cpp
 routeresync_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) $(CFLAGS_COMMON)

@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include "orchdaemon.h"
 #include "logger.h"
+#include <sairedis.h>
 
 #define SAI_SWITCH_ATTR_CUSTOM_RANGE_BASE SAI_SWITCH_ATTR_CUSTOM_RANGE_START
 #include "sairedis.h"

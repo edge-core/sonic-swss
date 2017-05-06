@@ -60,6 +60,7 @@ RouteOrch::RouteOrch(DBConnector *db, string tableName, NeighOrch *neighOrch) :
 
     sai_route_entry_t unicast_route_entry;
     unicast_route_entry.vr_id = gVirtualRouterId;
+    unicast_route_entry.switch_id = gSwitchId;
     copy(unicast_route_entry.destination, default_ip_prefix);
     subnet(unicast_route_entry.destination, unicast_route_entry.destination);
 
@@ -628,6 +629,7 @@ bool RouteOrch::addRoute(IpPrefix ipPrefix, IpAddresses nextHops)
     /* Sync the route entry */
     sai_route_entry_t route_entry;
     route_entry.vr_id = gVirtualRouterId;
+    route_entry.switch_id = gSwitchId;
     copy(route_entry.destination, ipPrefix);
 
     sai_attribute_t route_attr;
@@ -718,6 +720,7 @@ bool RouteOrch::removeRoute(IpPrefix ipPrefix)
 
     sai_route_entry_t route_entry;
     route_entry.vr_id = gVirtualRouterId;
+    route_entry.switch_id = gSwitchId;
     copy(route_entry.destination, ipPrefix);
 
     // set to blackhole for default route

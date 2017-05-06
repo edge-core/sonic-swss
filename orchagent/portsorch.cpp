@@ -83,7 +83,7 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
     /* Get port hardware lane info */
     for (i = 0; i < m_portCount; i++)
     {
-        sai_uint32_t lanes[4];
+        sai_uint32_t lanes[4] = { 0,0,0,0 };
         attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
         attr.value.u32list.count = 4;
         attr.value.u32list.list = lanes;
@@ -133,6 +133,7 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
     vector<sai_object_id_t> bp_list(100);
     bridge_attr.value.objlist.list = bp_list.data();
     bridge_attr.value.objlist.count = bp_list.size();
+
     status = sai_bridge_api->get_bridge_attribute(m_default1QBridge, 1, &bridge_attr);
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -146,7 +147,7 @@ PortsOrch::PortsOrch(DBConnector *db, vector<string> tableNames) :
         sai_object_id_t bridge_port_id = bridge_attr.value.objlist.list[i];
 
         // Get the bridge port attributes
-        sai_attribute_t bport_attr;
+        sai_attribute_t bport_attr = { 0 };
         bport_attr.id = SAI_BRIDGE_PORT_ATTR_TYPE;
         status = sai_bridge_api->get_bridge_port_attribute(bridge_port_id, 1, &bport_attr);
         if (status != SAI_STATUS_SUCCESS)
