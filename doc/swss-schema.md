@@ -170,6 +170,24 @@ and reflects the LAG ports into the redis under: `LAG_TABLE:<team0>:port`
     family        = "IPv4" / "IPv6"  ; address family
 
 ---------------------------------------------
+###FDB_TABLE
+
+    ; Stores FDB entries which were inserted into SAI state manually
+    ; Notes:
+    ; - only unicast FDB entries supported
+    ; - only Vlan interfaces are supported
+    key           = FDB_TABLE:"Vlan"vlanid:mac_address ; mac address will be inserted to FDB for the vlan interface
+    port          = ifName                ; interface where the entry is bound to
+    type          = "static" / "dynamic"  ; type of the entry
+
+    Example:
+    127.0.0.1:6379> hgetall FDB_TABLE:Vlan2:52-54-00-25-06-E9
+    1) "port"
+    2) "Ethernet0"
+    3) "type"
+    4) "static"
+
+---------------------------------------------
 ###QUEUE_TABLE
 
     ; QUEUE table. Defines port queue.
