@@ -9,6 +9,9 @@
 
 #include <map>
 
+#define FCS_LEN 4
+#define VLAN_TAG_LEN 4
+
 static const map<sai_port_oper_status_t, string> oper_status_strings =
 {
     { SAI_PORT_OPER_STATUS_UNKNOWN,     "unknown" },
@@ -80,6 +83,7 @@ private:
     bool removeLagMember(Port lag, Port port);
 
     bool setPortAdminStatus(sai_object_id_t id, bool up);
+    bool setPortMtu(sai_object_id_t id, sai_uint32_t mtu);
 };
 #endif /* SWSS_PORTSORCH_H */
 
