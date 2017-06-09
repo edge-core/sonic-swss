@@ -224,6 +224,9 @@ map<string, Port>& PortsOrch::getAllPorts()
 
 bool PortsOrch::getBridgePort(sai_object_id_t bridge_port_id, Port &port)
 {
+    if (m_bridgePort.right.find(bridge_port_id) == m_bridgePort.right.end())
+        return false;
+
     sai_object_id_t port_id = m_bridgePort.right.at(bridge_port_id);
 
     // TODO: optimize by dictionary query
