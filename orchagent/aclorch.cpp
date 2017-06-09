@@ -38,10 +38,11 @@ acl_rule_attr_lookup_t aclMatchLookup =
     { MATCH_L4_DST_PORT_RANGE, (sai_acl_entry_attr_t)SAI_ACL_RANGE_L4_DST_PORT_RANGE },
 };
 
-acl_rule_attr_lookup_t aclActionLookup =
+acl_rule_attr_lookup_t aclL3ActionLookup =
 {
-    { ACTION_PACKET_ACTION, SAI_ACL_ENTRY_ATTR_PACKET_ACTION },
-    { ACTION_MIRROR_ACTION, SAI_ACL_ENTRY_ATTR_ACTION_MIRROR_INGRESS }
+    { PACKET_ACTION_FORWARD,  SAI_ACL_ENTRY_ATTR_PACKET_ACTION },
+    { PACKET_ACTION_DROP,     SAI_ACL_ENTRY_ATTR_PACKET_ACTION },
+    { PACKET_ACTION_REDIRECT, SAI_ACL_ENTRY_ATTR_ACTION_REDIRECT }
 };
 
 static acl_table_type_lookup_t aclTableTypeLookUp =
@@ -345,9 +346,40 @@ bool AclRule::create()
     {
         SWSS_LOG_ERROR("Failed to create ACL rule");
         AclRange::remove(range_objects, range_object_list.count);
+        decreaseNextHopRefCount();
     }
 
     return (status == SAI_STATUS_SUCCESS);
+}
+
+void AclRule::decreaseNextHopRefCount()
+{
+    if (!m_redirect_target_next_hop.empty())
+    {
+        m_pAclOrch->m_neighOrch->decreaseNextHopRefCount(IpAddress(m_redirect_target_next_hop));
+        m_redirect_target_next_hop.clear();
+    }
+    if (!m_redirect_target_next_hop_group.empty())
+    {
+        IpAddresses target = IpAddresses(m_redirect_target_next_hop_group);
+        m_pAclOrch->m_routeOrch->decreaseNextHopRefCount(target);
+        // remove next hop group in case it's not used by anything else
+        if (m_pAclOrch->m_routeOrch->isRefCounterZero(target))
+        {
+            if (m_pAclOrch->m_routeOrch->removeNextHopGroup(target))
+            {
+                SWSS_LOG_DEBUG("Removed acl redirect target next hop group '%s'", m_redirect_target_next_hop_group.c_str());
+            }
+            else
+            {
+                SWSS_LOG_ERROR("Failed to remove unused next hop group '%s'", m_redirect_target_next_hop_group.c_str());
+                // FIXME: what else could we do here?
+            }
+        }
+        m_redirect_target_next_hop_group.clear();
+    }
+
+    return;
 }
 
 bool AclRule::remove()
@@ -362,6 +394,8 @@ bool AclRule::remove()
     }
 
     m_ruleOid = SAI_NULL_OBJECT_ID;
+
+    decreaseNextHopRefCount();
 
     res = removeRanges();
     res &= removeCounter();
@@ -477,9 +511,6 @@ bool AclRuleL3::validateAddAction(string attr_name, string _attr_value)
     string attr_value = toUpper(_attr_value);
     sai_attribute_value_t value;
 
-    if (aclActionLookup.find(attr_name) == aclActionLookup.end())
-        return false;
-
     if (attr_name != ACTION_PACKET_ACTION)
     {
         return false;
@@ -493,15 +524,114 @@ bool AclRuleL3::validateAddAction(string attr_name, string _attr_value)
     {
         value.aclaction.parameter.s32 = SAI_PACKET_ACTION_DROP;
     }
+    else if (attr_value.find(PACKET_ACTION_REDIRECT) != string::npos)
+    {
+        // resize attr_value to remove argument, _attr_value still has the argument
+        attr_value.resize(string(PACKET_ACTION_REDIRECT).length());
+
+        sai_object_id_t param_id = getRedirectObjectId(_attr_value);
+        if (param_id == SAI_NULL_OBJECT_ID)
+        {
+            return false;
+        }
+        value.aclaction.parameter.oid = param_id;
+    }
     else
     {
         return false;
     }
     value.aclaction.enable = true;
 
-    m_actions[aclActionLookup[attr_name]] = value;
+    m_actions[aclL3ActionLookup[attr_value]] = value;
 
     return true;
+}
+
+// This method should return sai attribute id of the redirect destination
+sai_object_id_t AclRuleL3::getRedirectObjectId(const string& redirect_value)
+{
+    // check that we have a colon after redirect rule
+    size_t colon_pos = string(PACKET_ACTION_REDIRECT).length();
+    if (redirect_value[colon_pos] != ':')
+    {
+        SWSS_LOG_ERROR("Redirect action rule must have ':' after REDIRECT");
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    if (colon_pos + 1 == redirect_value.length())
+    {
+        SWSS_LOG_ERROR("Redirect action rule must have a target after 'REDIRECT:' action");
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    string target = redirect_value.substr(colon_pos + 1);
+
+    // Try to parse physical port and LAG first
+    Port port;
+    if(m_pAclOrch->m_portOrch->getPort(target, port))
+    {
+        if (port.m_type == Port::PHY)
+        {
+            return port.m_port_id;
+        }
+        else if (port.m_type == Port::LAG)
+        {
+            return port.m_lag_id;
+        }
+        else
+        {
+            SWSS_LOG_ERROR("Wrong port type for REDIRECT action. Only physical ports and LAG ports are supported");
+            return SAI_NULL_OBJECT_ID;
+        }
+    }
+
+    // Try to parse nexthop ip address
+    try
+    {
+        IpAddress ip(target);
+        if (!m_pAclOrch->m_neighOrch->hasNextHop(ip))
+        {
+            SWSS_LOG_ERROR("ACL Redirect action target next hop ip: '%s' doesn't exist on the switch", ip.to_string().c_str());
+            return SAI_NULL_OBJECT_ID;
+        }
+
+        m_redirect_target_next_hop = target;
+        m_pAclOrch->m_neighOrch->increaseNextHopRefCount(ip);
+        return m_pAclOrch->m_neighOrch->getNextHopId(ip);
+    }
+    catch (...)
+    {
+        // no error, just try next variant
+    }
+
+    // try to parse nh group ip addresses
+    try
+    {
+        IpAddresses ips(target);
+        if (!m_pAclOrch->m_routeOrch->hasNextHopGroup(ips))
+        {
+            SWSS_LOG_INFO("ACL Redirect action target next hop group: '%s' doesn't exist on the switch. Creating it.", ips.to_string().c_str());
+
+            if(!m_pAclOrch->m_routeOrch->addNextHopGroup(ips))
+            {
+                SWSS_LOG_ERROR("Can't create required target next hop group '%s'", ips.to_string().c_str());
+                return SAI_NULL_OBJECT_ID;
+            }
+            SWSS_LOG_DEBUG("Created acl redirect target next hop group '%s'", ips.to_string().c_str());
+        }
+
+        m_redirect_target_next_hop_group = target;
+        m_pAclOrch->m_routeOrch->increaseNextHopRefCount(ips);
+        return m_pAclOrch->m_routeOrch->getNextHopGroupId(ips);
+    }
+    catch (...)
+    {
+        // no error, just try next variant
+    }
+
+    SWSS_LOG_ERROR("ACL Redirect action target '%s' wasn't recognized", target.c_str());
+
+    return SAI_NULL_OBJECT_ID;
 }
 
 bool AclRuleL3::validateAddMatch(string attr_name, string attr_value)
@@ -805,10 +935,12 @@ bool AclRange::remove()
     return true;
 }
 
-AclOrch::AclOrch(DBConnector *db, vector<string> tableNames, PortsOrch *portOrch, MirrorOrch *mirrorOrch) :
+AclOrch::AclOrch(DBConnector *db, vector<string> tableNames, PortsOrch *portOrch, MirrorOrch *mirrorOrch, NeighOrch *neighOrch, RouteOrch *routeOrch) :
         Orch(db, tableNames),
         m_portOrch(portOrch),
-        m_mirrorOrch(mirrorOrch)
+        m_mirrorOrch(mirrorOrch),
+        m_neighOrch(neighOrch),
+        m_routeOrch(routeOrch)
 {
     SWSS_LOG_ENTER();
 

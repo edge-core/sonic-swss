@@ -43,6 +43,7 @@
 
 #define PACKET_ACTION_FORWARD   "FORWARD"
 #define PACKET_ACTION_DROP      "DROP"
+#define PACKET_ACTION_REDIRECT  "REDIRECT"
 
 #define IP_TYPE_ANY             "ANY"
 #define IP_TYPE_IP              "IP"
@@ -163,6 +164,8 @@ protected:
     virtual bool removeCounter();
     virtual bool removeRanges();
 
+    void decreaseNextHopRefCount();
+
     static sai_uint32_t m_minPriority;
     static sai_uint32_t m_maxPriority;
     AclOrch *m_pAclOrch;
@@ -174,6 +177,8 @@ protected:
     uint32_t m_priority;
     map <sai_acl_entry_attr_t, sai_attribute_value_t> m_matches;
     map <sai_acl_entry_attr_t, sai_attribute_value_t> m_actions;
+    string m_redirect_target_next_hop;
+    string m_redirect_target_next_hop_group;
 };
 
 class AclRuleL3: public AclRule
@@ -185,6 +190,8 @@ public:
     bool validateAddMatch(string attr_name, string attr_value);
     bool validate();
     void update(SubjectType, void *);
+private:
+    sai_object_id_t getRedirectObjectId(const string& redirect_param);
 };
 
 class AclRuleMirror: public AclRule
@@ -231,7 +238,7 @@ inline void split(string str, Iterable& out, char delim = ' ')
 class AclOrch : public Orch, public Observer
 {
 public:
-    AclOrch(DBConnector *db, vector<string> tableNames, PortsOrch *portOrch, MirrorOrch *mirrorOrch);
+    AclOrch(DBConnector *db, vector<string> tableNames, PortsOrch *portOrch, MirrorOrch *mirrorOrch, NeighOrch *neighOrch, RouteOrch *routeOrch);
     ~AclOrch();
     void update(SubjectType, void *);
 
@@ -241,6 +248,12 @@ public:
     {
         return m_countersTable;
     }
+
+    // FIXME: Add getters for them? I'd better to add a common directory of orch objects and use it everywhere
+    PortsOrch *m_portOrch;
+    MirrorOrch *m_mirrorOrch;
+    NeighOrch *m_neighOrch;
+    RouteOrch *m_routeOrch;
 
 private:
     void doTask(Consumer &consumer);
@@ -267,9 +280,6 @@ private:
     static bool m_bCollectCounters;
     static swss::DBConnector m_db;
     static swss::Table m_countersTable;
-
-    PortsOrch *m_portOrch;
-    MirrorOrch *m_mirrorOrch;
 
     thread m_countersThread;
 };

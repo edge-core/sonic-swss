@@ -47,10 +47,18 @@ class RouteOrch : public Orch, public Subject
 public:
     RouteOrch(DBConnector *db, string tableName, NeighOrch *neighOrch);
 
-    bool hasNextHopGroup(IpAddresses);
+    bool hasNextHopGroup(const IpAddresses&) const;
+    sai_object_id_t getNextHopGroupId(const IpAddresses&);
 
     void attach(Observer *, const IpAddress&);
     void detach(Observer *, const IpAddress&);
+
+    void increaseNextHopRefCount(IpAddresses);
+    void decreaseNextHopRefCount(IpAddresses);
+    bool isRefCounterZero(const IpAddresses&) const;
+
+    bool addNextHopGroup(IpAddresses);
+    bool removeNextHopGroup(IpAddresses);
 
 private:
     NeighOrch *m_neighOrch;
@@ -63,12 +71,6 @@ private:
     NextHopGroupTable m_syncdNextHopGroups;
 
     NextHopObserverTable m_nextHopObservers;
-
-    void increaseNextHopRefCount(IpAddresses);
-    void decreaseNextHopRefCount(IpAddresses);
-
-    bool addNextHopGroup(IpAddresses);
-    bool removeNextHopGroup(IpAddresses);
 
     void addTempRoute(IpPrefix, IpAddresses);
     bool addRoute(IpPrefix, IpAddresses);
