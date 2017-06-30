@@ -1100,6 +1100,22 @@ bool PortsOrch::addVlanMember(Port vlan, Port port, string& tagging_mode)
     SWSS_LOG_NOTICE("Add member %s to VLAN %s vid:%hu pid%lx",
             port.m_alias.c_str(), vlan.m_alias.c_str(), vlan.m_vlan_id, port.m_port_id);
 
+    if (tagging_mode == "untagged") // set pvlan id for untagged port only
+    {
+        attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+        attr.value.u16 = vlan.m_vlan_id;
+
+        status = sai_port_api->set_port_attribute(port.m_port_id, &attr);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to set port VLAN ID vid:%hu pid:%lx",
+                    vlan.m_vlan_id, port.m_port_id);
+            return false;
+        }
+
+        SWSS_LOG_INFO("Set port %s VLAN ID to %hu", port.m_alias.c_str(), vlan.m_vlan_id);
+    }
+
 #if 0
     // Set port bind mode
     sai_attribute_t port_attr;

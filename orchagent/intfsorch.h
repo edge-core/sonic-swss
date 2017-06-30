@@ -9,13 +9,14 @@
 #include "macaddress.h"
 
 #include <map>
+#include <set>
 
 extern sai_object_id_t gVirtualRouterId;
 extern MacAddress gMacAddress;
 
 struct IntfsEntry
 {
-    IpAddresses         ip_addresses;
+    std::set<IpPrefix>  ip_addresses;
     int                 ref_count;
 };
 
@@ -26,15 +27,15 @@ class IntfsOrch : public Orch
 public:
     IntfsOrch(DBConnector *db, string tableName);
 
-    sai_object_id_t getRouterIntfsId(string);
+    sai_object_id_t getRouterIntfsId(const string&);
 
-    void increaseRouterIntfsRefCount(const string);
-    void decreaseRouterIntfsRefCount(const string);
+    void increaseRouterIntfsRefCount(const string&);
+    void decreaseRouterIntfsRefCount(const string&);
 private:
     IntfsTable m_syncdIntfses;
     void doTask(Consumer &consumer);
 
-    int getRouterIntfsRefCount(string);
+    int getRouterIntfsRefCount(const string&);
 
     bool addRouterIntfs(Port &port);
     bool removeRouterIntfs(Port &port);

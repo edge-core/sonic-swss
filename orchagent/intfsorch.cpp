@@ -24,7 +24,7 @@ IntfsOrch::IntfsOrch(DBConnector *db, string tableName) :
     SWSS_LOG_ENTER();
 }
 
-sai_object_id_t IntfsOrch::getRouterIntfsId(string alias)
+sai_object_id_t IntfsOrch::getRouterIntfsId(const string &alias)
 {
     Port port;
     gPortsOrch->getPort(alias, port);
@@ -32,7 +32,7 @@ sai_object_id_t IntfsOrch::getRouterIntfsId(string alias)
     return port.m_rif_id;
 }
 
-void IntfsOrch::increaseRouterIntfsRefCount(const string alias)
+void IntfsOrch::increaseRouterIntfsRefCount(const string &alias)
 {
     SWSS_LOG_ENTER();
 
@@ -41,7 +41,7 @@ void IntfsOrch::increaseRouterIntfsRefCount(const string alias)
                   alias.c_str(), m_syncdIntfses[alias].ref_count);
 }
 
-void IntfsOrch::decreaseRouterIntfsRefCount(const string alias)
+void IntfsOrch::decreaseRouterIntfsRefCount(const string &alias)
 {
     SWSS_LOG_ENTER();
 
@@ -88,33 +88,61 @@ void IntfsOrch::doTask(Consumer &consumer)
             }
 
             auto it_intfs = m_syncdIntfses.find(alias);
-            if (it_intfs == m_syncdIntfses.end() ||
-                !m_syncdIntfses[alias].ip_addresses.contains(ip_prefix.getIp()))
+            if (it_intfs == m_syncdIntfses.end())
             {
-                if (it_intfs == m_syncdIntfses.end())
+                if (addRouterIntfs(port))
                 {
-                    if (addRouterIntfs(port))
-                    {
-                        IntfsEntry intfs_entry;
-                        intfs_entry.ref_count = 0;
-                        m_syncdIntfses[alias] = intfs_entry;
-                    }
-                    else
-                    {
-                        it++;
-                        continue;
-                    }
+                    IntfsEntry intfs_entry;
+                    intfs_entry.ref_count = 0;
+                    m_syncdIntfses[alias] = intfs_entry;
                 }
-
-                addSubnetRoute(port, ip_prefix);
-                addIp2MeRoute(ip_prefix);
-
-                m_syncdIntfses[alias].ip_addresses.add(ip_prefix.getIp());
-                it = consumer.m_toSync.erase(it);
+                else
+                {
+                    it++;
+                    continue;
+                }
             }
-            else
+
+            if (m_syncdIntfses[alias].ip_addresses.count(ip_prefix))
+            {
                 /* Duplicate entry */
                 it = consumer.m_toSync.erase(it);
+                continue;
+            }
+
+            /* NOTE: Overlap checking is required to handle ifconfig weird behavior.
+             * When set IP address using ifconfig command it applies it in two stages.
+             * On stage one it sets IP address with netmask /8. On stage two it
+             * changes netmask to specified in command. As DB is async event to
+             * add IP address with original netmask may come before event to
+             * delete IP with netmask /8. To handle this we in case of overlap
+             * we should wait until entry with /8 netmask will be removed.
+             * Time frame between those event is quite small.*/
+            bool overlaps = false;
+            for (const auto &prefixIt: m_syncdIntfses[alias].ip_addresses)
+            {
+                if (prefixIt.isAddressInSubnet(ip_prefix.getIp()) ||
+                        ip_prefix.isAddressInSubnet(prefixIt.getIp()))
+                {
+                    overlaps = true;
+                    SWSS_LOG_NOTICE("Router interface %s IP %s overlaps with %s.", port.m_alias.c_str(),
+                            prefixIt.to_string().c_str(), ip_prefix.to_string().c_str());
+                    break;
+                }
+            }
+
+            if (overlaps)
+            {
+                /* Overlap of IP address network */
+                ++it;
+                continue;
+            }
+
+            addSubnetRoute(port, ip_prefix);
+            addIp2MeRoute(ip_prefix);
+
+            m_syncdIntfses[alias].ip_addresses.insert(ip_prefix);
+            it = consumer.m_toSync.erase(it);
         }
         else if (op == DEL_COMMAND)
         {
@@ -135,16 +163,16 @@ void IntfsOrch::doTask(Consumer &consumer)
 
             if (m_syncdIntfses.find(alias) != m_syncdIntfses.end())
             {
-                if (m_syncdIntfses[alias].ip_addresses.contains(ip_prefix.getIp()))
+                if (m_syncdIntfses[alias].ip_addresses.count(ip_prefix))
                 {
                     removeSubnetRoute(port, ip_prefix);
                     removeIp2MeRoute(ip_prefix);
 
-                    m_syncdIntfses[alias].ip_addresses.remove(ip_prefix.getIp());
+                    m_syncdIntfses[alias].ip_addresses.erase(ip_prefix);
                 }
 
                 /* Remove router interface that no IP addresses are associated with */
-                if (m_syncdIntfses[alias].ip_addresses.getSize() == 0)
+                if (m_syncdIntfses[alias].ip_addresses.size() == 0)
                 {
                     if (removeRouterIntfs(port))
                     {

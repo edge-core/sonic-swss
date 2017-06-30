@@ -44,6 +44,7 @@
 
 #define PACKET_ACTION_FORWARD   "FORWARD"
 #define PACKET_ACTION_DROP      "DROP"
+#define PACKET_ACTION_REDIRECT  "REDIRECT"
 
 #define IP_TYPE_ANY             "ANY"
 #define IP_TYPE_IP              "IP"
@@ -124,7 +125,7 @@ struct AclRuleCounters
 class AclRule
 {
 public:
-    AclRule(AclOrch *m_pAclOrch, string rule, string table);
+    AclRule(AclOrch *m_pAclOrch, string rule, string table, acl_table_type_t type);
     virtual bool validateAddPriority(string attr_name, string attr_value);
     virtual bool validateAddMatch(string attr_name, string attr_value);
     virtual bool validateAddAction(string attr_name, string attr_value) = 0;
@@ -156,7 +157,7 @@ public:
         return m_counterOid;
     }
 
-    static shared_ptr<AclRule> makeShared(acl_table_type_t type, AclOrch *acl, MirrorOrch *mirror, string rule, string table);
+    static shared_ptr<AclRule> makeShared(acl_table_type_t type, AclOrch *acl, MirrorOrch *mirror, const string& rule, const string& table, const KeyOpFieldsValuesTuple&);
     virtual ~AclRule() {}
 
 protected:
@@ -164,35 +165,43 @@ protected:
     virtual bool removeCounter();
     virtual bool removeRanges();
 
+    void decreaseNextHopRefCount();
+
     static sai_uint32_t m_minPriority;
     static sai_uint32_t m_maxPriority;
     AclOrch *m_pAclOrch;
     string m_id;
     string m_tableId;
+    acl_table_type_t m_tableType;
     sai_object_id_t m_tableOid;
     sai_object_id_t m_ruleOid;
     sai_object_id_t m_counterOid;
     uint32_t m_priority;
     map <sai_acl_entry_attr_t, sai_attribute_value_t> m_matches;
     map <sai_acl_entry_attr_t, sai_attribute_value_t> m_actions;
+    string m_redirect_target_next_hop;
+    string m_redirect_target_next_hop_group;
 };
 
 class AclRuleL3: public AclRule
 {
 public:
-    AclRuleL3(AclOrch *m_pAclOrch, string rule, string table);
+    AclRuleL3(AclOrch *m_pAclOrch, string rule, string table, acl_table_type_t type);
 
     bool validateAddAction(string attr_name, string attr_value);
     bool validateAddMatch(string attr_name, string attr_value);
     bool validate();
     void update(SubjectType, void *);
+private:
+    sai_object_id_t getRedirectObjectId(const string& redirect_param);
 };
 
 class AclRuleMirror: public AclRule
 {
 public:
-    AclRuleMirror(AclOrch *m_pAclOrch, MirrorOrch *m_pMirrorOrch, string rule, string table);
+    AclRuleMirror(AclOrch *m_pAclOrch, MirrorOrch *m_pMirrorOrch, string rule, string table, acl_table_type_t type);
     bool validateAddAction(string attr_name, string attr_value);
+    bool validateAddMatch(string attr_name, string attr_value);
     bool validate();
     bool create();
     bool remove();
@@ -232,7 +241,7 @@ inline void split(string str, Iterable& out, char delim = ' ')
 class AclOrch : public Orch, public Observer
 {
 public:
-    AclOrch(DBConnector *db, vector<string> tableNames, PortsOrch *portOrch, MirrorOrch *mirrorOrch);
+    AclOrch(DBConnector *db, vector<string> tableNames, PortsOrch *portOrch, MirrorOrch *mirrorOrch, NeighOrch *neighOrch, RouteOrch *routeOrch);
     ~AclOrch();
     void update(SubjectType, void *);
 
@@ -242,6 +251,12 @@ public:
     {
         return m_countersTable;
     }
+
+    // FIXME: Add getters for them? I'd better to add a common directory of orch objects and use it everywhere
+    PortsOrch *m_portOrch;
+    MirrorOrch *m_mirrorOrch;
+    NeighOrch *m_neighOrch;
+    RouteOrch *m_routeOrch;
 
 private:
     void doTask(Consumer &consumer);
@@ -268,9 +283,6 @@ private:
     static bool m_bCollectCounters;
     static swss::DBConnector m_db;
     static swss::Table m_countersTable;
-
-    PortsOrch *m_portOrch;
-    MirrorOrch *m_mirrorOrch;
 
     thread m_countersThread;
 };

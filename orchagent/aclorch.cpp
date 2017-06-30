@@ -40,10 +40,11 @@ acl_rule_attr_lookup_t aclMatchLookup =
     { MATCH_L4_DST_PORT_RANGE, (sai_acl_entry_attr_t)SAI_ACL_RANGE_TYPE_L4_DST_PORT_RANGE },
 };
 
-acl_rule_attr_lookup_t aclActionLookup =
+acl_rule_attr_lookup_t aclL3ActionLookup =
 {
-    { ACTION_PACKET_ACTION, SAI_ACL_ENTRY_ATTR_ACTION_PACKET_ACTION },
-    { ACTION_MIRROR_ACTION, SAI_ACL_ENTRY_ATTR_ACTION_MIRROR_INGRESS }
+    { PACKET_ACTION_FORWARD,  SAI_ACL_ENTRY_ATTR_ACTION_PACKET_ACTION },
+    { PACKET_ACTION_DROP,     SAI_ACL_ENTRY_ATTR_ACTION_PACKET_ACTION },
+    { PACKET_ACTION_REDIRECT, SAI_ACL_ENTRY_ATTR_ACTION_REDIRECT }
 };
 
 static acl_table_type_lookup_t aclTableTypeLookUp =
@@ -87,10 +88,11 @@ inline string trim(const std::string& str, const std::string& whitespace = " \t"
     return str.substr(strBegin, strRange);
 }
 
-AclRule::AclRule(AclOrch *aclOrch, string rule, string table) :
+AclRule::AclRule(AclOrch *aclOrch, string rule, string table, acl_table_type_t type) :
         m_pAclOrch(aclOrch),
         m_id(rule),
         m_tableId(table),
+        m_tableType(type),
         m_tableOid(SAI_NULL_OBJECT_ID),
         m_ruleOid(SAI_NULL_OBJECT_ID),
         m_counterOid(SAI_NULL_OBJECT_ID),
@@ -347,9 +349,40 @@ bool AclRule::create()
     {
         SWSS_LOG_ERROR("Failed to create ACL rule");
         AclRange::remove(range_objects, range_object_list.count);
+        decreaseNextHopRefCount();
     }
 
     return (status == SAI_STATUS_SUCCESS);
+}
+
+void AclRule::decreaseNextHopRefCount()
+{
+    if (!m_redirect_target_next_hop.empty())
+    {
+        m_pAclOrch->m_neighOrch->decreaseNextHopRefCount(IpAddress(m_redirect_target_next_hop));
+        m_redirect_target_next_hop.clear();
+    }
+    if (!m_redirect_target_next_hop_group.empty())
+    {
+        IpAddresses target = IpAddresses(m_redirect_target_next_hop_group);
+        m_pAclOrch->m_routeOrch->decreaseNextHopRefCount(target);
+        // remove next hop group in case it's not used by anything else
+        if (m_pAclOrch->m_routeOrch->isRefCounterZero(target))
+        {
+            if (m_pAclOrch->m_routeOrch->removeNextHopGroup(target))
+            {
+                SWSS_LOG_DEBUG("Removed acl redirect target next hop group '%s'", m_redirect_target_next_hop_group.c_str());
+            }
+            else
+            {
+                SWSS_LOG_ERROR("Failed to remove unused next hop group '%s'", m_redirect_target_next_hop_group.c_str());
+                // FIXME: what else could we do here?
+            }
+        }
+        m_redirect_target_next_hop_group.clear();
+    }
+
+    return;
 }
 
 bool AclRule::remove()
@@ -364,6 +397,8 @@ bool AclRule::remove()
     }
 
     m_ruleOid = SAI_NULL_OBJECT_ID;
+
+    decreaseNextHopRefCount();
 
     res = removeRanges();
     res &= removeCounter();
@@ -388,18 +423,45 @@ AclRuleCounters AclRule::getCounters()
     return AclRuleCounters(counter_attr[0].value.u64, counter_attr[1].value.u64);
 }
 
-shared_ptr<AclRule> AclRule::makeShared(acl_table_type_t type, AclOrch *acl, MirrorOrch *mirror, string rule, string table)
+shared_ptr<AclRule> AclRule::makeShared(acl_table_type_t type, AclOrch *acl, MirrorOrch *mirror, const string& rule, const string& table, const KeyOpFieldsValuesTuple& data)
 {
-    switch (type)
+    string action;
+    bool action_found = false;
+    /* Find action configured by user. Based on action type create rule. */
+    for (const auto& itr : kfvFieldsValues(data))
     {
-    case ACL_TABLE_L3:
-        return make_shared<AclRuleL3>(acl, rule, table);
-    case ACL_TABLE_MIRROR:
-        return make_shared<AclRuleMirror>(acl, mirror, rule, table);
-    case ACL_TABLE_UNKNOWN:
-    default:
-        throw runtime_error("Unknown rule type.");
+        string attr_name = toUpper(fvField(itr));
+        string attr_value = fvValue(itr);
+        if (attr_name == ACTION_PACKET_ACTION || attr_name == ACTION_MIRROR_ACTION)
+        {
+            action_found = true;
+            action = attr_name;
+            break;
+        }
     }
+
+    if (!action_found)
+    {
+        throw runtime_error("ACL rule action is not found in rule " + rule);
+    }
+
+    if (type != ACL_TABLE_L3 && type != ACL_TABLE_MIRROR)
+    {
+        throw runtime_error("Unknown table type.");
+    }
+
+    /* Mirror rules can exist in both tables*/
+    if (action == ACTION_MIRROR_ACTION)
+    {
+        return make_shared<AclRuleMirror>(acl, mirror, rule, table, type);
+    }
+    /* L3 rules can exist only in L3 table */
+    else if (type == ACL_TABLE_L3)
+    {
+        return make_shared<AclRuleL3>(acl, rule, table, type);
+    }
+
+    throw runtime_error("Wrong combination of table type and action in rule " + rule);
 }
 
 bool AclRule::createCounter()
@@ -467,8 +529,8 @@ bool AclRule::removeCounter()
     return true;
 }
 
-AclRuleL3::AclRuleL3(AclOrch *aclOrch, string rule, string table) :
-        AclRule(aclOrch, rule, table)
+AclRuleL3::AclRuleL3(AclOrch *aclOrch, string rule, string table, acl_table_type_t type) :
+        AclRule(aclOrch, rule, table, type)
 {
 }
 
@@ -478,9 +540,6 @@ bool AclRuleL3::validateAddAction(string attr_name, string _attr_value)
 
     string attr_value = toUpper(_attr_value);
     sai_attribute_value_t value;
-
-    if (aclActionLookup.find(attr_name) == aclActionLookup.end())
-        return false;
 
     if (attr_name != ACTION_PACKET_ACTION)
     {
@@ -495,15 +554,114 @@ bool AclRuleL3::validateAddAction(string attr_name, string _attr_value)
     {
         value.aclaction.parameter.s32 = SAI_PACKET_ACTION_DROP;
     }
+    else if (attr_value.find(PACKET_ACTION_REDIRECT) != string::npos)
+    {
+        // resize attr_value to remove argument, _attr_value still has the argument
+        attr_value.resize(string(PACKET_ACTION_REDIRECT).length());
+
+        sai_object_id_t param_id = getRedirectObjectId(_attr_value);
+        if (param_id == SAI_NULL_OBJECT_ID)
+        {
+            return false;
+        }
+        value.aclaction.parameter.oid = param_id;
+    }
     else
     {
         return false;
     }
     value.aclaction.enable = true;
 
-    m_actions[aclActionLookup[attr_name]] = value;
+    m_actions[aclL3ActionLookup[attr_value]] = value;
 
     return true;
+}
+
+// This method should return sai attribute id of the redirect destination
+sai_object_id_t AclRuleL3::getRedirectObjectId(const string& redirect_value)
+{
+    // check that we have a colon after redirect rule
+    size_t colon_pos = string(PACKET_ACTION_REDIRECT).length();
+    if (redirect_value[colon_pos] != ':')
+    {
+        SWSS_LOG_ERROR("Redirect action rule must have ':' after REDIRECT");
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    if (colon_pos + 1 == redirect_value.length())
+    {
+        SWSS_LOG_ERROR("Redirect action rule must have a target after 'REDIRECT:' action");
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    string target = redirect_value.substr(colon_pos + 1);
+
+    // Try to parse physical port and LAG first
+    Port port;
+    if(m_pAclOrch->m_portOrch->getPort(target, port))
+    {
+        if (port.m_type == Port::PHY)
+        {
+            return port.m_port_id;
+        }
+        else if (port.m_type == Port::LAG)
+        {
+            return port.m_lag_id;
+        }
+        else
+        {
+            SWSS_LOG_ERROR("Wrong port type for REDIRECT action. Only physical ports and LAG ports are supported");
+            return SAI_NULL_OBJECT_ID;
+        }
+    }
+
+    // Try to parse nexthop ip address
+    try
+    {
+        IpAddress ip(target);
+        if (!m_pAclOrch->m_neighOrch->hasNextHop(ip))
+        {
+            SWSS_LOG_ERROR("ACL Redirect action target next hop ip: '%s' doesn't exist on the switch", ip.to_string().c_str());
+            return SAI_NULL_OBJECT_ID;
+        }
+
+        m_redirect_target_next_hop = target;
+        m_pAclOrch->m_neighOrch->increaseNextHopRefCount(ip);
+        return m_pAclOrch->m_neighOrch->getNextHopId(ip);
+    }
+    catch (...)
+    {
+        // no error, just try next variant
+    }
+
+    // try to parse nh group ip addresses
+    try
+    {
+        IpAddresses ips(target);
+        if (!m_pAclOrch->m_routeOrch->hasNextHopGroup(ips))
+        {
+            SWSS_LOG_INFO("ACL Redirect action target next hop group: '%s' doesn't exist on the switch. Creating it.", ips.to_string().c_str());
+
+            if(!m_pAclOrch->m_routeOrch->addNextHopGroup(ips))
+            {
+                SWSS_LOG_ERROR("Can't create required target next hop group '%s'", ips.to_string().c_str());
+                return SAI_NULL_OBJECT_ID;
+            }
+            SWSS_LOG_DEBUG("Created acl redirect target next hop group '%s'", ips.to_string().c_str());
+        }
+
+        m_redirect_target_next_hop_group = target;
+        m_pAclOrch->m_routeOrch->increaseNextHopRefCount(ips);
+        return m_pAclOrch->m_routeOrch->getNextHopGroupId(ips);
+    }
+    catch (...)
+    {
+        // no error, just try next variant
+    }
+
+    SWSS_LOG_ERROR("ACL Redirect action target '%s' wasn't recognized", target.c_str());
+
+    return SAI_NULL_OBJECT_ID;
 }
 
 bool AclRuleL3::validateAddMatch(string attr_name, string attr_value)
@@ -534,8 +692,8 @@ void AclRuleL3::update(SubjectType, void *)
     // Do nothing
 }
 
-AclRuleMirror::AclRuleMirror(AclOrch *aclOrch, MirrorOrch *mirror, string rule, string table) :
-        AclRule(aclOrch, rule, table),
+AclRuleMirror::AclRuleMirror(AclOrch *aclOrch, MirrorOrch *mirror, string rule, string table, acl_table_type_t type) :
+        AclRule(aclOrch, rule, table, type),
         m_state(false),
         m_pMirrorOrch(mirror)
 {
@@ -558,6 +716,17 @@ bool AclRuleMirror::validateAddAction(string attr_name, string attr_value)
     m_sessionName = attr_value;
 
     return true;
+}
+
+bool AclRuleMirror::validateAddMatch(string attr_name, string attr_value)
+{
+    if (m_tableType == ACL_TABLE_L3 && attr_name == MATCH_DSCP)
+    {
+        SWSS_LOG_ERROR("DSCP match is not supported for the tables of type L3");
+        return false;
+    }
+
+    return AclRule::validateAddMatch(attr_name, attr_value);
 }
 
 bool AclRuleMirror::validate()
@@ -621,11 +790,6 @@ bool AclRuleMirror::create()
 
 bool AclRuleMirror::remove()
 {
-    if (!m_pMirrorOrch->decreaseRefCount(m_sessionName))
-    {
-        throw runtime_error("Failed to decrease mirror session reference count");
-    }
-
     if (!m_state)
     {
         return true;
@@ -634,6 +798,11 @@ bool AclRuleMirror::remove()
     if (!AclRule::remove())
     {
         return false;
+    }
+
+    if (!m_pMirrorOrch->decreaseRefCount(m_sessionName))
+    {
+        throw runtime_error("Failed to decrease mirror session reference count");
     }
 
     m_state = false;
@@ -807,10 +976,12 @@ bool AclRange::remove()
     return true;
 }
 
-AclOrch::AclOrch(DBConnector *db, vector<string> tableNames, PortsOrch *portOrch, MirrorOrch *mirrorOrch) :
+AclOrch::AclOrch(DBConnector *db, vector<string> tableNames, PortsOrch *portOrch, MirrorOrch *mirrorOrch, NeighOrch *neighOrch, RouteOrch *routeOrch) :
         Orch(db, tableNames),
         m_portOrch(portOrch),
-        m_mirrorOrch(mirrorOrch)
+        m_mirrorOrch(mirrorOrch),
+        m_neighOrch(neighOrch),
+        m_routeOrch(routeOrch)
 {
     SWSS_LOG_ENTER();
 
@@ -861,11 +1032,6 @@ void AclOrch::update(SubjectType type, void *cntx)
 
     for (const auto& table : m_AclTables)
     {
-        if (table.second.type != ACL_TABLE_MIRROR)
-        {
-            continue;
-        }
-
         for (auto& rule : table.second.rules)
         {
             rule.second->update(type, cntx);
@@ -1039,9 +1205,9 @@ void AclOrch::doAclRuleTask(Consumer &consumer)
 
             if (bAllAttributesOk)
             {
-                newRule = AclRule::makeShared(m_AclTables[table_oid].type, this, m_mirrorOrch, rule_id, table_id);
+                newRule = AclRule::makeShared(m_AclTables[table_oid].type, this, m_mirrorOrch, rule_id, table_id, t);
 
-                for (auto itr : kfvFieldsValues(t))
+                for (const auto& itr : kfvFieldsValues(t))
                 {
                     string attr_name = toUpper(fvField(itr));
                     string attr_value = fvValue(itr);
@@ -1068,6 +1234,7 @@ void AclOrch::doAclRuleTask(Consumer &consumer)
                     }
                 }
             }
+
             // validate and create ACL rule
             if (bAllAttributesOk && newRule->validate())
             {
