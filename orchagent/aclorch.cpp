@@ -986,19 +986,19 @@ AclOrch::AclOrch(DBConnector *db, vector<string> tableNames, PortsOrch *portOrch
     SWSS_LOG_ENTER();
 
     sai_attribute_t attrs[2];
-    
     attrs[0].id = SAI_SWITCH_ATTR_ACL_ENTRY_MINIMUM_PRIORITY;
     attrs[1].id = SAI_SWITCH_ATTR_ACL_ENTRY_MAXIMUM_PRIORITY;
 
-    // get min/max allowed priority
-    if (sai_switch_api->get_switch_attribute(gSwitchId, 2, attrs) == SAI_STATUS_SUCCESS)
+    sai_status_t status = sai_switch_api->get_switch_attribute(gSwitchId, 2, attrs);
+    if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_INFO("Got ACL entry priority values, min: %u, max: %u", attrs[0].value.u32, attrs[1].value.u32);
+        SWSS_LOG_NOTICE("Get ACL entry priority values, min: %u, max: %u", attrs[0].value.u32, attrs[1].value.u32);
         AclRule::setRulePriorities(attrs[0].value.u32, attrs[1].value.u32);
     }
     else
     {
-        SWSS_LOG_ERROR("Failed to get ACL entry priority min/max values");
+        SWSS_LOG_ERROR("Failed to get ACL entry priority min/max values, rv:%d", status);
+        throw "AclOrch initialization failure";
     }
 
     m_mirrorOrch->attach(this);
