@@ -6,13 +6,13 @@
 #include <thread>
 #include <mutex>
 #include <tuple>
+#include <map>
 #include <condition_variable>
 #include "orch.h"
 #include "portsorch.h"
 #include "mirrororch.h"
 #include "observer.h"
 
-#define DEFAULT_TABLE_PRIORITY 10
 // ACL counters update interval in the DB
 // Value is in seconds. Should not be less than 5 seconds
 // (in worst case update of 1265 counters takes almost 5 sec)
@@ -37,6 +37,7 @@
 #define MATCH_DSCP              "DSCP"
 #define MATCH_L4_SRC_PORT_RANGE "L4_SRC_PORT_RANGE"
 #define MATCH_L4_DST_PORT_RANGE "L4_DST_PORT_RANGE"
+#define MATCH_TC                "TC"
 
 #define ACTION_PACKET_ACTION    "PACKET_ACTION"
 #define ACTION_MIRROR_ACTION    "MIRROR_ACTION"
@@ -274,8 +275,8 @@ private:
 
     //vector <AclTable> m_AclTables;
     map <sai_object_id_t, AclTable> m_AclTables;
-    // Port OID to vector of ACL OIDs
-    map <sai_object_id_t, vector<sai_object_id_t>> m_portBind;
+    // ACL table OID to multiple ACL table group member
+    multimap <sai_object_id_t, sai_object_id_t> m_AclTableGroupMembers;
 
     static mutex m_countersMutex;
     static condition_variable m_sleepGuard;
