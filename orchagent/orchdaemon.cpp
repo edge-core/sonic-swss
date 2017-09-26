@@ -37,6 +37,8 @@ bool OrchDaemon::init()
 {
     SWSS_LOG_ENTER();
 
+    string platform = getenv("platform") ? getenv("platform") : "";
+
     SwitchOrch *switch_orch = new SwitchOrch(m_applDb, APP_SWITCH_TABLE_NAME);
 
     vector<string> ports_tables = {
@@ -88,6 +90,15 @@ bool OrchDaemon::init()
 
     m_orchList = { switch_orch, gPortsOrch, intfs_orch, neigh_orch, route_orch, copp_orch, tunnel_decap_orch, qos_orch, buffer_orch, mirror_orch, acl_orch, gFdbOrch};
     m_select = new Select();
+
+    vector<string> pfc_wd_tables = {
+        APP_PFC_WD_TABLE_NAME
+    };
+
+    if (platform == MLNX_PLATFORM_SUBSTRING)
+    {
+        m_orchList.push_back(new PfcDurationWatchdog<PfcWdZeroBufferHandler, PfcWdLossyHandler>(m_applDb, pfc_wd_tables));
+    }
 
     return true;
 }
