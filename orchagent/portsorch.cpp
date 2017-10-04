@@ -13,6 +13,7 @@
 #include "logger.h"
 #include "schema.h"
 #include "converter.h"
+#include "saiserialize.h"
 
 extern sai_switch_api_t *sai_switch_api;
 extern sai_bridge_api_t *sai_bridge_api;
@@ -549,9 +550,7 @@ bool PortsOrch::initPort(const string &alias, const set<int> &lane_set)
                 /* Add port to port list */
                 m_portList[alias] = p;
                 /* Add port name map to counter table */
-                std::stringstream ss;
-                ss << hex << p.m_port_id;
-                FieldValueTuple tuple(p.m_alias, ss.str());
+                FieldValueTuple tuple(p.m_alias, sai_serialize_object_id(p.m_port_id));
                 vector<FieldValueTuple> vector;
                 vector.push_back(tuple);
                 m_counterTable->set("", vector);
