@@ -27,7 +27,9 @@
 #define MIRROR_SESSION_DSCP_MAX         63
 
 extern sai_mirror_api_t *sai_mirror_api;
-extern sai_object_id_t gSwitchId;
+
+extern sai_object_id_t  gSwitchId;
+extern PortsOrch*       gPortsOrch;
 
 using namespace std::rel_ops;
 
@@ -864,6 +866,11 @@ void MirrorOrch::updateVlanMember(const VlanMemberUpdate& update)
 void MirrorOrch::doTask(Consumer& consumer)
 {
     SWSS_LOG_ENTER();
+
+    if (!gPortsOrch->isInitDone())
+    {
+        return;
+    }
 
     auto it = consumer.m_toSync.begin();
     while (it != consumer.m_toSync.end())
