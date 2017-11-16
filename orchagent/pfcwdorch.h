@@ -1,8 +1,6 @@
 #ifndef PFC_WATCHDOG_H
 #define PFC_WATCHDOG_H
 
-#include <mutex>
-#include <condition_variable>
 #include "orch.h"
 #include "port.h"
 #include "pfcactionhandler.h"
@@ -90,13 +88,9 @@ private:
     void registerInWdDb(const Port& port,
             uint32_t detectionTime, uint32_t restorationTime, PfcWdAction action);
     void unregisterFromWdDb(const Port& port);
-    void handleWdNotification(swss::NotificationConsumer &wdNotification);
-    void pfcWatchdogThread(void);
-    void startWatchdogThread(void);
-    void endWatchdogThread(void);
+    void doTask(swss::NotificationConsumer &wdNotification);
 
     map<sai_object_id_t, PfcWdQueueEntry> m_entryMap;
-    mutex m_pfcWdMutex;
 
     const vector<sai_port_stat_t> c_portStatIds;
     const vector<sai_queue_stat_t> c_queueStatIds;
@@ -107,8 +101,6 @@ private:
 
     atomic_bool m_runPfcWdSwOrchThread = { false };
     shared_ptr<thread> m_pfcWatchdogThread = nullptr;
-
-    int m_pollInterval;
 };
 
 #endif
