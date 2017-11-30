@@ -62,6 +62,7 @@ private:
     unique_ptr<Table> m_queueTable;
     unique_ptr<Table> m_queuePortTable;
     unique_ptr<Table> m_queueIndexTable;
+    unique_ptr<Table> m_queueTypeTable;
     unique_ptr<ProducerStateTable> m_flexCounterTable;
 
     shared_ptr<DBConnector> m_counter_db;
@@ -126,6 +127,8 @@ private:
     bool validatePortSpeed(sai_object_id_t port_id, sai_uint32_t speed);
     bool setPortSpeed(sai_object_id_t port_id, sai_uint32_t speed);
     bool getPortSpeed(sai_object_id_t port_id, sai_uint32_t &speed);
+
+    bool getQueueType(sai_object_id_t queue_id, string &type);
 };
 #endif /* SWSS_PORTSORCH_H */
 
