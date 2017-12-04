@@ -4,16 +4,7 @@ import re
 import time
 import json
 
-def parse_route_key(rt_key):
-    (otype, kstr) = rt_key.split(':', 1)
-    assert otype == "SAI_OBJECT_TYPE_ROUTE_ENTRY"
-    return json.loads(kstr)
-
 def test_RouteAdd(dvs):
-
-    dvs.restart()
-
-    dvs.ready()
 
     dvs.runcmd("ifconfig Ethernet0 10.0.0.0/31 up")
     dvs.runcmd("ifconfig Ethernet4 10.0.0.2/31 up")
@@ -45,7 +36,7 @@ def test_RouteAdd(dvs):
 
     found_route = False
     for k in keys:
-        rt_key = parse_route_key(k)
+        rt_key = json.loads(k)
 
         if rt_key['dest'] == "2.2.2.0/24":
             found_route = True
