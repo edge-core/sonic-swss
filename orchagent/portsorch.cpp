@@ -14,9 +14,7 @@
 #include "logger.h"
 #include "schema.h"
 #include "converter.h"
-#include "saiserialize.h"
-
-#include "saiserialize.h"
+#include "sai_serialize.h"
 
 extern sai_switch_api_t *sai_switch_api;
 extern sai_bridge_api_t *sai_bridge_api;
@@ -631,11 +629,31 @@ bool PortsOrch::setPortPvid(Port &port, sai_uint32_t pvid)
     vector<Port> portv;
     if (port.m_type == Port::PHY)
     {
-        portv.push_back(port);
+        sai_attribute_t attr;
+        attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+        attr.value.u32 = pvid;
+
+        sai_status_t status = sai_port_api->set_port_attribute(port.m_port_id, &attr);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to set pvid %u to port: %s", attr.value.u32, port.m_alias.c_str());
+            return false;
+        }
+        SWSS_LOG_NOTICE("Set pvid %u to port: %s", attr.value.u32, port.m_alias.c_str());
     }
     else if (port.m_type == Port::LAG)
     {
-        getLagMember(port, portv);
+        sai_attribute_t attr;
+        attr.id = SAI_LAG_ATTR_PORT_VLAN_ID;
+        attr.value.u32 = pvid;
+
+        sai_status_t status = sai_lag_api->set_lag_attribute(port.m_lag_id, &attr);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to set pvid %u to lag: %s", attr.value.u32, port.m_alias.c_str());
+            return false;
+        }
+        SWSS_LOG_NOTICE("Set pvid %u to lag: %s", attr.value.u32, port.m_alias.c_str());
     }
     else
     {
@@ -643,20 +661,6 @@ bool PortsOrch::setPortPvid(Port &port, sai_uint32_t pvid)
         return false;
     }
 
-    for (const auto p: portv)
-    {
-        sai_attribute_t attr;
-        attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
-        attr.value.u32 = pvid;
-
-        sai_status_t status = sai_port_api->set_port_attribute(p.m_port_id, &attr);
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("Failed to set pvid %u to port: %s", attr.value.u32, p.m_alias.c_str());
-            return false;
-        }
-        SWSS_LOG_NOTICE("Set pvid %u to port: %s", attr.value.u32, p.m_alias.c_str());
-    }
     port.m_port_vlan_id = (sai_vlan_id_t)pvid;
     return true;
 }
@@ -1840,7 +1844,7 @@ bool PortsOrch::addHostIntfs(Port &port, string alias, sai_object_id_t &host_int
     attrs.push_back(attr);
 
     attr.id = SAI_HOSTIF_ATTR_NAME;
-    strncpy((char *)&attr.value.chardata, alias.c_str(), HOSTIF_NAME_SIZE);
+    strncpy((char *)&attr.value.chardata, alias.c_str(), SAI_HOSTIF_NAME_SIZE);
     attrs.push_back(attr);
 
     sai_status_t status = sai_hostif_api->create_hostif(&host_intfs_id, gSwitchId, (uint32_t)attrs.size(), attrs.data());
@@ -2015,6 +2019,22 @@ bool PortsOrch::removeVlan(Port vlan)
     m_portList.erase(vlan.m_alias);
 
     return true;
+}
+
+bool PortsOrch::getVlanByVlanId(sai_vlan_id_t vlan_id, Port &vlan)
+{
+    SWSS_LOG_ENTER();
+
+    for (auto &it: m_portList)
+    {
+        if (it.second.m_type == Port::VLAN && it.second.m_vlan_info.vlan_id == vlan_id)
+        {
+            vlan = it.second;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool PortsOrch::addVlanMember(Port &vlan, Port &port, string &tagging_mode)
@@ -2192,6 +2212,12 @@ bool PortsOrch::addLagMember(Port &lag, Port &port)
 {
     SWSS_LOG_ENTER();
 
+    sai_uint32_t pvid;
+    if (getPortPvid(lag, pvid))
+    {
+        setPortPvid (port, pvid);
+    }
+
     sai_attribute_t attr;
     vector<sai_attribute_t> attrs;
 
@@ -2231,11 +2257,6 @@ bool PortsOrch::addLagMember(Port &lag, Port &port)
                     hostif_vlan_tag[SAI_HOSTIF_VLAN_TAG_KEEP], port.m_alias.c_str(), lag.m_alias.c_str());
             return false;
         }
-    }
-    sai_uint32_t pvid;
-    if (getPortPvid(lag, pvid))
-    {
-        setPortPvid (port, pvid);
     }
 
     LagMemberUpdate update = { lag, port, true };
