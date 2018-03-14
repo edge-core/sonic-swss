@@ -16,6 +16,7 @@
 #include "converter.h"
 #include "sai_serialize.h"
 #include "crmorch.h"
+#include "countercheckorch.h"
 
 extern sai_switch_api_t *sai_switch_api;
 extern sai_bridge_api_t *sai_bridge_api;
@@ -1828,6 +1829,8 @@ bool PortsOrch::initializePort(Port &p)
     FieldValueTuple tuple("oper_status", "down");
     vector.push_back(tuple);
     m_portTable->set(p.m_alias, vector);
+
+    CounterCheckOrch::getInstance().addPort(p);
 
     return true;
 }
