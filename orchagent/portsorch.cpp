@@ -18,6 +18,7 @@
 #include "sai_serialize.h"
 #include "crmorch.h"
 #include "countercheckorch.h"
+#include "notifier.h"
 
 extern sai_switch_api_t *sai_switch_api;
 extern sai_bridge_api_t *sai_bridge_api;
@@ -235,6 +236,12 @@ PortsOrch::PortsOrch(DBConnector *db, vector<table_name_with_pri_t> &tableNames)
 
     removeDefaultVlanMembers();
     removeDefaultBridgePorts();
+
+    /* Add port oper status notification support */
+    DBConnector *notificationsDb = new DBConnector(ASIC_DB, DBConnector::DEFAULT_UNIXSOCKET, 0);
+    m_portStatusNotificationConsumer = new swss::NotificationConsumer(notificationsDb, "NOTIFICATIONS");
+    auto portStatusNotificatier = new Notifier(m_portStatusNotificationConsumer, this);
+    Orch::addExecutor("PORT_STATUS_NOTIFICATIONS", portStatusNotificatier);
 }
 
 void PortsOrch::removeDefaultVlanMembers()
@@ -2330,4 +2337,47 @@ bool PortsOrch::removeLagMember(Port &lag, Port &port)
     notify(SUBJECT_TYPE_LAG_MEMBER_CHANGE, static_cast<void *>(&update));
 
     return true;
+}
+
+void PortsOrch::doTask(NotificationConsumer &consumer)
+{
+    SWSS_LOG_ENTER();
+
+    /* Wait for all ports to be initialized */
+    if (!isInitDone())
+    {
+        return;
+    }
+
+    std::string op;
+    std::string data;
+    std::vector<swss::FieldValueTuple> values;
+
+    consumer.pop(op, data, values);
+
+    if (&consumer != m_portStatusNotificationConsumer)
+    {
+        return;
+    }
+
+    if (op == "port_state_change")
+    {
+        uint32_t count;
+        sai_port_oper_status_notification_t *portoperstatus = nullptr;
+
+        sai_deserialize_port_oper_status_ntf(data, count, &portoperstatus);
+
+        for (uint32_t i = 0; i < count; i++)
+        {
+            sai_object_id_t id = portoperstatus[i].port_id;
+            sai_port_oper_status_t status = portoperstatus[i].port_state;
+
+            SWSS_LOG_NOTICE("Get port state change notification id:%lx status:%d", id, status);
+
+            this->updateDbPortOperStatus(id, status);
+            this->setHostIntfsOperStatus(id, status == SAI_PORT_OPER_STATUS_UP);
+        }
+
+        sai_deserialize_free_port_oper_status_ntf(count, portoperstatus);
+    }
 }
