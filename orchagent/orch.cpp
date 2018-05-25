@@ -358,7 +358,7 @@ bool Orch::parseIndexRange(const string &input, sai_uint32_t &range_low, sai_uin
 
 void Orch::addConsumer(DBConnector *db, string tableName)
 {
-    if (db->getDB() == CONFIG_DB)
+    if (db->getDB() == CONFIG_DB || db->getDB() == STATE_DB)
     {
         addExecutor(tableName, new Consumer(new SubscriberStateTable(db, tableName), this));
     }
