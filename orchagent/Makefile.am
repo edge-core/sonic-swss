@@ -7,6 +7,7 @@ swssdir = $(datadir)/swss
 dist_swss_DATA = \
 		 pfc_detect_mellanox.lua  \
 		 pfc_detect_broadcom.lua \
+		 pfc_detect_barefoot.lua \
 		 pfc_restore.lua
 
 bin_PROGRAMS = orchagent routeresync
@@ -41,6 +42,7 @@ orchagent_SOURCES = \
 		    request_parser.cpp \
 		    vrforch.cpp \
 		    countercheckorch.cpp \
+		    dtelorch.cpp \
 		    flexcounterorch.cpp\
 		    acltable.h \
 		    aclorch.h \
@@ -67,6 +69,7 @@ orchagent_SOURCES = \
 		    crmorch.h
 		    request_parser.h \
 		    vrforch.h \
+		    dtelorch.h \
 		    countercheckorch.h \
 		    flexcounterorch.h
 
