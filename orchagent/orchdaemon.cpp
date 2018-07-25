@@ -110,7 +110,7 @@ bool OrchDaemon::init()
 
     gAclOrch = new AclOrch(acl_table_connectors, gPortsOrch, mirror_orch, gNeighOrch, gRouteOrch);
 
-    m_orchList = { switch_orch, gCrmOrch, gPortsOrch, intfs_orch, gNeighOrch, gRouteOrch, copp_orch, tunnel_decap_orch, qos_orch, gBufferOrch, mirror_orch, gAclOrch, gFdbOrch, vrf_orch };
+    m_orchList = { switch_orch, gCrmOrch, gBufferOrch, gPortsOrch, intfs_orch, gNeighOrch, gRouteOrch, copp_orch, tunnel_decap_orch, qos_orch, mirror_orch, gAclOrch, gFdbOrch, vrf_orch };
     m_select = new Select();
 
 
