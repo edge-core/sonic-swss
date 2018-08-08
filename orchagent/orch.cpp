@@ -66,12 +66,9 @@ vector<Selectable *> Orch::getSelectables()
     return selectables;
 }
 
-void Consumer::execute()
+void Consumer::addToSync(std::deque<KeyOpFieldsValuesTuple> &entries)
 {
     SWSS_LOG_ENTER();
-
-    std::deque<KeyOpFieldsValuesTuple> entries;
-    getConsumerTable()->pops(entries);
 
     /* Nothing popped */
     if (entries.empty())
@@ -123,6 +120,47 @@ void Consumer::execute()
             m_toSync[key] = KeyOpFieldsValuesTuple(key, op, existing_values);
         }
     }
+}
+
+// TODO: Table should be const
+void Consumer::refillToSync(Table* table)
+{
+    std::deque<KeyOpFieldsValuesTuple> entries;
+    vector<string> keys;
+    table->getKeys(keys);
+    for (const auto &key: keys)
+    {
+        KeyOpFieldsValuesTuple kco;
+
+        kfvKey(kco) = key;
+        kfvOp(kco) = SET_COMMAND;
+
+        if (!table->get(key, kfvFieldsValues(kco)))
+        {
+            continue;
+        }
+        entries.push_back(kco);
+    }
+
+    addToSync(entries);
+}
+
+void Consumer::refillToSync()
+{
+    auto db = getConsumerTable()->getDbConnector();
+    string tableName = getConsumerTable()->getTableName();
+    auto table = Table(db, tableName);
+    refillToSync(&table);
+}
+
+void Consumer::execute()
+{
+    SWSS_LOG_ENTER();
+
+    std::deque<KeyOpFieldsValuesTuple> entries;
+    getConsumerTable()->pops(entries);
+
+    addToSync(entries);
 
     drain();
 }
@@ -131,6 +169,34 @@ void Consumer::drain()
 {
     if (!m_toSync.empty())
         m_orch->doTask(*this);
+}
+
+bool Orch::addExistingData(const string& tableName)
+{
+    Consumer* consumer = dynamic_cast<Consumer *>(getExecutor(tableName));
+    if (consumer == NULL)
+    {
+        SWSS_LOG_ERROR("No consumer %s in Orch", tableName.c_str());
+        return false;
+    }
+
+    consumer->refillToSync();
+    return true;
+}
+
+// TODO: Table should be const
+bool Orch::addExistingData(Table *table)
+{
+    string tableName = table->getTableName();
+    Consumer* consumer = dynamic_cast<Consumer *>(getExecutor(tableName));
+    if (consumer == NULL)
+    {
+        SWSS_LOG_ERROR("No consumer %s in Orch", tableName.c_str());
+        return false;
+    }
+
+    consumer->refillToSync(table);
+    return true;
 }
 
 /*
