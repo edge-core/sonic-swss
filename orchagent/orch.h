@@ -68,9 +68,10 @@ class Orch;
 class Executor : public Selectable
 {
 public:
-    Executor(Selectable *selectable, Orch *orch)
+    Executor(Selectable *selectable, Orch *orch, const string &name)
         : m_selectable(selectable)
         , m_orch(orch)
+        , m_name(name)
     {
     }
 
@@ -91,9 +92,17 @@ public:
     virtual void execute() { }
     virtual void drain() { }
 
+    virtual string getName() const
+    {
+        return m_name;
+    }
+
 protected:
     Selectable *m_selectable;
     Orch *m_orch;
+
+    // Name for Executor
+    string m_name;
 
     // Get the underlying selectable
     Selectable *getSelectable() const { return m_selectable; }
@@ -101,8 +110,8 @@ protected:
 
 class Consumer : public Executor {
 public:
-    Consumer(ConsumerTableBase *select, Orch *orch)
-        : Executor(select, orch)
+    Consumer(ConsumerTableBase *select, Orch *orch, const string &name)
+        : Executor(select, orch, name)
     {
     }
 
@@ -116,6 +125,14 @@ public:
         return getConsumerTable()->getTableName();
     }
 
+    int getDbId() const
+    {
+        return getConsumerTable()->getDbId();
+    }
+
+    string dumpTuple(KeyOpFieldsValuesTuple &tuple);
+    void dumpPendingTasks(vector<string> &ts);
+
     size_t refillToSync();
     size_t refillToSync(Table* table);
     void execute();
@@ -124,7 +141,7 @@ public:
     /* Store the latest 'golden' status */
     // TODO: hide?
     SyncMap m_toSync;
-    
+
 protected:
     // Returns: the number of entries added to m_toSync
     size_t addToSync(std::deque<KeyOpFieldsValuesTuple> &entries);
@@ -162,7 +179,7 @@ public:
     // Prepare for warm start if Redis contains valid input data
     // otherwise fallback to cold start
     virtual bool bake();
-    
+
     /* Iterate all consumers in m_consumerMap and run doTask(Consumer) */
     void doTask();
 
@@ -173,6 +190,8 @@ public:
 
     /* TODO: refactor recording */
     static void recordTuple(Consumer &consumer, KeyOpFieldsValuesTuple &tuple);
+
+    void dumpPendingTasks(vector<string> &ts);
 protected:
     ConsumerMap m_consumerMap;
 
@@ -184,7 +203,7 @@ protected:
     ref_resolve_status resolveFieldRefArray(type_map&, const string&, KeyOpFieldsValuesTuple&, vector<sai_object_id_t>&);
 
     /* Note: consumer will be owned by this class */
-    void addExecutor(string executorName, Executor* executor);
+    void addExecutor(Executor* executor);
     Executor *getExecutor(string executorName);
 private:
     void addConsumer(DBConnector *db, string tableName, int pri = default_orch_pri);

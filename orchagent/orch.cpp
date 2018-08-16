@@ -185,6 +185,30 @@ void Consumer::drain()
         m_orch->doTask(*this);
 }
 
+string Consumer::dumpTuple(KeyOpFieldsValuesTuple &tuple)
+{
+    string s = getTableName() + getConsumerTable()->getTableNameSeparator() + kfvKey(tuple)
+               + "|" + kfvOp(tuple);
+    for (auto i = kfvFieldsValues(tuple).begin(); i != kfvFieldsValues(tuple).end(); i++)
+    {
+        s += "|" + fvField(*i) + ":" + fvValue(*i);
+    }
+
+    return s;
+}
+
+void Consumer::dumpPendingTasks(vector<string> &ts)
+{
+    for (auto &tm : m_toSync)
+    {
+        KeyOpFieldsValuesTuple& tuple = tm.second;
+
+        string s = dumpTuple(tuple);
+
+        ts.push_back(s);
+    }
+}
+
 size_t Orch::addExistingData(const string& tableName)
 {
     auto consumer = dynamic_cast<Consumer *>(getExecutor(tableName));
@@ -224,7 +248,7 @@ bool Orch::bake()
         {
             continue;
         }
-        
+
         size_t refilled = consumer->refillToSync();
         SWSS_LOG_NOTICE("Add warm input: %s, %zd", executorName.c_str(), refilled);
     }
@@ -326,6 +350,21 @@ void Orch::doTask()
     }
 }
 
+void Orch::dumpPendingTasks(vector<string> &ts)
+{
+    for(auto &it : m_consumerMap)
+    {
+        Consumer* consumer = dynamic_cast<Consumer *>(it.second.get());
+        if (consumer == NULL)
+        {
+            SWSS_LOG_DEBUG("Executor is not a Consumer");
+            continue;
+        }
+
+        consumer->dumpPendingTasks(ts);
+    }
+}
+
 void Orch::logfileReopen()
 {
     gRecordOfs.close();
@@ -347,12 +386,7 @@ void Orch::logfileReopen()
 
 void Orch::recordTuple(Consumer &consumer, KeyOpFieldsValuesTuple &tuple)
 {
-    string s = consumer.getTableName() + ":" + kfvKey(tuple)
-               + "|" + kfvOp(tuple);
-    for (auto i = kfvFieldsValues(tuple).begin(); i != kfvFieldsValues(tuple).end(); i++)
-    {
-        s += "|" + fvField(*i) + ":" + fvValue(*i);
-    }
+    string s = consumer.dumpTuple(tuple);
 
     gRecordOfs << getTimestamp() << "|" << s << endl;
 
@@ -366,13 +400,7 @@ void Orch::recordTuple(Consumer &consumer, KeyOpFieldsValuesTuple &tuple)
 
 string Orch::dumpTuple(Consumer &consumer, KeyOpFieldsValuesTuple &tuple)
 {
-    string s = consumer.getTableName() + ":" + kfvKey(tuple)
-               + "|" + kfvOp(tuple);
-    for (auto i = kfvFieldsValues(tuple).begin(); i != kfvFieldsValues(tuple).end(); i++)
-    {
-        s += "|" + fvField(*i) + ":" + fvValue(*i);
-    }
-
+    string s = consumer.dumpTuple(tuple);
     return s;
 }
 
@@ -461,24 +489,24 @@ void Orch::addConsumer(DBConnector *db, string tableName, int pri)
 {
     if (db->getDbId() == CONFIG_DB || db->getDbId() == STATE_DB)
     {
-        addExecutor(tableName, new Consumer(new SubscriberStateTable(db, tableName, TableConsumable::DEFAULT_POP_BATCH_SIZE, pri), this));
+        addExecutor(new Consumer(new SubscriberStateTable(db, tableName, TableConsumable::DEFAULT_POP_BATCH_SIZE, pri), this, tableName));
     }
     else
     {
-        addExecutor(tableName, new Consumer(new ConsumerStateTable(db, tableName, gBatchSize, pri), this));
+        addExecutor(new Consumer(new ConsumerStateTable(db, tableName, gBatchSize, pri), this, tableName));
     }
 }
 
-void Orch::addExecutor(string executorName, Executor* executor)
+void Orch::addExecutor(Executor* executor)
 {
     auto inserted = m_consumerMap.emplace(std::piecewise_construct,
-            std::forward_as_tuple(executorName),
+            std::forward_as_tuple(executor->getName()),
             std::forward_as_tuple(executor));
 
     // If there is duplication of executorName in m_consumerMap, logic error
     if (!inserted.second)
     {
-        SWSS_LOG_THROW("Duplicated executorName in m_consumerMap: %s", executorName.c_str());
+        SWSS_LOG_THROW("Duplicated executorName in m_consumerMap: %s", executor->getName().c_str());
     }
 }
 
