@@ -47,7 +47,7 @@ class TestInterfaceIpv4Addresses(object):
                     if fv[0] == "SAI_ROUTER_INTERFACE_ATTR_TYPE":
                         assert fv[1] == "SAI_ROUTER_INTERFACE_TYPE_PORT"
                     if fv[0] == "SAI_ROUTER_INTERFACE_ATTR_MTU":
-                        assert fv[1] == "1500"
+                        assert fv[1] == "9100"
 
         # check ASIC route database
         tbl = swsscommon.Table(adb, "ASIC_STATE:SAI_OBJECT_TYPE_ROUTE_ENTRY")
