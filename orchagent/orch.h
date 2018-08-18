@@ -130,6 +130,7 @@ typedef enum
     field_not_found,
     multiple_instances,
     not_resolved,
+    empty,
     failure
 } ref_resolve_status;
 

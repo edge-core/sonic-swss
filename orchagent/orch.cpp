@@ -137,13 +137,18 @@ void Consumer::drain()
 - Validates reference has proper format which is [table_name:object_name]
 - validates table_name exists
 - validates object with object_name exists
+
+- Special case:
+- Deem reference format [] as valid, and return true. But in such a case,
+- both type_name and object_name are cleared to empty strings as an
+- indication to the caller of the special case
 */
 bool Orch::parseReference(type_map &type_maps, string &ref_in, string &type_name, string &object_name)
 {
     SWSS_LOG_ENTER();
 
     SWSS_LOG_DEBUG("input:%s", ref_in.c_str());
-    if (ref_in.size() < 3)
+    if (ref_in.size() < 2)
     {
         SWSS_LOG_ERROR("invalid reference received:%s\n", ref_in.c_str());
         return false;
@@ -152,6 +157,17 @@ bool Orch::parseReference(type_map &type_maps, string &ref_in, string &type_name
     {
         SWSS_LOG_ERROR("malformed reference:%s. Must be surrounded by [ ]\n", ref_in.c_str());
         return false;
+    }
+    if (ref_in.size() == 2)
+    {
+        // value set by user is "[]"
+        // Deem it as a valid format
+        // clear both type_name and object_name
+        // as an indication to the caller that
+        // such a case has been encountered
+        type_name.clear();
+        object_name.clear();
+        return true;
     }
     string ref_content = ref_in.substr(1, ref_in.size() - 2);
     vector<string> tokens;
@@ -207,6 +223,10 @@ ref_resolve_status Orch::resolveFieldRefValue(
             if (!parseReference(type_maps, fvValue(*i), ref_type_name, object_name))
             {
                 return ref_resolve_status::not_resolved;
+            }
+            else if (ref_type_name.empty() && object_name.empty())
+            {
+                return ref_resolve_status::empty;
             }
             sai_object = (*(type_maps[ref_type_name]))[object_name];
             hit = true;
