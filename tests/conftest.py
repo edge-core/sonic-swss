@@ -172,7 +172,11 @@ class DockerVirtualSwitch(object):
         started = 0
         while True:
             # get process status
-            out = self.ctn.exec_run("supervisorctl status")
+            res = self.ctn.exec_run("supervisorctl status")
+            try:
+                out = res.output
+            except AttributeError:
+                out = res
             for l in out.split('\n'):
                 fds = re_space.split(l)
                 if len(fds) < 2:
@@ -204,7 +208,14 @@ class DockerVirtualSwitch(object):
         self.asicdb = AsicDbValidator(self)
 
     def runcmd(self, cmd):
-        return self.ctn.exec_run(cmd)
+        res = self.ctn.exec_run(cmd)
+        try:
+            exitcode = res.exit_code
+            out = res.output
+        except AttributeError:
+            exitcode = 0
+            out = res
+        return (exitcode, out)
 
 @pytest.yield_fixture(scope="module")
 def dvs(request):
