@@ -48,6 +48,12 @@ static map<string, sai_port_fec_mode_t> fec_mode_map =
     { "fc", SAI_PORT_FEC_MODE_FC }
 };
 
+static map<string, sai_port_priority_flow_control_mode_t> pfc_asym_map =
+{
+    { "on", SAI_PORT_PRIORITY_FLOW_CONTROL_MODE_SEPARATE },
+    { "off", SAI_PORT_PRIORITY_FLOW_CONTROL_MODE_COMBINED }
+};
+
 const vector<sai_port_stat_t> portStatIds =
 {
     SAI_PORT_STAT_IF_IN_OCTETS,
@@ -512,6 +518,125 @@ bool PortsOrch::setPortFec(sai_object_id_t id, sai_port_fec_mode_t mode)
     }
     SWSS_LOG_INFO("Set fec mode %d to port pid:%lx",
                        mode, id);
+    return true;
+}
+
+bool PortsOrch::getPortPfc(sai_object_id_t portId, uint8_t *pfc_bitmask)
+{
+    SWSS_LOG_ENTER();
+
+    Port p;
+
+    if (!getPort(portId, p))
+    {
+        SWSS_LOG_ERROR("Failed to get port object for port id 0x%lx", portId);
+        return false;
+    }
+
+    *pfc_bitmask = p.m_pfc_bitmask;
+
+    return true;
+}
+
+bool PortsOrch::setPortPfc(sai_object_id_t portId, uint8_t pfc_bitmask)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    Port p;
+
+    if (!getPort(portId, p))
+    {
+        SWSS_LOG_ERROR("Failed to get port object for port id 0x%lx", portId);
+        return false;
+    }
+
+    if (p.m_pfc_asym == SAI_PORT_PRIORITY_FLOW_CONTROL_MODE_COMBINED)
+    {
+        attr.id = SAI_PORT_ATTR_PRIORITY_FLOW_CONTROL;
+    }
+    else if (p.m_pfc_asym == SAI_PORT_PRIORITY_FLOW_CONTROL_MODE_SEPARATE)
+    {
+        attr.id = SAI_PORT_ATTR_PRIORITY_FLOW_CONTROL_TX;
+    }
+    else
+    {
+        SWSS_LOG_ERROR("Incorrect asymmetric PFC mode: %u", p.m_pfc_asym);
+        return false;
+    }
+
+    attr.value.u8 = pfc_bitmask;
+
+    sai_status_t status = sai_port_api->set_port_attribute(portId, &attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to set PFC 0x%x to port id 0x%lx (rc:%d)", attr.value.u8, portId, status);
+        return false;
+    }
+
+    if (p.m_pfc_bitmask != pfc_bitmask)
+    {
+        p.m_pfc_bitmask = pfc_bitmask;
+        m_portList[p.m_alias] = p;
+    }
+
+    return true;
+}
+
+bool PortsOrch::setPortPfcAsym(Port &port, string pfc_asym)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    uint8_t pfc = 0;
+
+    if (!getPortPfc(port.m_port_id, &pfc))
+    {
+        return false;
+    }
+
+    try
+    {
+        port.m_pfc_asym = pfc_asym_map.at(pfc_asym);
+    }
+    catch (...)
+    {
+        SWSS_LOG_ERROR("Incorrect asymmetric PFC mode: %s", pfc_asym.c_str());
+        return false;
+    }
+
+    m_portList[port.m_alias] = port;
+
+    attr.id = SAI_PORT_ATTR_PRIORITY_FLOW_CONTROL_MODE;
+    attr.value.s32 = (int32_t) port.m_pfc_asym;
+
+    sai_status_t status = sai_port_api->set_port_attribute(port.m_port_id, &attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to set PFC mode %d to port id 0x%lx (rc:%d)", port.m_pfc_asym, port.m_port_id, status);
+        return false;
+    }
+
+    if (!setPortPfc(port.m_port_id, pfc))
+    {
+        return false;
+    }
+
+    if (port.m_pfc_asym == SAI_PORT_PRIORITY_FLOW_CONTROL_MODE_SEPARATE)
+    {
+        attr.id = SAI_PORT_ATTR_PRIORITY_FLOW_CONTROL_RX;
+        attr.value.u8 = static_cast<uint8_t>(0xff);
+
+        sai_status_t status = sai_port_api->set_port_attribute(port.m_port_id, &attr);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to set RX PFC 0x%x to port id 0x%lx (rc:%d)", attr.value.u8, port.m_port_id, status);
+            return false;
+        }
+    }
+
+    SWSS_LOG_INFO("Set asymmetric PFC %s to port id 0x%lx", pfc_asym.c_str(), port.m_port_id);
+
     return true;
 }
 
@@ -1282,6 +1407,7 @@ void PortsOrch::doPortTask(Consumer &consumer)
             set<int> lane_set;
             string admin_status;
             string fec_mode;
+            string pfc_asym;
             uint32_t mtu = 0;
             uint32_t speed = 0;
             int an = -1;
@@ -1325,6 +1451,10 @@ void PortsOrch::doPortTask(Consumer &consumer)
                 {
                     fec_mode = fvValue(i);
                 }
+
+                /* Set port asymmetric PFC */
+                if (fvField(i) == "pfc_asym")
+                    pfc_asym = fvValue(i);
 
                 /* Set autoneg and ignore the port speed setting */
                 if (fvField(i) == "autoneg")
@@ -1592,6 +1722,20 @@ void PortsOrch::doPortTask(Consumer &consumer)
                     else
                     {
                         SWSS_LOG_ERROR("Unknown fec mode %s", fec_mode.c_str());
+                    }
+                }
+
+                if (pfc_asym != "")
+                {
+                    if (setPortPfcAsym(p, pfc_asym))
+                    {
+                        SWSS_LOG_NOTICE("Set port %s asymmetric PFC to %s", alias.c_str(), pfc_asym.c_str());
+                    }
+                    else
+                    {
+                        SWSS_LOG_ERROR("Failed to set port %s asymmetric PFC to %s", alias.c_str(), pfc_asym.c_str());
+                        it++;
+                        continue;
                     }
                 }
             }
