@@ -635,6 +635,38 @@ task_process_status BufferOrch::processEgressBufferProfileList(Consumer &consume
     return task_process_status::task_success;
 }
 
+void BufferOrch::doTask()
+{
+    // The hidden dependency tree:
+    // ref: https://github.com/opencomputeproject/SAI/blob/master/doc/QOS/SAI-Proposal-buffers-Ver4.docx
+    //      2	    SAI model
+    //      3.1	    Ingress priority group (PG) configuration
+    //      3.2.1	Buffer profile configuration
+    //
+    // buffer pool
+    // └── buffer profile
+    //     ├── buffer port ingress profile list
+    //     ├── buffer port egress profile list
+    //     ├── buffer queue
+    //     └── buffer pq table
+
+    auto pool_consumer = getExecutor((CFG_BUFFER_POOL_TABLE_NAME));
+    pool_consumer->drain();
+
+    auto profile_consumer = getExecutor(CFG_BUFFER_PROFILE_TABLE_NAME);
+    profile_consumer->drain();
+
+    for(auto &it : m_consumerMap)
+    {
+        auto consumer = it.second.get();
+        if (consumer == profile_consumer)
+            continue;
+        if (consumer == pool_consumer)
+            continue;
+        consumer->drain();
+    }
+}
+
 void BufferOrch::doTask(Consumer &consumer)
 {
     SWSS_LOG_ENTER();
