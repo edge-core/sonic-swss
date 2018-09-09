@@ -49,7 +49,7 @@ MirrorEntry::MirrorEntry(const string& platform) :
 {
     if (platform == MLNX_PLATFORM_SUBSTRING)
     {
-        greType = 0x6558;
+        greType = 0x8949;
         queue = 1;
     }
     else
