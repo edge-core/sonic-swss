@@ -314,7 +314,6 @@ def test_VlanMgrdWarmRestart(dvs):
 
     swss_app_check_RestartCount_single(state_db, restart_count, "vlanmgrd")
 
-
 # function to stop neighsyncd service and clear syslog and sairedis records
 def stop_neighsyncd_clear_syslog_sairedis(dvs, save_number):
     dvs.runcmd(['sh', '-c', 'pkill -x neighsyncd'])
@@ -696,6 +695,60 @@ def test_swss_neighbor_syncup(dvs):
     check_sairedis_for_neighbor_entry(dvs, 4, 4, 4)
     # check restart Count
     swss_app_check_RestartCount_single(state_db, restart_count, "neighsyncd")
+
+
+# TODO: The condition of warm restart readiness check is still under discussion.
+def test_OrchagentWarmRestartReadyCheck(dvs):
+
+    # do a pre-cleanup
+    dvs.runcmd("ip -s -s neigh flush all")
+    time.sleep(1)
+
+    # enable warm restart
+    # TODO: use cfg command to config it
+    conf_db = swsscommon.DBConnector(swsscommon.CONFIG_DB, dvs.redis_sock, 0)
+
+    dvs.runcmd("ifconfig Ethernet0 10.0.0.0/31 up")
+    dvs.runcmd("ifconfig Ethernet4 10.0.0.2/31 up")
+
+    dvs.servers[0].runcmd("ifconfig eth0 10.0.0.1/31")
+    dvs.servers[0].runcmd("ip route add default via 10.0.0.0")
+
+    dvs.servers[1].runcmd("ifconfig eth0 10.0.0.3/31")
+    dvs.servers[1].runcmd("ip route add default via 10.0.0.2")
+
+
+    appl_db = swsscommon.DBConnector(swsscommon.APPL_DB, dvs.redis_sock, 0)
+    ps = swsscommon.ProducerStateTable(appl_db, swsscommon.APP_ROUTE_TABLE_NAME)
+    fvs = swsscommon.FieldValuePairs([("nexthop","10.0.0.1"), ("ifname", "Ethernet0")])
+
+    ps.set("2.2.2.0/24", fvs)
+
+    time.sleep(1)
+    # Should fail, since neighbor for next 10.0.0.1 has not been not resolved yet
+    (exitcode, result) =  dvs.runcmd("/usr/bin/orchagent_restart_check")
+    assert result == "RESTARTCHECK failed\n"
+
+    # Should succeed, the option for skipPendingTaskCheck -s and noFreeze -n have been provided.
+    # Wait up to 500 milliseconds for response from orchagent. Default wait time is 1000 milliseconds.
+    (exitcode, result) =  dvs.runcmd("/usr/bin/orchagent_restart_check -n -s -w 500")
+    assert result == "RESTARTCHECK succeeded\n"
+
+    # get neighbor and arp entry
+    dvs.servers[1].runcmd("ping -c 1 10.0.0.1")
+
+    time.sleep(1)
+    (exitcode, result) =  dvs.runcmd("/usr/bin/orchagent_restart_check")
+    assert result == "RESTARTCHECK succeeded\n"
+
+    # Should fail since orchagent has been frozen at last step.
+    (exitcode, result) =  dvs.runcmd("/usr/bin/orchagent_restart_check -n -s -w 500")
+    assert result == "RESTARTCHECK failed\n"
+
+    # recover for test cases after this one.
+    stop_swss(dvs)
+    start_swss(dvs)
+    time.sleep(5)
 
 def test_swss_port_state_syncup(dvs):
 
