@@ -9,22 +9,25 @@ Schema data is defined in ABNF [RFC5234](https://tools.ietf.org/html/rfc5234) sy
 ## Application DB schema
 
 ### PORT_TABLE
-Stores information for physical switch ports managed by the switch chip.  device_names are defined in [port_config.ini](../portsyncd/port_config.ini).  Ports to the CPU (ie: management port) and logical ports (loopback) are not declared in the PORT_TABLE.   See INTF_TABLE.
+Stores information for physical switch ports managed by the switch chip. Ports to the CPU (ie: management port) and logical ports (loopback) are not declared in the PORT_TABLE. See INTF_TABLE.
 
     ;Defines layer 2 ports
     ;In SONiC, Data is loaded from configuration file by portsyncd
-    ;Status: Mandatory
-    port_table_key      = PORT_TABLE:ifname    ; ifname must be unique across PORT,INTF,VLAN,LAG TABLES
-    device_name         = 1*64VCHAR     ; must be unique across PORT,INTF,VLAN,LAG TABLES and must map to PORT_TABLE.name
-    admin_status        = BIT           ; is the port enabled (1) or disabled (0)
-    oper_status         = BIT           ; physical status up (1) or down (0) of the link attached to this port
+    key                 = PORT_TABLE:ifname    ; ifname must be unique across PORT,INTF,VLAN,LAG TABLES
+    admin_status        = "down" / "up"        ; admin status
+    oper_status         = "down" / "up"        ; oper status
     lanes               = list of lanes ; (need format spec???)
-    ifname              = 1*64VCHAR     ; name of the port, must be unique
     mac                 = 12HEXDIG      ;
+    alias               = 1*64VCHAR     ; alias name of the port used by LLDP and SNMP, must be unique
+    description         = 1*64VCHAR     ; port description
+    speed               = 1*6DIGIT      ; port line speed in Mbps
+    mtu                 = 1*4DIGIT      ; port MTU
+    fec                 = 1*64VCHAR     ; port fec mode
+    autoneg             = BIT           ; auto-negotiation mode
 
     ;QOS Mappings
-    map_dscp_to_tc  = ref_hash_key_reference
-    map_tc_to_queue = ref_hash_key_reference
+    map_dscp_to_tc      = ref_hash_key_reference
+    map_tc_to_queue     = ref_hash_key_reference
 
     Example:
     127.0.0.1:6379> hgetall PORT_TABLE:ETHERNET4
@@ -630,6 +633,33 @@ Equivalent RedisDB entry:
 
 ## Configuration DB schema
 
+### PORT_TABLE
+Stores information for physical switch ports managed by the switch chip. Ports to the CPU (ie: management port) and logical ports (loopback) are not declared in the PORT_TABLE. See MGMT_PORT.
+
+    ;Configuration for layer 2 ports
+    key                 = PORT|ifname   ; ifname must be unique across PORT,INTF,VLAN,LAG TABLES
+    admin_status        = "down" / "up" ; admin status
+    lanes               = list of lanes ; (need format spec???)
+    mac                 = 12HEXDIG      ;
+    alias               = 1*64VCHAR     ; alias name of the port used by LLDP and SNMP, must be unique
+    description         = 1*64VCHAR     ; port description
+    speed               = 1*6DIGIT      ; port line speed in Mbps
+    mtu                 = 1*4DIGIT      ; port MTU
+    fec                 = 1*64VCHAR     ; port fec mode
+    autoneg             = BIT           ; auto-negotiation mode
+
+### MGMT_PORT_TABLE
+    ;Configuration for management port, including at least one key
+    key                 = MGMT_PORT|ifname    ; ifname must be unique across PORT,INTF,VLAN,LAG TABLES
+    admin_status        = "down" / "up" ; admin status
+    mac                 = 12HEXDIG      ;
+    alias               = 1*64VCHAR     ; alias name of the port used by LLDP and SNMP, must be unique
+    description         = 1*64VCHAR     ; port description
+    speed               = 1*6DIGIT      ; port line speed in Mbps
+    mtu                 = 1*4DIGIT      ; port MTU
+    fec                 = 1*64VCHAR     ; port fec mode
+    autoneg             = BIT           ; auto-negotiation mode
+
 ### WARM\_RESTART
     ;Stores system warm start configuration
     ;Status: work in progress
@@ -668,6 +698,19 @@ Status: ready
 
 
 ## State DB schema
+
+### PORT_TABLE
+Stores information for physical switch ports managed by the switch chip. Ports to the CPU (ie: management port) and logical ports (loopback) are not declared in the PORT_TABLE. See MGMT_PORT.
+
+    ;State for layer 2 ports
+    key                 = PORT_TABLE|ifname    ; ifname must be unique across PORT,INTF,VLAN,LAG TABLES
+    oper_status         = "down" / "up" ; oper status
+    state               = "" / "ok"     ; port created successfully
+
+### MGMT_PORT_TABLE
+    ;State for management port, including at least one key
+    key                 = MGMT_PORT_TABLE|ifname    ; ifname must be unique across PORT,INTF,VLAN,LAG TABLES
+    oper_status         = "down" / "up" ; oper status
 
 ### WARM\_RESTART\_TABLE
     ;Stores application and orchdameon warm start status
