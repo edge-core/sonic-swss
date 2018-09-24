@@ -2,6 +2,8 @@ import os
 import os.path
 import re
 import time
+import json
+import redis
 import docker
 import pytest
 import commands
@@ -117,7 +119,7 @@ class VirtualServer(object):
             os.system("ip netns delete %s" % self.nsname)
 
     def runcmd(self, cmd):
-        os.system("ip netns exec %s %s" % (self.nsname, cmd))
+        return os.system("ip netns exec %s %s" % (self.nsname, cmd))
 
     def runcmd_async(self, cmd):
         return subprocess.Popen("ip netns exec %s %s" % (self.nsname, cmd), shell=True)
@@ -266,6 +268,167 @@ class DockerVirtualSwitch(object):
         self.ctn.exec_run("mkdir -p %s" % path)
         self.ctn.put_archive(path, tarstr.getvalue())
         tarstr.close()
+
+    def is_table_entry_exists(self, db, table, keyregex, attributes):
+        tbl = swsscommon.Table(db, table)
+        keys = tbl.getKeys()
+
+        exists = False
+        extra_info = []
+        key_found = False
+        for key in keys:
+            key_found = re.match(keyregex, key)
+
+            status, fvs = tbl.get(key)
+            assert status, "Error reading from table %s" % table
+
+            d_attributes = dict(attributes)
+            for k, v in fvs:
+                if k in d_attributes and d_attributes[k] == v:
+                    del d_attributes[k]
+
+            if len(d_attributes) != 0:
+                exists = False
+                extra_info.append("Desired attributes %s was not found for key %s" % (str(d_attributes), key))
+            else:
+                exists = True
+                break
+
+        if not key_found:
+            exists = False
+            extra_info.append("Desired key with parameters %s was not found" % str(key_values))
+
+        return exists, extra_info
+
+    def is_fdb_entry_exists(self, db, table, key_values, attributes):
+        tbl =  swsscommon.Table(db, table)
+        keys = tbl.getKeys()
+
+        exists = False
+        extra_info = []
+        key_found = False
+        for key in keys:
+            try:
+                d_key = json.loads(key)
+            except ValueError:
+                d_key = json.loads('{' + key + '}')
+
+            for k, v in key_values:
+                if k not in d_key or v != d_key[k]:
+                    continue
+
+            key_found = True
+
+            status, fvs = tbl.get(key)
+            assert status, "Error reading from table %s" % table
+
+            d_attributes = dict(attributes)
+            for k, v in fvs:
+                if k in d_attributes and d_attributes[k] == v:
+                    del d_attributes[k]
+
+            if len(d_attributes) != 0:
+                exists = False
+                extra_info.append("Desired attributes %s was not found for key %s" % (str(d_attributes), key))
+            else:
+                exists = True
+                break
+
+        if not key_found:
+            exists = False
+            extra_info.append("Desired key with parameters %s was not found" % str(key_values))
+
+        return exists, extra_info
+
+    def create_vlan(self, vlan):
+        tbl = swsscommon.Table(self.cdb, "VLAN")
+        fvs = swsscommon.FieldValuePairs([("vlanid", vlan)])
+        tbl.set("Vlan" + vlan, fvs)
+        time.sleep(1)
+
+    def create_vlan_member(self, vlan, interface):
+        tbl = swsscommon.Table(self.cdb, "VLAN_MEMBER")
+        fvs = swsscommon.FieldValuePairs([("tagging_mode", "untagged")])
+        tbl.set("Vlan" + vlan + "|" + interface, fvs)
+        time.sleep(1)
+
+    def set_interface_status(self, interface, admin_status):
+        if interface.startswith("PortChannel"):
+            tbl_name = "PORTCHANNEL"
+        elif interface.startswith("Vlan"):
+            tbl_name = "VLAN"
+        else:
+            tbl_name = "PORT"
+        tbl = swsscommon.Table(self.cdb, tbl_name)
+        fvs = swsscommon.FieldValuePairs([("admin_status", "up")])
+        tbl.set(interface, fvs)
+        time.sleep(1)
+
+    def add_ip_address(self, interface, ip):
+        if interface.startswith("PortChannel"):
+            tbl_name = "PORTCHANNEL_INTERFACE"
+        elif interface.startswith("Vlan"):
+            tbl_name = "VLAN_INTERFACE"
+        else:
+            tbl_name = "INTERFACE"
+        tbl = swsscommon.Table(self.cdb, tbl_name)
+        fvs = swsscommon.FieldValuePairs([("NULL", "NULL")])
+        tbl.set(interface + "|" + ip, fvs)
+        time.sleep(1)
+
+    def add_neighbor(self, interface, ip, mac):
+        tbl = swsscommon.ProducerStateTable(self.pdb, "NEIGH_TABLE")
+        fvs = swsscommon.FieldValuePairs([("neigh", mac),
+                                          ("family", "IPv4")])
+        tbl.set(interface + ":" + ip, fvs)
+        time.sleep(1)
+
+    def setup_db(self):
+        self.pdb = swsscommon.DBConnector(0, self.redis_sock, 0)
+        self.adb = swsscommon.DBConnector(1, self.redis_sock, 0)
+        self.cdb = swsscommon.DBConnector(4, self.redis_sock, 0)
+        self.sdb = swsscommon.DBConnector(6, self.redis_sock, 0)
+
+    def getCrmCounterValue(self, key, counter):
+        counters_db = swsscommon.DBConnector(swsscommon.COUNTERS_DB, self.redis_sock, 0)
+        crm_stats_table = swsscommon.Table(counters_db, 'CRM')
+
+        for k in crm_stats_table.get(key)[1]:
+            if k[0] == counter:
+                return int(k[1])
+
+    def setReadOnlyAttr(self, obj, attr, val):
+        db = swsscommon.DBConnector(swsscommon.ASIC_DB, self.redis_sock, 0)
+        tbl = swsscommon.Table(db, "ASIC_STATE:{0}".format(obj))
+        keys = tbl.getKeys()
+
+        assert len(keys) == 1
+
+        swVid = keys[0]
+        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB)
+        swRid = r.hget("VIDTORID", swVid)
+
+        assert swRid is not None
+
+        ntf = swsscommon.NotificationProducer(db, "SAI_VS_UNITTEST_CHANNEL")
+        fvp = swsscommon.FieldValuePairs()
+        ntf.send("enable_unittests", "true", fvp)
+        fvp = swsscommon.FieldValuePairs([(attr, val)])
+        key = "SAI_OBJECT_TYPE_SWITCH:" + swRid
+
+        ntf.send("set_ro", key, fvp)
+
+    # start processes in SWSS
+    def start_swss(self):
+        self.runcmd(['sh', '-c', 'supervisorctl start orchagent; supervisorctl start portsyncd; supervisorctl start intfsyncd; \
+            supervisorctl start neighsyncd; supervisorctl start intfmgrd; supervisorctl start vlanmgrd; \
+            supervisorctl start buffermgrd; supervisorctl start arp_update'])
+
+    # stop processes in SWSS
+    def stop_swss(self):
+        self.runcmd(['sh', '-c', 'supervisorctl stop orchagent; supervisorctl stop portsyncd; supervisorctl stop intfsyncd; \
+            supervisorctl stop neighsyncd;  supervisorctl stop intfmgrd; supervisorctl stop vlanmgrd; \
+            supervisorctl stop buffermgrd; supervisorctl stop arp_update'])
 
 @pytest.yield_fixture(scope="module")
 def dvs(request):
