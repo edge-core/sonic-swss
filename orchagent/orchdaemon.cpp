@@ -363,6 +363,14 @@ void OrchDaemon::start()
                 // Should sleep here or continue handling timers and etc.??
                 if (!gSwitchOrch->checkRestartNoFreeze())
                 {
+                    // Disable FDB learning on all bridge ports
+                    for (auto& pair: gPortsOrch->getAllPorts())
+                    {
+                        auto& port = pair.second;
+                        gPortsOrch->setBridgePortLearningFDB(port, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE);
+                    }
+                    flush();
+
                     SWSS_LOG_WARN("Orchagent is frozen for warm restart!");
                     sleep(UINT_MAX);
                 }
