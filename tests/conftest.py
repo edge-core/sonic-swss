@@ -10,6 +10,7 @@ import commands
 import tarfile
 import StringIO
 import subprocess
+from datetime import datetime
 from swsscommon import swsscommon
 
 def ensure_system(cmd):
@@ -242,6 +243,10 @@ class DockerVirtualSwitch(object):
                 except KeyError:
                     ready = False
 
+            # check if start.sh exited
+            if process_status["start.sh"] != "EXITED":
+                ready = False
+
             if ready == True:
                 break
 
@@ -275,6 +280,36 @@ class DockerVirtualSwitch(object):
         self.ctn.exec_run("mkdir -p %s" % path)
         self.ctn.put_archive(path, tarstr.getvalue())
         tarstr.close()
+
+    def add_log_marker(self):
+        marker = "=== start marker {} ===".format(datetime.now().isoformat())
+        self.ctn.exec_run("logger {}".format(marker))
+        return marker
+
+    def SubscribeAsicDbObject(self, objpfx):
+        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB)
+        pubsub = r.pubsub()
+        pubsub.psubscribe("__keyspace@1__:ASIC_STATE:%s*" % objpfx)
+        return pubsub
+
+    def CountSubscribedObjects(self, pubsub, timeout=10):
+        nadd = 0
+        ndel = 0
+        idle = 0
+        while True and idle < timeout:
+            message = pubsub.get_message()
+            if message:
+                print message
+                if message['data'] == 'hset':
+                    nadd += 1
+                elif message['data'] == 'del':
+                    ndel += 1
+                idle = 0
+            else:
+                time.sleep(1)
+                idle += 1
+
+        return (nadd, ndel)
 
     def get_map_iface_bridge_port_id(self, asic_db):
         port_id_2_iface = self.asicdb.portoidmap
