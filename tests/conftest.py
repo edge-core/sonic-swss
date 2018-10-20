@@ -138,6 +138,9 @@ class DockerVirtualSwitch(object):
                        'syncd',
                        'teamsyncd',
                        'vlanmgrd',
+                       'vrfmgrd',
+                       'teammgrd',
+                       'portmgrd',
                        'zebra']
         self.mount = "/var/run/redis-vs"
         self.redis_sock = self.mount + '/' + "redis.sock"
