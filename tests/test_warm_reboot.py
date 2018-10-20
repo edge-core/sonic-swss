@@ -4,19 +4,6 @@ import re
 import time
 import json
 
-# start processes in SWSS
-def start_swss(dvs):
-    dvs.runcmd(['sh', '-c', 'supervisorctl start orchagent; supervisorctl start portsyncd; supervisorctl start intfsyncd; \
-        supervisorctl start neighsyncd; supervisorctl start intfmgrd; supervisorctl start vlanmgrd; \
-        supervisorctl start buffermgrd; supervisorctl start arp_update'])
-
-# stop processes in SWSS
-def stop_swss(dvs):
-    dvs.runcmd(['sh', '-c', 'supervisorctl stop orchagent; supervisorctl stop portsyncd; supervisorctl stop intfsyncd; \
-        supervisorctl stop neighsyncd;  supervisorctl stop intfmgrd; supervisorctl stop vlanmgrd; \
-        supervisorctl stop buffermgrd; supervisorctl stop arp_update'])
-
-
 # Get restore count of all processes supporting warm restart
 def swss_get_RestoreCount(state_db):
     restore_count = {}
@@ -718,8 +705,8 @@ def test_OrchagentWarmRestartReadyCheck(dvs):
     assert result == "RESTARTCHECK failed\n"
 
     # recover for test cases after this one.
-    stop_swss(dvs)
-    start_swss(dvs)
+    dvs.stop_swss()
+    dvs.start_swss()
     time.sleep(5)
 
 def test_swss_port_state_syncup(dvs):
@@ -764,7 +751,7 @@ def test_swss_port_state_syncup(dvs):
         else:
             assert oper_status == "down"
 
-    stop_swss(dvs)
+    dvs.stop_swss()
     time.sleep(3)
 
     # flap the port oper status for Ethernet0, Ethernet4 and Ethernet8
@@ -776,7 +763,7 @@ def test_swss_port_state_syncup(dvs):
     dvs.servers[1].runcmd("ip link set up dev eth0") == 0
 
     time.sleep(5)
-    start_swss(dvs)
+    dvs.start_swss()
     time.sleep(10)
 
     swss_check_RestoreCount(state_db, restore_count)

@@ -128,21 +128,20 @@ class VirtualServer(object):
 
 class DockerVirtualSwitch(object):
     def __init__(self, name=None):
-        self.pnames = ['fpmsyncd',
-                       'intfmgrd',
-                       'intfsyncd',
-                       'neighsyncd',
-                       'orchagent',
-                       'portsyncd',
-                       'redis-server',
-                       'rsyslogd',
-                       'syncd',
-                       'teamsyncd',
-                       'vlanmgrd',
-                       'vrfmgrd',
-                       'teammgrd',
-                       'portmgrd',
-                       'zebra']
+        self.basicd = ['redis-server',
+                       'rsyslogd']
+        self.swssd = ['orchagent',
+                      'intfmgrd',
+                      'intfsyncd',
+                      'neighsyncd',
+                      'portsyncd',
+                      'vlanmgrd',
+                      'vrfmgrd',
+                      'portmgrd']
+        self.syncd = ['syncd']
+        self.rtd   = ['fpmsyncd', 'zebra']
+        self.teamd = ['teamsyncd', 'teammgrd']
+        self.alld  = self.basicd + self.swssd + self.syncd + self.rtd + self.teamd
         self.mount = "/var/run/redis-vs"
         self.redis_sock = self.mount + '/' + "redis.sock"
         self.client = docker.from_env()
@@ -236,7 +235,7 @@ class DockerVirtualSwitch(object):
 
             # check if all processes are running
             ready = True
-            for pname in self.pnames:
+            for pname in self.alld:
                 try:
                     if process_status[pname] != "RUNNING":
                         ready = False
@@ -258,6 +257,20 @@ class DockerVirtualSwitch(object):
 
     def restart(self):
         self.ctn.restart()
+
+    # start processes in SWSS
+    def start_swss(self):
+        cmd = ""
+        for pname in self.swssd:
+            cmd += "supervisorctl start {}; ".format(pname)
+        self.runcmd(['sh', '-c', cmd])
+
+    # stop processes in SWSS
+    def stop_swss(self):
+        cmd = ""
+        for pname in self.swssd:
+            cmd += "supervisorctl stop {}; ".format(pname)
+        self.runcmd(['sh', '-c', cmd])
 
     def init_asicdb_validator(self):
         self.asicdb = AsicDbValidator(self)
@@ -522,18 +535,6 @@ class DockerVirtualSwitch(object):
         key = "SAI_OBJECT_TYPE_SWITCH:" + swRid
 
         ntf.send("set_ro", key, fvp)
-
-    # start processes in SWSS
-    def start_swss(self):
-        self.runcmd(['sh', '-c', 'supervisorctl start orchagent; supervisorctl start portsyncd; supervisorctl start intfsyncd; \
-            supervisorctl start neighsyncd; supervisorctl start intfmgrd; supervisorctl start vlanmgrd; \
-            supervisorctl start buffermgrd; supervisorctl start arp_update'])
-
-    # stop processes in SWSS
-    def stop_swss(self):
-        self.runcmd(['sh', '-c', 'supervisorctl stop orchagent; supervisorctl stop portsyncd; supervisorctl stop intfsyncd; \
-            supervisorctl stop neighsyncd;  supervisorctl stop intfmgrd; supervisorctl stop vlanmgrd; \
-            supervisorctl stop buffermgrd; supervisorctl stop arp_update'])
 
 @pytest.yield_fixture(scope="module")
 def dvs(request):
