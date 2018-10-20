@@ -39,7 +39,7 @@ def setReadOnlyAttr(dvs, obj, attr, val):
     ntf.send("set_ro", key, fvp)
 
 
-def test_CrmFdbEntry(dvs):
+def test_CrmFdbEntry(dvs, testlog):
 
     dvs.runcmd("crm config polling interval 1")
 
@@ -92,7 +92,7 @@ def test_CrmFdbEntry(dvs):
     assert new_avail_counter == avail_counter
 
 
-def test_CrmIpv4Route(dvs):
+def test_CrmIpv4Route(dvs, testlog):
 
     dvs.runcmd("ifconfig Ethernet0 10.0.0.0/31 up")
 
@@ -141,7 +141,7 @@ def test_CrmIpv4Route(dvs):
     assert new_avail_counter == avail_counter
 
 
-def test_CrmIpv6Route(dvs):
+def test_CrmIpv6Route(dvs, testlog):
 
     # Enable IPv6 routing
     dvs.runcmd("sysctl net.ipv6.conf.all.disable_ipv6=0")
@@ -197,7 +197,7 @@ def test_CrmIpv6Route(dvs):
     assert new_avail_counter == avail_counter
 
 
-def test_CrmIpv4Nexthop(dvs):
+def test_CrmIpv4Nexthop(dvs, testlog):
 
     dvs.runcmd("ifconfig Ethernet0 10.0.0.0/31 up")
 
@@ -238,7 +238,7 @@ def test_CrmIpv4Nexthop(dvs):
     assert new_avail_counter == avail_counter
 
 
-def test_CrmIpv6Nexthop(dvs):
+def test_CrmIpv6Nexthop(dvs, testlog):
 
     # Enable IPv6 routing
     dvs.runcmd("sysctl net.ipv6.conf.all.disable_ipv6=0")
@@ -283,7 +283,7 @@ def test_CrmIpv6Nexthop(dvs):
     assert new_avail_counter == avail_counter
 
 
-def test_CrmIpv4Neighbor(dvs):
+def test_CrmIpv4Neighbor(dvs, testlog):
 
     dvs.runcmd("ifconfig Ethernet0 10.0.0.0/31 up")
 
@@ -324,7 +324,7 @@ def test_CrmIpv4Neighbor(dvs):
     assert new_avail_counter == avail_counter
 
 
-def test_CrmIpv6Neighbor(dvs):
+def test_CrmIpv6Neighbor(dvs, testlog):
 
     # Enable IPv6 routing
     dvs.runcmd("sysctl net.ipv6.conf.all.disable_ipv6=0")
@@ -369,7 +369,7 @@ def test_CrmIpv6Neighbor(dvs):
     assert new_avail_counter == avail_counter
 
 
-def test_CrmNexthopGroup(dvs):
+def test_CrmNexthopGroup(dvs, testlog):
 
     dvs.runcmd("ifconfig Ethernet0 10.0.0.0/31 up")
     dvs.runcmd("ifconfig Ethernet4 10.0.0.2/31 up")
@@ -421,7 +421,7 @@ def test_CrmNexthopGroup(dvs):
     assert new_avail_counter == avail_counter
 
 
-def test_CrmNexthopGroupMember(dvs):
+def test_CrmNexthopGroupMember(dvs, testlog):
 
     # down, then up to generate port up signal
     dvs.servers[0].runcmd("ip link set down dev eth0") == 0
@@ -479,7 +479,7 @@ def test_CrmNexthopGroupMember(dvs):
     assert new_avail_counter == avail_counter
 
 
-def test_CrmAcl(dvs):
+def test_CrmAcl(dvs, testlog):
 
     db = swsscommon.DBConnector(4, dvs.redis_sock, 0)
     adb = swsscommon.DBConnector(1, dvs.redis_sock, 0)

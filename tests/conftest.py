@@ -542,3 +542,9 @@ def dvs(request):
     dvs = DockerVirtualSwitch(name)
     yield dvs
     dvs.destroy()
+
+@pytest.yield_fixture
+def testlog(request, dvs):
+    dvs.runcmd("logger === start test %s ===" % request.node.name)
+    yield testlog
+    dvs.runcmd("logger === finish test %s ===" % request.node.name)

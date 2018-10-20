@@ -4,7 +4,7 @@ import re
 import time
 import json
 
-def test_RouteAdd(dvs):
+def test_RouteAdd(dvs, testlog):
 
     dvs.runcmd("ifconfig Ethernet0 10.0.0.0/31 up")
     dvs.runcmd("ifconfig Ethernet4 10.0.0.2/31 up")

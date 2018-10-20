@@ -101,7 +101,7 @@ def how_many_entries_exist(db, table):
     tbl =  swsscommon.Table(db, table)
     return len(tbl.getKeys())
 
-def test_PortSyncdWarmRestart(dvs):
+def test_PortSyncdWarmRestart(dvs, testlog):
 
     conf_db = swsscommon.DBConnector(swsscommon.CONFIG_DB, dvs.redis_sock, 0)
     appl_db = swsscommon.DBConnector(swsscommon.APPL_DB, dvs.redis_sock, 0)
@@ -179,7 +179,7 @@ def test_PortSyncdWarmRestart(dvs):
     swss_app_check_RestoreCount_single(state_db, restore_count, "portsyncd")
 
 
-def test_VlanMgrdWarmRestart(dvs):
+def test_VlanMgrdWarmRestart(dvs, testlog):
 
     conf_db = swsscommon.DBConnector(swsscommon.CONFIG_DB, dvs.redis_sock, 0)
     appl_db = swsscommon.DBConnector(swsscommon.APPL_DB, dvs.redis_sock, 0)
@@ -308,7 +308,7 @@ def check_syslog_for_neighbor_entry(dvs, marker, new_cnt, delete_cnt, iptype):
     else:
         assert "iptype is unknown" == ""
 
-def test_swss_neighbor_syncup(dvs):
+def test_swss_neighbor_syncup(dvs, testlog):
 
     appl_db = swsscommon.DBConnector(swsscommon.APPL_DB, dvs.redis_sock, 0)
     conf_db = swsscommon.DBConnector(swsscommon.CONFIG_DB, dvs.redis_sock, 0)
@@ -659,7 +659,7 @@ def test_swss_neighbor_syncup(dvs):
 
 
 # TODO: The condition of warm restart readiness check is still under discussion.
-def test_OrchagentWarmRestartReadyCheck(dvs):
+def test_OrchagentWarmRestartReadyCheck(dvs, testlog):
 
     # do a pre-cleanup
     dvs.runcmd("ip -s -s neigh flush all")
@@ -709,7 +709,7 @@ def test_OrchagentWarmRestartReadyCheck(dvs):
     dvs.start_swss()
     time.sleep(5)
 
-def test_swss_port_state_syncup(dvs):
+def test_swss_port_state_syncup(dvs, testlog):
 
     appl_db = swsscommon.DBConnector(swsscommon.APPL_DB, dvs.redis_sock, 0)
     conf_db = swsscommon.DBConnector(swsscommon.CONFIG_DB, dvs.redis_sock, 0)
