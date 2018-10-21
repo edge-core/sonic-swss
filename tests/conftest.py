@@ -144,8 +144,6 @@ class DockerVirtualSwitch(object):
         self.rtd   = ['fpmsyncd', 'zebra']
         self.teamd = ['teamsyncd', 'teammgrd']
         self.alld  = self.basicd + self.swssd + self.syncd + self.rtd + self.teamd
-        self.mount = "/var/run/redis-vs"
-        self.redis_sock = self.mount + '/' + "redis.sock"
         self.client = docker.from_env()
 
         self.ctn = None
@@ -191,6 +189,11 @@ class DockerVirtualSwitch(object):
                 server = VirtualServer(self.ctn_sw.name, self.ctn_sw_pid, i)
                 self.servers.append(server)
 
+            # mount redis to base to unique directory
+            self.mount = "/var/run/redis-vs/{}".format(self.ctn_sw.name)
+            os.system("mkdir -p {}".format(self.mount))
+            self.redis_sock = self.mount + '/' + "redis.sock"
+
             # create virtual switch container
             self.ctn = self.client.containers.run('docker-sonic-vs', privileged=True, detach=True,
                     network_mode="container:%s" % self.ctn_sw.name,
@@ -215,6 +218,7 @@ class DockerVirtualSwitch(object):
         if self.cleanup:
             self.ctn.remove(force=True)
             self.ctn_sw.remove(force=True)
+            os.system("rm -rf {}".format(self.mount))
             for s in self.servers:
                 s.destroy()
 
