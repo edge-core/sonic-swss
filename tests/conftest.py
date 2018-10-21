@@ -21,6 +21,8 @@ def ensure_system(cmd):
 def pytest_addoption(parser):
     parser.addoption("--dvsname", action="store", default=None,
                       help="dvs name")
+    parser.addoption("--keeptb", action="store_true", default=False,
+                      help="keep testbed after test")
 
 class AsicDbValidator(object):
     def __init__(self, dvs):
@@ -127,7 +129,7 @@ class VirtualServer(object):
         return subprocess.Popen("ip netns exec %s %s" % (self.nsname, cmd), shell=True)
 
 class DockerVirtualSwitch(object):
-    def __init__(self, name=None):
+    def __init__(self, name=None, keeptb=False):
         self.basicd = ['redis-server',
                        'rsyslogd']
         self.swssd = ['orchagent',
@@ -147,7 +149,10 @@ class DockerVirtualSwitch(object):
         self.client = docker.from_env()
 
         self.ctn = None
-        self.cleanup = True
+        if keeptb:
+            self.cleanup = False
+        else:
+            self.cleanup = True
         if name != None:
             # get virtual switch container
             for ctn in self.client.containers.list():
@@ -556,7 +561,8 @@ class DockerVirtualSwitch(object):
 @pytest.yield_fixture(scope="module")
 def dvs(request):
     name = request.config.getoption("--dvsname")
-    dvs = DockerVirtualSwitch(name)
+    keeptb = request.config.getoption("--keeptb")
+    dvs = DockerVirtualSwitch(name, keeptb)
     yield dvs
     if name == None:
         dvs.get_logs(request.module.__name__)
