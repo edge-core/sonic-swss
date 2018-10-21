@@ -292,7 +292,7 @@ class DockerVirtualSwitch(object):
         pubsub.psubscribe("__keyspace@1__:ASIC_STATE:%s*" % objpfx)
         return pubsub
 
-    def CountSubscribedObjects(self, pubsub, timeout=10):
+    def CountSubscribedObjects(self, pubsub, ignore=None, timeout=10):
         nadd = 0
         ndel = 0
         idle = 0
@@ -300,6 +300,10 @@ class DockerVirtualSwitch(object):
             message = pubsub.get_message()
             if message:
                 print message
+                if ignore:
+                    fds = message['channel'].split(':')
+                    if fds[2] in ignore:
+                        continue
                 if message['data'] == 'hset':
                     nadd += 1
                 elif message['data'] == 'del':

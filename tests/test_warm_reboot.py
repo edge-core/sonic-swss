@@ -280,7 +280,7 @@ def test_VlanMgrdWarmRestart(dvs):
     (exitcode, bv_after) = dvs.runcmd("bridge vlan")
     assert bv_after == bv_before
 
-    (nadd, ndel) = dvs.CountSubscribedObjects(pubsub)
+    (nadd, ndel) = dvs.CountSubscribedObjects(pubsub, ignore=["SAI_OBJECT_TYPE_FDB_ENTRY"])
     assert nadd == 0
     assert ndel == 0
 
