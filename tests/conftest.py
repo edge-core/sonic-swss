@@ -111,14 +111,14 @@ class VirtualServer(object):
             ensure_system("nsenter -t %d -n ip link set arp off dev %s" % (pid, self.vifname))
             ensure_system("nsenter -t %d -n sysctl -w net.ipv6.conf.%s.disable_ipv6=1" % (pid, self.vifname))
 
-    def __del__(self):
+    def destroy(self):
         if self.cleanup:
             pids = subprocess.check_output("ip netns pids %s" % (self.nsname), shell=True)
             if pids:
                 for pid in pids.split('\n'):
                     if len(pid) > 0:
                         os.system("kill %s" % int(pid))
-            os.system("ip netns delete %s" % self.nsname)
+            ensure_system("ip netns delete %s" % self.nsname)
 
     def runcmd(self, cmd):
         return os.system("ip netns exec %s %s" % (self.nsname, cmd))
@@ -211,7 +211,7 @@ class DockerVirtualSwitch(object):
             self.ctn.remove(force=True)
             self.ctn_sw.remove(force=True)
             for s in self.servers:
-                del(s)
+                s.destroy()
 
     def check_ready(self, timeout=30):
         '''check if all processes in the dvs is ready'''
