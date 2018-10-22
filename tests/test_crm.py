@@ -41,6 +41,10 @@ def setReadOnlyAttr(dvs, obj, attr, val):
 
 def test_CrmFdbEntry(dvs, testlog):
 
+    # disable ipv6 on Ethernet8 neighbor as once ipv6 link-local address is
+    # configured, server 2 will send packet which can switch to learn another
+    # mac and fail the test.
+    dvs.servers[2].runcmd("sysctl -w net.ipv6.conf.eth0.disable_ipv6=1")
     dvs.runcmd("crm config polling interval 1")
 
     setReadOnlyAttr(dvs, 'SAI_OBJECT_TYPE_SWITCH', 'SAI_SWITCH_ATTR_AVAILABLE_FDB_ENTRY', '1000')
@@ -91,6 +95,8 @@ def test_CrmFdbEntry(dvs, testlog):
 
     assert new_avail_counter == avail_counter
 
+    # enable ipv6 on server 2
+    dvs.servers[2].runcmd("sysctl -w net.ipv6.conf.eth0.disable_ipv6=0")
 
 def test_CrmIpv4Route(dvs, testlog):
 
