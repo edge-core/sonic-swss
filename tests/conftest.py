@@ -294,6 +294,23 @@ class DockerVirtualSwitch(object):
         self.ctn.put_archive(path, tarstr.getvalue())
         tarstr.close()
 
+    def get_logs(self, modname=None):
+        stream, stat = self.ctn.get_archive("/var/log/")
+        if modname == None:
+            log_dir = "log"
+        else:
+            log_dir = "log/{}".format(modname)
+        os.system("rm -rf {}".format(log_dir))
+        os.system("mkdir -p {}".format(log_dir))
+        p = subprocess.Popen(["tar", "--no-same-owner", "-C", "./{}".format(log_dir), "-x"], stdin=subprocess.PIPE)
+        for x in stream:
+            p.stdin.write(x)
+        p.stdin.close()
+        p.wait()
+        if p.returncode:
+            raise RuntimeError("Failed to unpack the archive.")
+        os.system("chmod a+r -R log")
+
     def add_log_marker(self):
         marker = "=== start marker {} ===".format(datetime.now().isoformat())
         self.ctn.exec_run("logger {}".format(marker))
@@ -541,6 +558,10 @@ def dvs(request):
     name = request.config.getoption("--dvsname")
     dvs = DockerVirtualSwitch(name)
     yield dvs
+    if name == None:
+        dvs.get_logs(request.module.__name__)
+    else:
+        dvs.get_logs()
     dvs.destroy()
 
 @pytest.yield_fixture
