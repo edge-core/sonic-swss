@@ -494,7 +494,7 @@ def test_swss_neighbor_syncup(dvs, testlog):
 
     #
     # Testcase 4:
-    # Stop neighsyncd, add even nummber of ipv4/ipv6 neighbor entries to each interface again, 
+    # Stop neighsyncd, add even nummber of ipv4/ipv6 neighbor entries to each interface again,
     # Start neighsyncd
     # The neighsyncd is supposed to sync up the entries from kernel after warm restart
     # Check the timer is not retrieved from configDB since it is not configured
@@ -708,6 +708,9 @@ def test_OrchagentWarmRestartReadyCheck(dvs, testlog):
     (exitcode, result) =  dvs.runcmd("/usr/bin/orchagent_restart_check -n -s -w 500")
     assert result == "RESTARTCHECK failed\n"
 
+    # Cleaning previously pushed route-entry to ease life of subsequent testcases.
+    del_entry_tbl(appl_db, swsscommon.APP_ROUTE_TABLE_NAME, "2.2.2.0/24")
+
     # recover for test cases after this one.
     dvs.stop_swss()
     dvs.start_swss()
@@ -784,3 +787,658 @@ def test_swss_port_state_syncup(dvs, testlog):
             assert oper_status == "down"
         else:
             assert oper_status == "up"
+
+
+#############################################################################
+#                                                                           #
+#                        Routing Warm-Restart Testing                       #
+#                                                                           #
+#############################################################################
+
+
+def set_restart_timer(dvs, db, app_name, value):
+    create_entry_tbl(
+        db,
+        swsscommon.CFG_WARM_RESTART_TABLE_NAME, app_name,
+        [
+            (app_name + "_timer", value),
+        ]
+    )
+
+
+# Temporary instruction to activate warm_restart. To be deleted once equivalent CLI
+# function is pushed to sonic-utils.
+def enable_warmrestart(dvs, db, app_name):
+    create_entry_tbl(
+        db,
+        swsscommon.CFG_WARM_RESTART_TABLE_NAME, app_name,
+        [
+            ("enable", "true"),
+        ]
+    )
+
+
+################################################################################
+#
+# Routing warm-restart testcases
+#
+################################################################################
+
+def test_routing_WarmRestart(dvs, testlog):
+
+    appl_db = swsscommon.DBConnector(swsscommon.APPL_DB, dvs.redis_sock, 0)
+    conf_db = swsscommon.DBConnector(swsscommon.CONFIG_DB, dvs.redis_sock, 0)
+    state_db = swsscommon.DBConnector(swsscommon.STATE_DB, dvs.redis_sock, 0)
+
+    # Restart-timer to utilize during the following testcases
+    restart_timer = 10
+
+
+    #############################################################################
+    #
+    # Baseline configuration
+    #
+    #############################################################################
+
+
+    # Defining create neighbor entries (4 ipv4 and 4 ip6, two each on each interface) in linux kernel
+    intfs = ["Ethernet0", "Ethernet4", "Ethernet8"]
+
+    # Enable ipv6 on docker
+    dvs.runcmd("sysctl net.ipv6.conf.all.disable_ipv6=0")
+
+    dvs.runcmd("ip -4 addr add 111.0.0.1/24 dev {}".format(intfs[0]))
+    dvs.runcmd("ip -6 addr add 1110::1/64 dev {}".format(intfs[0]))
+    dvs.runcmd("ip link set {} up".format(intfs[0]))
+
+    dvs.runcmd("ip -4 addr add 122.0.0.1/24 dev {}".format(intfs[1]))
+    dvs.runcmd("ip -6 addr add 1220::1/64 dev {}".format(intfs[1]))
+    dvs.runcmd("ip link set {} up".format(intfs[1]))
+
+    dvs.runcmd("ip -4 addr add 133.0.0.1/24 dev {}".format(intfs[2]))
+    dvs.runcmd("ip -6 addr add 1330::1/64 dev {}".format(intfs[2]))
+    dvs.runcmd("ip link set {} up".format(intfs[2]))
+
+    time.sleep(1)
+
+    #
+    # Setting peer's ip-addresses and associated neighbor-entries
+    #
+    ips = ["111.0.0.2", "122.0.0.2", "133.0.0.2"]
+    v6ips = ["1110::2", "1220::2", "1330::2"]
+    macs = ["00:00:00:00:11:02", "00:00:00:00:12:02", "00:00:00:00:13:02"]
+
+    for i in range(len(ips)):
+        dvs.runcmd("ip neigh add {} dev {} lladdr {}".format(ips[i], intfs[i%2], macs[i]))
+
+    for i in range(len(v6ips)):
+        dvs.runcmd("ip -6 neigh add {} dev {} lladdr {}".format(v6ips[i], intfs[i%2], macs[i]))
+
+    time.sleep(1)
+
+    #
+    # Defining baseline IPv4 non-ecmp route-entries
+    #
+    dvs.runcmd("ip route add 192.168.1.100/32 nexthop via 111.0.0.2")
+    dvs.runcmd("ip route add 192.168.1.200/32 nexthop via 122.0.0.2")
+    dvs.runcmd("ip route add 192.168.1.300/32 nexthop via 133.0.0.2")
+
+    #
+    # Defining baseline IPv4 ecmp route-entries
+    #
+    dvs.runcmd("ip route add 192.168.1.1/32 nexthop via 111.0.0.2 nexthop via 122.0.0.2 nexthop via 133.0.0.2")
+    dvs.runcmd("ip route add 192.168.1.2/32 nexthop via 111.0.0.2 nexthop via 122.0.0.2 nexthop via 133.0.0.2")
+    dvs.runcmd("ip route add 192.168.1.3/32 nexthop via 111.0.0.2 nexthop via 122.0.0.2")
+
+    #
+    # Defining baseline IPv6 non-ecmp route-entries
+    #
+    dvs.runcmd("ip -6 route add fc00:11:11::1/128 nexthop via 1110::2")
+    dvs.runcmd("ip -6 route add fc00:12:12::1/128 nexthop via 1220::2")
+    dvs.runcmd("ip -6 route add fc00:13:13::1/128 nexthop via 1330::2")
+
+    #
+    # Defining baseline IPv6 ecmp route-entries
+    #
+    dvs.runcmd("ip -6 route add fc00:1:1::1/128 nexthop via 1110::2 nexthop via 1220::2 nexthop via 1330::2")
+    dvs.runcmd("ip -6 route add fc00:2:2::1/128 nexthop via 1110::2 nexthop via 1220::2 nexthop via 1330::2")
+    dvs.runcmd("ip -6 route add fc00:3:3::1/128 nexthop via 1110::2 nexthop via 1220::2")
+
+    time.sleep(5)
+
+    # Enabling some extra logging for troubleshooting purposes
+    dvs.runcmd("swssloglevel -l INFO -c fpmsyncd")
+
+    # Subscribe to pubsub channels for routing-state associated to swss and sairedis dbs
+    pubsubAppDB  = dvs.SubscribeAppDbObject("ROUTE_TABLE")
+    pubsubAsicDB = dvs.SubscribeAsicDbObject("SAI_OBJECT_TYPE_ROUTE_ENTRY")
+
+
+    #############################################################################
+    #
+    # Testcase 1. Having routing-warm-reboot disabled, restart zebra and verify
+    #             that the traditional/cold-boot logic is followed.
+    #
+    #############################################################################
+
+    # Restart zebra
+    dvs.stop_zebra()
+    dvs.start_zebra()
+
+    time.sleep(5)
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "")
+
+    # Verify that multiple changes are seen in swss and sairedis logs as there's
+    # no warm-reboot logic in place.
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) != 0
+
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) != 0
+
+
+    #############################################################################
+    #
+    # Testcase 2. Restart zebra and make no control-plane changes.
+    #             For this and all subsequent test-cases routing-warm-reboot
+    #             feature will be kept enabled.
+    #
+    #############################################################################
+
+
+    # Enabling bgp warmrestart and setting restart timer.
+    # The following two instructions will be substituted by the commented ones
+    # once the later ones are added to sonic-utilities repo.
+    enable_warmrestart(dvs, conf_db, "bgp")
+    set_restart_timer(dvs, conf_db, "bgp", str(restart_timer))
+    #dvs.runcmd("config warm_restart enable bgp")
+    #dvs.runcmd("config warm_restart bgp_timer {}".format(restart_timer))
+
+    time.sleep(1)
+
+    # Restart zebra
+    dvs.stop_zebra()
+    dvs.start_zebra()
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+    # Verify swss changes -- none are expected this time
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 0 and len(delobjs) == 0
+
+    # Verify swss changes -- none are expected this time
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 0 and len(delobjs) == 0
+
+
+    #############################################################################
+    #
+    # Testcase 3. Restart zebra and add one new non-ecmp IPv4 prefix
+    #
+    #############################################################################
+
+    # Stop zebra
+    dvs.stop_zebra()
+
+    # Add new prefix
+    dvs.runcmd("ip route add 192.168.100.0/24 nexthop via 111.0.0.2")
+    time.sleep(1)
+
+    # Start zebra
+    dvs.start_zebra()
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+    # Verify the changed prefix is seen in swss
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    rt_val = json.loads(addobjs[0]['vals'])
+    assert rt_key == "192.168.100.0/24"
+    assert rt_val == {"ifname": "Ethernet0", "nexthop": "111.0.0.2"}
+
+    # Verify the changed prefix is seen in sairedis
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    assert rt_key['dest'] == "192.168.100.0/24"
+
+
+    #############################################################################
+    #
+    # Testcase 4. Restart zebra and withdraw one non-ecmp IPv4 prefix
+    #
+    #############################################################################
+
+
+    # Stop zebra
+    dvs.stop_zebra()
+
+    # Delete prefix
+    dvs.runcmd("ip route del 192.168.100.0/24 nexthop via 111.0.0.2")
+    time.sleep(1)
+
+    # Start zebra
+    dvs.start_zebra()
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+    # Verify the changed prefix is seen in swss
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 0 and len(delobjs) == 1
+    rt_key = json.loads(delobjs[0]['key'])
+    assert rt_key == "192.168.100.0/24"
+
+    # Verify the changed prefix is seen in sairedis
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 0 and len(delobjs) == 1
+    rt_key = json.loads(delobjs[0]['key'])
+    assert rt_key['dest'] == "192.168.100.0/24"
+
+
+    #############################################################################
+    #
+    # Testcase 5. Restart zebra and add a new IPv4 ecmp-prefix
+    #
+    #############################################################################
+
+
+    # Stop zebra
+    dvs.stop_zebra()
+
+    # Add prefix
+    dvs.runcmd("ip route add 192.168.200.0/24 nexthop via 111.0.0.2 nexthop via 122.0.0.2 nexthop via 133.0.0.2")
+    time.sleep(1)
+
+    # Start zebra
+    dvs.start_zebra()
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+    # Verify the changed prefix is seen in swss
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    rt_val = json.loads(addobjs[0]['vals'])
+    assert rt_key == "192.168.200.0/24"
+    assert rt_val == {"ifname": "Ethernet0,Ethernet4,Ethernet8", "nexthop": "111.0.0.2,122.0.0.2,133.0.0.2"}
+
+    # Verify the changed prefix is seen in sairedis
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    assert rt_key['dest'] == "192.168.200.0/24"
+
+
+    #############################################################################
+    #
+    # Testcase 6. Restart zebra and delete one existing IPv4 ecmp-prefix.
+    #
+    #############################################################################
+
+
+    # Stop zebra
+    dvs.stop_zebra()
+
+    # Delete prefix
+    dvs.runcmd("ip route del 192.168.200.0/24 nexthop via 111.0.0.2 nexthop via 122.0.0.2 nexthop via 133.0.0.2")
+    time.sleep(1)
+
+    # Start zebra
+    dvs.start_zebra()
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+    # Verify the changed prefix is seen in swss
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 0 and len(delobjs) == 1
+    rt_key = json.loads(delobjs[0]['key'])
+    assert rt_key == "192.168.200.0/24"
+
+    # Verify the changed prefix is seen in sairedis
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 0 and len(delobjs) == 1
+    rt_key = json.loads(delobjs[0]['key'])
+    assert rt_key['dest'] == "192.168.200.0/24"
+
+
+    #############################################################################
+    #
+    # Testcase 7. Restart zebra and add one new path to an IPv4 ecmp-prefix
+    #
+    #############################################################################
+
+
+    # Stop zebra
+    dvs.stop_zebra()
+
+    # Add new path
+    dvs.runcmd("ip route del 192.168.1.3/32 nexthop via 111.0.0.2 nexthop via 122.0.0.2")
+    dvs.runcmd("ip route add 192.168.1.3/32 nexthop via 111.0.0.2 nexthop via 122.0.0.2 nexthop via 133.0.0.2")
+    time.sleep(1)
+
+    # Start zebra
+    dvs.start_zebra()
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+     # Verify the changed prefix is seen in swss
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    rt_val = json.loads(addobjs[0]['vals'])
+    assert rt_key == "192.168.1.3"
+    assert rt_val == {"ifname": "Ethernet0,Ethernet4,Ethernet8", "nexthop": "111.0.0.2,122.0.0.2,133.0.0.2"}
+
+    # Verify the changed prefix is seen in sairedis
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    assert rt_key['dest'] == "192.168.1.3/32"
+
+
+    #############################################################################
+    #
+    # Testcase 8. Restart zebra and delete one ecmp-path from an IPv4 ecmp-prefix.
+    #
+    #############################################################################
+
+
+    # Stop zebra
+    dvs.stop_zebra()
+
+    # Delete ecmp-path
+    dvs.runcmd("ip route del 192.168.1.3/32 nexthop via 111.0.0.2 nexthop via 122.0.0.2 nexthop via 133.0.0.2")
+    dvs.runcmd("ip route add 192.168.1.3/32 nexthop via 111.0.0.2 nexthop via 122.0.0.2")
+    time.sleep(1)
+
+    # Start zebra
+    dvs.start_zebra()
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+     # Verify the changed prefix is seen in swss
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    rt_val = json.loads(addobjs[0]['vals'])
+    assert rt_key == "192.168.1.3"
+    assert rt_val == {"ifname": "Ethernet0,Ethernet4", "nexthop": "111.0.0.2,122.0.0.2"}
+
+    # Verify the changed prefix is seen in sairedis
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    assert rt_key['dest'] == "192.168.1.3/32"
+
+
+    #############################################################################
+    #
+    # Testcase 9. Restart zebra and add one new non-ecmp IPv6 prefix
+    #
+    #############################################################################
+
+
+    # Stop zebra
+    dvs.stop_zebra()
+
+    # Add prefix
+    dvs.runcmd("ip -6 route add fc00:4:4::1/128 nexthop via 1110::2")
+    time.sleep(1)
+
+    # Start zebra
+    dvs.start_zebra()
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+    # Verify the changed prefix is seen in swss
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    rt_val = json.loads(addobjs[0]['vals'])
+    assert rt_key == "fc00:4:4::1"
+    assert rt_val == {"ifname": "Ethernet0", "nexthop": "1110::2"}
+
+    # Verify the changed prefix is seen in sairedis
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    assert rt_key['dest'] == "fc00:4:4::1/128"
+
+
+    #############################################################################
+    #
+    # Testcase 10. Restart zebra and withdraw one non-ecmp IPv6 prefix
+    #
+    #############################################################################
+
+    # Stop zebra
+    dvs.stop_zebra()
+
+    # Delete prefix
+    dvs.runcmd("ip -6 route del fc00:4:4::1/128 nexthop via 1110::2")
+    time.sleep(1)
+
+    # Start zebra
+    dvs.start_zebra()
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+    # Verify the changed prefix is seen in swss
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 0 and len(delobjs) == 1
+    rt_key = json.loads(delobjs[0]['key'])
+    assert rt_key == "fc00:4:4::1"
+
+    # Verify the changed prefix is seen in sairedis
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 0 and len(delobjs) == 1
+    rt_key = json.loads(delobjs[0]['key'])
+    assert rt_key['dest'] == "fc00:4:4::1/128"
+
+
+    #############################################################################
+    #
+    # Testcase 11. Restart fpmsyncd and make no control-plane changes.
+    #
+    #############################################################################
+
+
+    # Stop fpmsyncd
+    dvs.stop_fpmsyncd()
+
+    # Start fpmsyncd
+    dvs.start_fpmsyncd()
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+    # Verify swss changes -- none are expected this time
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 0 and len(delobjs) == 0
+
+    # Verify sairedis changes -- none are expected this time
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 0 and len(delobjs) == 0
+
+
+    #############################################################################
+    #
+    # Testcase 12. Restart fpmsyncd and add one new non-ecmp IPv4 prefix
+    #
+    #############################################################################
+
+
+    # Stop fpmsyncd
+    dvs.stop_fpmsyncd()
+
+    # Add new prefix
+    dvs.runcmd("ip route add 192.168.100.0/24 nexthop via 111.0.0.2")
+    time.sleep(1)
+
+    # Start fpmsyncd
+    dvs.start_fpmsyncd()
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+    # Verify the changed prefix is seen in swss
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    rt_val = json.loads(addobjs[0]['vals'])
+    assert rt_key == "192.168.100.0/24"
+    assert rt_val == {"ifname": "Ethernet0", "nexthop": "111.0.0.2"}
+
+    # Verify the changed prefix is seen in sairedis
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    assert rt_key['dest'] == "192.168.100.0/24"
+
+
+    #############################################################################
+    #
+    # Testcase 13. Restart fpmsyncd and withdraw one non-ecmp IPv4 prefix
+    #
+    #############################################################################
+
+
+    # Stop fpmsyncd
+    dvs.stop_fpmsyncd()
+
+    # Delete prefix
+    dvs.runcmd("ip route del 192.168.100.0/24 nexthop via 111.0.0.2")
+    time.sleep(1)
+
+    # Start fpmsyncd
+    dvs.start_fpmsyncd()
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+    # Verify the changed prefix is seen in swss
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 0 and len(delobjs) == 1
+    rt_key = json.loads(delobjs[0]['key'])
+    assert rt_key == "192.168.100.0/24"
+
+    # Verify the changed prefix is seen in sairedis
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 0 and len(delobjs) == 1
+    rt_key = json.loads(delobjs[0]['key'])
+    assert rt_key['dest'] == "192.168.100.0/24"
+
+
+    #############################################################################
+    #
+    # Testcase 14. Restart zebra and add/remove a new non-ecmp IPv4 prefix. As
+    #              the 'delete' instruction would arrive after the 'add' one, no
+    #              changes should be pushed down to SwSS.
+    #
+    #############################################################################
+
+
+    # Restart zebra
+    dvs.stop_zebra()
+    dvs.start_zebra()
+
+    # Add/delete new prefix
+    dvs.runcmd("ip route add 192.168.100.0/24 nexthop via 111.0.0.2")
+    time.sleep(1)
+    dvs.runcmd("ip route del 192.168.100.0/24 nexthop via 111.0.0.2")
+    time.sleep(1)
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+    # Verify swss changes -- none are expected this time
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 0 and len(delobjs) == 0
+
+    # Verify swss changes -- none are expected this time
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 0 and len(delobjs) == 0
+
+
+    #############################################################################
+    #
+    # Testcase 15. Restart zebra and generate an add/remove/add for new non-ecmp
+    #              IPv4 prefix. Verify that only the second 'add' instruction is
+    #              honored and the corresponding update passed down to SwSS.
+    #
+    #############################################################################
+
+
+    # Restart zebra
+    dvs.stop_zebra()
+    dvs.start_zebra()
+
+    marker1 = dvs.add_log_marker("/var/log/swss/swss.rec")
+    marker2 = dvs.add_log_marker("/var/log/swss/sairedis.rec")
+
+    # Add/delete new prefix
+    dvs.runcmd("ip route add 192.168.100.0/24 nexthop via 111.0.0.2")
+    time.sleep(1)
+    dvs.runcmd("ip route del 192.168.100.0/24 nexthop via 111.0.0.2")
+    time.sleep(1)
+    dvs.runcmd("ip route add 192.168.100.0/24 nexthop via 122.0.0.2")
+    time.sleep(1)
+
+    # Verify FSM
+    swss_app_check_warmstart_state(state_db, "bgp", "restored")
+    time.sleep(restart_timer + 1)
+    swss_app_check_warmstart_state(state_db, "bgp", "reconciled")
+
+    # Verify the changed prefix is seen in swss
+    (addobjs, delobjs) = dvs.GetSubscribedAppDbObjects(pubsubAppDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    rt_val = json.loads(addobjs[0]['vals'])
+    assert rt_key == "192.168.100.0/24"
+    assert rt_val == {"ifname": "Ethernet4", "nexthop": "122.0.0.2"}
+
+    # Verify the changed prefix is seen in sairedis
+    (addobjs, delobjs) = dvs.GetSubscribedAsicDbObjects(pubsubAsicDB)
+    assert len(addobjs) == 1 and len(delobjs) == 0
+    rt_key = json.loads(addobjs[0]['key'])
+    assert rt_key['dest'] == "192.168.100.0/24"
+
+
