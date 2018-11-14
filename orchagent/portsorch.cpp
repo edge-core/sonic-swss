@@ -2304,6 +2304,24 @@ bool PortsOrch::initializePort(Port &p)
         p.m_oper_status = SAI_PORT_OPER_STATUS_UP;
     }
 
+    /*
+     * If oper_status is not empty, orchagent is doing warm start, restore hostif oper status.
+     */
+    if (!operStatus.empty())
+    {
+        sai_attribute_t attr;
+        attr.id = SAI_HOSTIF_ATTR_OPER_STATUS;
+        attr.value.booldata = (p.m_oper_status == SAI_PORT_OPER_STATUS_UP);
+
+        sai_status_t status = sai_hostif_api->set_hostif_attribute(p.m_hif_id, &attr);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_WARN("Failed to set operation status %s to host interface %s",
+                          operStatus.c_str(), p.m_alias.c_str());
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -2914,11 +2932,7 @@ void PortsOrch::doTask(NotificationConsumer &consumer)
                 SWSS_LOG_ERROR("Failed to get port object for port id 0x%lx", id);
                 continue;
             }
-
-            if (status != port.m_oper_status)
-            {
-                updatePortOperStatus(port, status);
-            }
+            updatePortOperStatus(port, status);
         }
 
         sai_deserialize_free_port_oper_status_ntf(count, portoperstatus);
@@ -2930,11 +2944,13 @@ void PortsOrch::updatePortOperStatus(Port &port, sai_port_oper_status_t status)
     SWSS_LOG_NOTICE("Port %s oper state set from %s to %s",
             port.m_alias.c_str(), oper_status_strings.at(port.m_oper_status).c_str(),
             oper_status_strings.at(status).c_str());
-
-    this->updateDbPortOperStatus(port.m_port_id, status);
-    if (status == SAI_PORT_OPER_STATUS_UP || port.m_oper_status == SAI_PORT_OPER_STATUS_UP)
+    if (status != port.m_oper_status)
     {
-        this->setHostIntfsOperStatus(port.m_port_id, status == SAI_PORT_OPER_STATUS_UP);
+        this->updateDbPortOperStatus(port.m_port_id, status);
+        if (status == SAI_PORT_OPER_STATUS_UP || port.m_oper_status == SAI_PORT_OPER_STATUS_UP)
+        {
+            this->setHostIntfsOperStatus(port.m_port_id, status == SAI_PORT_OPER_STATUS_UP);
+        }
     }
 }
 
