@@ -2286,12 +2286,6 @@ bool PortsOrch::initializePort(Port &p)
     }
     SWSS_LOG_DEBUG("initializePort %s with admin %s and oper %s", p.m_alias.c_str(), adminStatus.c_str(), operStatus.c_str());
 
-    /* Set port admin status to DOWN if attr missing */
-    if (adminStatus != "up")
-    {
-        setPortAdminStatus(p.m_port_id, false);
-    }
-
     /**
      * Create database port oper status as DOWN if attr missing
      * This status will be updated when receiving port_oper_status_notification.

@@ -28,7 +28,6 @@ private:
     ProducerStateTable m_appPortTable;
     ProducerStateTable m_appLagTable;
 
-    set<string> m_portList;
     set<string> m_lagList;
 
     MacAddress m_mac;
