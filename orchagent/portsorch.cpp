@@ -1056,21 +1056,22 @@ bool PortsOrch::setPortAdvSpeed(sai_object_id_t port_id, sai_uint32_t speed)
     return status == SAI_STATUS_SUCCESS;
 }
 
-bool PortsOrch::getQueueType(sai_object_id_t queue_id, string &type)
+bool PortsOrch::getQueueTypeAndIndex(sai_object_id_t queue_id, string &type, uint8_t &index)
 {
     SWSS_LOG_ENTER();
 
-    sai_attribute_t attr;
-    attr.id = SAI_QUEUE_ATTR_TYPE;
+    sai_attribute_t attr[2];
+    attr[0].id = SAI_QUEUE_ATTR_TYPE;
+    attr[1].id = SAI_QUEUE_ATTR_INDEX;
 
-    sai_status_t status = sai_queue_api->get_queue_attribute(queue_id, 1, &attr);
+    sai_status_t status = sai_queue_api->get_queue_attribute(queue_id, 2, attr);
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to get queue type for queue %lu rv:%d", queue_id, status);
+        SWSS_LOG_ERROR("Failed to get queue type and index for queue %lu rv:%d", queue_id, status);
         return false;
     }
 
-    switch (attr.value.s32)
+    switch (attr[0].value.s32)
     {
     case SAI_QUEUE_TYPE_ALL:
         type = "SAI_QUEUE_TYPE_ALL";
@@ -1082,9 +1083,11 @@ bool PortsOrch::getQueueType(sai_object_id_t queue_id, string &type)
         type = "SAI_QUEUE_TYPE_MULTICAST";
         break;
     default:
-        SWSS_LOG_ERROR("Got unsupported queue type %d for %lu queue", attr.value.s32, queue_id);
+        SWSS_LOG_ERROR("Got unsupported queue type %d for %lu queue", attr[0].value.s32, queue_id);
         throw runtime_error("Got unsupported queue type");
     }
+
+    index = attr[1].value.u8;
 
     return true;
 }
@@ -2867,12 +2870,13 @@ void PortsOrch::generateQueueMapPerPort(const Port& port)
 
         queueVector.emplace_back(name.str(), id);
         queuePortVector.emplace_back(id, sai_serialize_object_id(port.m_port_id));
-        queueIndexVector.emplace_back(id, to_string(queueIndex));
 
         string queueType;
-        if (getQueueType(port.m_queue_ids[queueIndex], queueType))
+        uint8_t queueRealIndex = 0;
+        if (getQueueTypeAndIndex(port.m_queue_ids[queueIndex], queueType, queueRealIndex))
         {
             queueTypeVector.emplace_back(id, queueType);
+            queueIndexVector.emplace_back(id, to_string(queueRealIndex));
         }
 
         string key = getQueueFlexCounterTableKey(id);
