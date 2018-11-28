@@ -21,6 +21,7 @@
 #define TABLE_DESCRIPTION "POLICY_DESC"
 #define TABLE_TYPE        "TYPE"
 #define TABLE_PORTS       "PORTS"
+#define TABLE_SERVICES    "SERVICES"
 
 #define TABLE_TYPE_L3        "L3"
 #define TABLE_TYPE_L3V6      "L3V6"
@@ -339,7 +340,9 @@ private:
     bool validateAclTable(AclTable &aclTable);
 
     //vector <AclTable> m_AclTables;
-    map <sai_object_id_t, AclTable> m_AclTables;
+    map<sai_object_id_t, AclTable> m_AclTables;
+    // TODO: Move all ACL tables into one map: name -> instance
+    map<string, AclTable> m_ctrlAclTables;
 
     static mutex m_countersMutex;
     static condition_variable m_sleepGuard;
