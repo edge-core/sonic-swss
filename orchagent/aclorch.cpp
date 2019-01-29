@@ -1151,14 +1151,11 @@ bool AclTable::create()
     attr.value.booldata = true;
     table_attrs.push_back(attr);
 
-    if (stage == ACL_STAGE_INGRESS)
-    {
-        int32_t range_types_list[] = { SAI_ACL_RANGE_TYPE_L4_DST_PORT_RANGE, SAI_ACL_RANGE_TYPE_L4_SRC_PORT_RANGE };
-        attr.id = SAI_ACL_TABLE_ATTR_FIELD_ACL_RANGE_TYPE;
-        attr.value.s32list.count = (uint32_t)(sizeof(range_types_list) / sizeof(range_types_list[0]));
-        attr.value.s32list.list = range_types_list;
-        table_attrs.push_back(attr);
-    }
+    int32_t range_types_list[] = { SAI_ACL_RANGE_TYPE_L4_DST_PORT_RANGE, SAI_ACL_RANGE_TYPE_L4_SRC_PORT_RANGE };
+    attr.id = SAI_ACL_TABLE_ATTR_FIELD_ACL_RANGE_TYPE;
+    attr.value.s32list.count = (uint32_t)(sizeof(range_types_list) / sizeof(range_types_list[0]));
+    attr.value.s32list.list = range_types_list;
+    table_attrs.push_back(attr);
 
     sai_acl_stage_t acl_stage;
     attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
