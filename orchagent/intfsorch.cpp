@@ -275,7 +275,7 @@ void IntfsOrch::doTask(Consumer &consumer)
 
             if (port.m_type == Port::VLAN && ip_prefix.isV4())
             {
-                addDirectedBroadcast(port, ip_prefix.getBroadcastIp());
+                addDirectedBroadcast(port, ip_prefix);
             }
 
             m_syncdIntfses[alias].ip_addresses.insert(ip_prefix);
@@ -318,9 +318,10 @@ void IntfsOrch::doTask(Consumer &consumer)
                 {
                     removeSubnetRoute(port, ip_prefix);
                     removeIp2MeRoute(vrf_id, ip_prefix);
-                    if(port.m_type == Port::VLAN && ip_prefix.isV4())
+
+                    if(port.m_type == Port::VLAN)
                     {
-                        removeDirectedBroadcast(port, ip_prefix.getBroadcastIp());
+                        removeDirectedBroadcast(port, ip_prefix);
                     }
 
                     m_syncdIntfses[alias].ip_addresses.erase(ip_prefix);
@@ -597,10 +598,20 @@ void IntfsOrch::removeIp2MeRoute(sai_object_id_t vrf_id, const IpPrefix &ip_pref
     }
 }
 
-void IntfsOrch::addDirectedBroadcast(const Port &port, const IpAddress &ip_addr)
+void IntfsOrch::addDirectedBroadcast(const Port &port, const IpPrefix &ip_prefix)
 {
     sai_status_t status;
     sai_neighbor_entry_t neighbor_entry;
+    IpAddress ip_addr;
+
+    /* If not IPv4 subnet or if /31 or /32 subnet, there is no broadcast address, hence don't
+     * add a broadcast route. */
+    if (!(ip_prefix.isV4()) || (ip_prefix.getMaskLength() > 30))
+    {
+      return;
+    }
+    ip_addr =  ip_prefix.getBroadcastIp();
+
     neighbor_entry.rif_id = port.m_rif_id;
     neighbor_entry.switch_id = gSwitchId;
     copy(neighbor_entry.ip_address, ip_addr);
@@ -620,10 +631,19 @@ void IntfsOrch::addDirectedBroadcast(const Port &port, const IpAddress &ip_addr)
     SWSS_LOG_NOTICE("Add broadcast route for ip:%s", ip_addr.to_string().c_str());
 }
 
-void IntfsOrch::removeDirectedBroadcast(const Port &port, const IpAddress &ip_addr)
+void IntfsOrch::removeDirectedBroadcast(const Port &port, const IpPrefix &ip_prefix)
 {
     sai_status_t status;
     sai_neighbor_entry_t neighbor_entry;
+    IpAddress ip_addr;
+
+    /* If not IPv4 subnet or if /31 or /32 subnet, there is no broadcast address */
+    if (!(ip_prefix.isV4()) || (ip_prefix.getMaskLength() > 30))
+    {
+        return;
+    }
+    ip_addr =  ip_prefix.getBroadcastIp();
+
     neighbor_entry.rif_id = port.m_rif_id;
     neighbor_entry.switch_id = gSwitchId;
     copy(neighbor_entry.ip_address, ip_addr);
