@@ -965,8 +965,7 @@ def enable_warmrestart(dvs, db, app_name):
 #
 ################################################################################
 
-# TODO: Please fix this test case. Here temporarily skip to unblock other pull requests
-@pytest.mark.skip(reason="Suspected unstable test code")
+
 def test_routing_WarmRestart(dvs, testlog):
 
     appl_db = swsscommon.DBConnector(swsscommon.APPL_DB, dvs.redis_sock, 0)
@@ -974,7 +973,7 @@ def test_routing_WarmRestart(dvs, testlog):
     state_db = swsscommon.DBConnector(swsscommon.STATE_DB, dvs.redis_sock, 0)
 
     # Restart-timer to utilize during the following testcases
-    restart_timer = 10
+    restart_timer = 15
 
 
     #############################################################################
