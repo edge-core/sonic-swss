@@ -704,18 +704,15 @@ bool PortsOrch::setPortPfcAsym(Port &port, string pfc_asym)
     return true;
 }
 
-bool PortsOrch::bindAclTable(sai_object_id_t id, sai_object_id_t table_oid, sai_object_id_t &group_member_oid, acl_stage_type_t acl_stage)
+bool PortsOrch::createBindAclTableGroup(sai_object_id_t id, sai_object_id_t &group_oid, acl_stage_type_t acl_stage)
 {
     SWSS_LOG_ENTER();
 
     if (acl_stage == ACL_STAGE_UNKNOWN)
     {
-        SWSS_LOG_ERROR("Unknown ACL stage for ACL table %lx", table_oid);
+        SWSS_LOG_ERROR("unknown ACL stage for table group creation");
         return false;
     }
-
-    sai_status_t status;
-    sai_object_id_t groupOid;
 
     Port port;
     if (!getPort(id, port))
@@ -724,15 +721,16 @@ bool PortsOrch::bindAclTable(sai_object_id_t id, sai_object_id_t table_oid, sai_
         return false;
     }
 
-    if (acl_stage == ACL_STAGE_INGRESS && port.m_ingress_acl_table_group_id != 0)
+    sai_status_t status;
+    if ((acl_stage == ACL_STAGE_INGRESS) && (port.m_ingress_acl_table_group_id != 0))
     {
-        groupOid = port.m_ingress_acl_table_group_id;
+        group_oid = port.m_ingress_acl_table_group_id;
     }
-    else if (acl_stage == ACL_STAGE_EGRESS && port.m_egress_acl_table_group_id != 0)
+    else if ((acl_stage == ACL_STAGE_EGRESS) && (port.m_egress_acl_table_group_id != 0))
     {
-        groupOid = port.m_egress_acl_table_group_id;
+        group_oid = port.m_egress_acl_table_group_id;
     }
-    // If port ACL table group does not exist, create one
+    // Port ACL table group does not exist, create one
     else if (acl_stage == ACL_STAGE_INGRESS or acl_stage == ACL_STAGE_EGRESS)
     {
         bool ingress = acl_stage == ACL_STAGE_INGRESS ? true : false;
@@ -773,7 +771,7 @@ bool PortsOrch::bindAclTable(sai_object_id_t id, sai_object_id_t table_oid, sai_
         group_attr.value.s32 = SAI_ACL_TABLE_GROUP_TYPE_PARALLEL;
         group_attrs.push_back(group_attr);
 
-        status = sai_acl_api->create_acl_table_group(&groupOid, gSwitchId, (uint32_t)group_attrs.size(), group_attrs.data());
+        status = sai_acl_api->create_acl_table_group(&group_oid, gSwitchId, (uint32_t)group_attrs.size(), group_attrs.data());
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to create ACL table group, rv:%d", status);
@@ -782,11 +780,11 @@ bool PortsOrch::bindAclTable(sai_object_id_t id, sai_object_id_t table_oid, sai_
 
         if (ingress)
         {
-            port.m_ingress_acl_table_group_id = groupOid;
+            port.m_ingress_acl_table_group_id = group_oid;
         }
         else
         {
-            port.m_egress_acl_table_group_id = groupOid;
+            port.m_egress_acl_table_group_id = group_oid;
         }
 
         setPort(port.m_alias, port);
@@ -800,13 +798,13 @@ bool PortsOrch::bindAclTable(sai_object_id_t id, sai_object_id_t table_oid, sai_
                 // Bind this ACL group to physical port
                 sai_attribute_t port_attr;
                 port_attr.id = ingress ? SAI_PORT_ATTR_INGRESS_ACL : SAI_PORT_ATTR_EGRESS_ACL;
-                port_attr.value.oid = groupOid;
+                port_attr.value.oid = group_oid;
 
                 status = sai_port_api->set_port_attribute(port.m_port_id, &port_attr);
                 if (status != SAI_STATUS_SUCCESS)
                 {
                     SWSS_LOG_ERROR("Failed to bind port %s to ACL table group %lx, rv:%d",
-                            port.m_alias.c_str(), groupOid, status);
+                            port.m_alias.c_str(), group_oid, status);
                     return status;
                 }
                 break;
@@ -816,13 +814,13 @@ bool PortsOrch::bindAclTable(sai_object_id_t id, sai_object_id_t table_oid, sai_
                 // Bind this ACL group to LAG
                 sai_attribute_t lag_attr;
                 lag_attr.id = ingress ? SAI_LAG_ATTR_INGRESS_ACL : SAI_LAG_ATTR_EGRESS_ACL;
-                lag_attr.value.oid = groupOid;
+                lag_attr.value.oid = group_oid;
 
                 status = sai_lag_api->set_lag_attribute(port.m_lag_id, &lag_attr);
                 if (status != SAI_STATUS_SUCCESS)
                 {
                     SWSS_LOG_ERROR("Failed to bind LAG %s to ACL table group %lx, rv:%d",
-                            port.m_alias.c_str(), groupOid, status);
+                            port.m_alias.c_str(), group_oid, status);
                     return status;
                 }
                 break;
@@ -832,13 +830,13 @@ bool PortsOrch::bindAclTable(sai_object_id_t id, sai_object_id_t table_oid, sai_
                 // Bind this ACL group to VLAN
                 sai_attribute_t vlan_attr;
                 vlan_attr.id = ingress ? SAI_VLAN_ATTR_INGRESS_ACL : SAI_VLAN_ATTR_EGRESS_ACL;
-                vlan_attr.value.oid = groupOid;
+                vlan_attr.value.oid = group_oid;
 
                 status = sai_vlan_api->set_vlan_attribute(port.m_vlan_info.vlan_oid, &vlan_attr);
                 if (status != SAI_STATUS_SUCCESS)
                 {
                     SWSS_LOG_ERROR("Failed to bind VLAN %s to ACL table group %lx, rv:%d",
-                            port.m_alias.c_str(), groupOid, status);
+                            port.m_alias.c_str(), group_oid, status);
                     return status;
                 }
                 break;
@@ -851,6 +849,29 @@ bool PortsOrch::bindAclTable(sai_object_id_t id, sai_object_id_t table_oid, sai_
         }
 
         SWSS_LOG_NOTICE("Create ACL table group and bind port %s to it", port.m_alias.c_str());
+    }
+
+    return true;
+}
+
+bool PortsOrch::bindAclTable(sai_object_id_t id, sai_object_id_t table_oid, sai_object_id_t &group_member_oid, acl_stage_type_t acl_stage)
+{
+    SWSS_LOG_ENTER();
+
+    if (table_oid == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("Invalid ACL table %lx", table_oid);
+        return false;
+    }
+
+    sai_status_t status;
+    sai_object_id_t groupOid;
+
+    // Create an ACL table group and bind to port
+    if (!createBindAclTableGroup(id, groupOid, acl_stage))
+    {
+        SWSS_LOG_ERROR("Fail to create or bind to port %lx ACL table group", id);
+        return false;
     }
 
     // Create an ACL group member with table_oid and groupOid
@@ -872,8 +893,8 @@ bool PortsOrch::bindAclTable(sai_object_id_t id, sai_object_id_t table_oid, sai_
     status = sai_acl_api->create_acl_table_group_member(&group_member_oid, gSwitchId, (uint32_t)member_attrs.size(), member_attrs.data());
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to create member in ACL table group %lx for ACL table group %lx, rv:%d",
-                table_oid, groupOid, status);
+        SWSS_LOG_ERROR("Failed to create member in ACL table group %lx for ACL table %lx, rv:%d",
+                groupOid, table_oid, status);
         return false;
     }
 
