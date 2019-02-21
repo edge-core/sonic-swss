@@ -314,6 +314,11 @@ void IntfsOrch::doTask(Consumer &consumer)
                 continue;
             }
 
+            if (m_vnetInfses.find(alias) != m_vnetInfses.end())
+            {
+                vnet_name = m_vnetInfses.at(alias);
+            }
+
             if (!vnet_name.empty())
             {
                 VNetOrch* vnet_orch = gDirectory.get<VNetOrch*>();
@@ -326,6 +331,11 @@ void IntfsOrch::doTask(Consumer &consumer)
                 {
                     it++;
                     continue;
+                }
+
+                if (m_vnetInfses.find(alias) == m_vnetInfses.end())
+                {
+                    m_vnetInfses.emplace(alias, vnet_name);
                 }
             }
             else

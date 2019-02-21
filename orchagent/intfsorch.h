@@ -44,6 +44,15 @@ public:
     void removeRifFromFlexCounter(const string&, const string&);
 
     bool setIntf(const string& alias, sai_object_id_t vrf_id = gVirtualRouterId, const IpPrefix *ip_prefix = nullptr);
+
+    void addIp2MeRoute(sai_object_id_t vrf_id, const IpPrefix &ip_prefix);
+    void removeIp2MeRoute(sai_object_id_t vrf_id, const IpPrefix &ip_prefix);
+
+    const IntfsTable& getSyncdIntfses(void)
+    {
+        return m_syncdIntfses;
+    }
+
 private:
 
     SelectableTimer* m_updateMapsTimer = nullptr;
@@ -51,6 +60,7 @@ private:
 
     VRFOrch *m_vrfOrch;
     IntfsTable m_syncdIntfses;
+    map<string, string> m_vnetInfses;
     void doTask(Consumer &consumer);
     void doTask(SelectableTimer &timer);
 
@@ -72,9 +82,6 @@ private:
 
     void addSubnetRoute(const Port &port, const IpPrefix &ip_prefix);
     void removeSubnetRoute(const Port &port, const IpPrefix &ip_prefix);
-
-    void addIp2MeRoute(sai_object_id_t vrf_id, const IpPrefix &ip_prefix);
-    void removeIp2MeRoute(sai_object_id_t vrf_id, const IpPrefix &ip_prefix);
 
     void addDirectedBroadcast(const Port &port, const IpPrefix &ip_prefix);
     void removeDirectedBroadcast(const Port &port, const IpPrefix &ip_prefix);
