@@ -1160,8 +1160,10 @@ bool AclTable::create()
         table_attrs.push_back(attr);
     }
 
+    sai_acl_stage_t acl_stage;
     attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
-    attr.value.s32 = stage == ACL_STAGE_INGRESS ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
+    acl_stage = (stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
+    attr.value.s32 = acl_stage;
     table_attrs.push_back(attr);
 
     if (type == ACL_TABLE_MIRROR)
@@ -1175,7 +1177,7 @@ bool AclTable::create()
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        gCrmOrch->incCrmAclUsedCounter(CrmResourceType::CRM_ACL_TABLE, (sai_acl_stage_t) attr.value.s32, SAI_ACL_BIND_POINT_TYPE_PORT);
+        gCrmOrch->incCrmAclUsedCounter(CrmResourceType::CRM_ACL_TABLE, acl_stage, SAI_ACL_BIND_POINT_TYPE_PORT);
     }
 
     return status == SAI_STATUS_SUCCESS;
@@ -1957,11 +1959,11 @@ bool AclOrch::removeAclTable(string table_id)
 
     if (deleteUnbindAclTable(table_oid) == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_NOTICE("Successfully deleted ACL table %s", table_id.c_str());
-        m_AclTables.erase(table_oid);
-
         sai_acl_stage_t stage = (m_AclTables[table_oid].stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
         gCrmOrch->decCrmAclUsedCounter(CrmResourceType::CRM_ACL_TABLE, stage, SAI_ACL_BIND_POINT_TYPE_PORT, table_oid);
+
+        SWSS_LOG_NOTICE("Successfully deleted ACL table %s", table_id.c_str());
+        m_AclTables.erase(table_oid);
 
         return true;
     }
