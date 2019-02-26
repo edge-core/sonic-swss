@@ -796,6 +796,77 @@ bool VNetBitmapObject::addTunnelRoute(IpPrefix& ipPrefix, tunnelEndpoint& endp)
     return true;
 }
 
+bool VNetBitmapObject::addRoute(IpPrefix& ipPrefix, nextHop& nh)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status;
+    sai_attribute_t attr;
+    vector<sai_attribute_t> attrs;
+    sai_ip_prefix_t pfx;
+    sai_object_id_t tunnelRouteTableEntryId;
+    uint32_t peerBitmap = vnet_id_;
+    Port port;
+
+    if ((!gPortsOrch->getPort(nh.ifname, port) || (port.m_rif_id == SAI_NULL_OBJECT_ID)))
+    {
+        SWSS_LOG_WARN("Port/RIF %s doesn't exist", nh.ifname.c_str());
+        return false;
+    }
+
+    for (const auto& vnet : getPeerList())
+    {
+        uint32_t id = getBitmapId(vnet);
+        if (id == 0)
+        {
+            SWSS_LOG_WARN("Peer vnet %s not ready", vnet.c_str());
+            return false;
+        }
+        peerBitmap |= id;
+    }
+
+    /* Local route */
+    copy(pfx, ipPrefix);
+
+    attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_ACTION;
+    attr.value.s32 = SAI_TABLE_BITMAP_ROUTER_ENTRY_ACTION_TO_LOCAL;
+    attrs.push_back(attr);
+
+    attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_PRIORITY;
+    attr.value.u32 = getFreeTunnelRouteTableOffset();
+    attrs.push_back(attr);
+
+    attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_IN_RIF_METADATA_KEY;
+    attr.value.u64 = 0;
+    attrs.push_back(attr);
+
+    attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_IN_RIF_METADATA_MASK;
+    attr.value.u64 = ~peerBitmap;
+    attrs.push_back(attr);
+
+    attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_DST_IP_KEY;
+    attr.value.ipprefix = pfx;
+    attrs.push_back(attr);
+
+    attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_ROUTER_INTERFACE;
+    attr.value.oid = port.m_rif_id;
+    attrs.push_back(attr);
+
+    status = sai_bmtor_api->create_table_bitmap_router_entry(
+            &tunnelRouteTableEntryId,
+            gSwitchId,
+            (uint32_t)attrs.size(),
+            attrs.data());
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to create local VNET route entry, SAI rc: %d", status);
+        throw std::runtime_error("VNet route creation failed");
+    }
+
+    return true;
+}
+
 /*
  * VNet Orch class definitions
  */
@@ -1292,6 +1363,27 @@ bool VNetRouteOrch::doRouteTask<VNetBitmapObject>(const string& vnet, IpPrefix& 
     return true;
 }
 
+template<>
+bool VNetRouteOrch::doRouteTask<VNetBitmapObject>(const string& vnet, IpPrefix& ipPrefix, nextHop& nh, string& op)
+{
+    SWSS_LOG_ENTER();
+
+    if (!vnet_orch_->isVnetExists(vnet))
+    {
+        SWSS_LOG_WARN("VNET %s doesn't exist", vnet.c_str());
+        return false;
+    }
+
+    auto *vnet_obj = vnet_orch_->getTypePtr<VNetBitmapObject>(vnet);
+
+    if (op == SET_COMMAND)
+    {
+        return vnet_obj->addRoute(ipPrefix, nh);
+    }
+
+    return true;
+}
+
 bool VNetRouteOrch::handleRoutes(const Request& request)
 {
     SWSS_LOG_ENTER();
@@ -1328,6 +1420,10 @@ bool VNetRouteOrch::handleRoutes(const Request& request)
     if (vnet_orch_->isVnetExecVrf())
     {
         return doRouteTask<VNetVrfObject>(vnet_name, ip_pfx, nh, op);
+    }
+    else
+    {
+        return doRouteTask<VNetBitmapObject>(vnet_name, ip_pfx, nh, op);
     }
 
     return true;

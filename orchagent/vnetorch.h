@@ -181,6 +181,8 @@ public:
 
     virtual bool addTunnelRoute(IpPrefix& ipPrefix, tunnelEndpoint& endp);
 
+    virtual bool addRoute(IpPrefix& ipPrefix, nextHop& nh);
+
     void setVniInfo(uint32_t vni);
 
     bool updateObj(vector<sai_attribute_t>&);
