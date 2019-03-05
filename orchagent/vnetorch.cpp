@@ -805,10 +805,13 @@ bool VNetBitmapObject::addRoute(IpPrefix& ipPrefix, nextHop& nh)
     vector<sai_attribute_t> attrs;
     sai_ip_prefix_t pfx;
     sai_object_id_t tunnelRouteTableEntryId;
+    sai_object_id_t nh_id = SAI_NULL_OBJECT_ID;
     uint32_t peerBitmap = vnet_id_;
     Port port;
 
-    if ((!gPortsOrch->getPort(nh.ifname, port) || (port.m_rif_id == SAI_NULL_OBJECT_ID)))
+    bool is_subnet = (!nh.ips.getSize()) ? true : false;
+
+    if (is_subnet && (!gPortsOrch->getPort(nh.ifname, port) || (port.m_rif_id == SAI_NULL_OBJECT_ID)))
     {
         SWSS_LOG_WARN("Port/RIF %s doesn't exist", nh.ifname.c_str());
         return false;
@@ -828,9 +831,44 @@ bool VNetBitmapObject::addRoute(IpPrefix& ipPrefix, nextHop& nh)
     /* Local route */
     copy(pfx, ipPrefix);
 
-    attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_ACTION;
-    attr.value.s32 = SAI_TABLE_BITMAP_ROUTER_ENTRY_ACTION_TO_LOCAL;
-    attrs.push_back(attr);
+    if (is_subnet)
+    {
+        attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_ACTION;
+        attr.value.s32 = SAI_TABLE_BITMAP_ROUTER_ENTRY_ACTION_TO_LOCAL;
+        attrs.push_back(attr);
+
+        attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_ROUTER_INTERFACE;
+        attr.value.oid = port.m_rif_id;
+        attrs.push_back(attr);
+    }
+    else if (nh.ips.getSize() == 1)
+    {
+        IpAddress ip_address(nh.ips.to_string());
+        if (gNeighOrch->hasNextHop(ip_address))
+        {
+            nh_id = gNeighOrch->getNextHopId(ip_address);
+        }
+        else
+        {
+            SWSS_LOG_INFO("Failed to get next hop %s for %s",
+                          ip_address.to_string().c_str(), ipPrefix.to_string().c_str());
+            return false;
+        }
+
+        attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_ACTION;
+        attr.value.s32 = SAI_TABLE_BITMAP_ROUTER_ENTRY_ACTION_TO_NEXTHOP;
+        attrs.push_back(attr);
+
+        attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_NEXT_HOP;
+        attr.value.oid = nh_id;
+        attrs.push_back(attr);
+    }
+    else
+    {
+        /* FIXME - Handle ECMP routes */
+        SWSS_LOG_WARN("VNET ECMP NHs not implemented for '%s'", ipPrefix.to_string().c_str());
+        return true;
+    }
 
     attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_PRIORITY;
     attr.value.u32 = getFreeTunnelRouteTableOffset();
@@ -846,10 +884,6 @@ bool VNetBitmapObject::addRoute(IpPrefix& ipPrefix, nextHop& nh)
 
     attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_DST_IP_KEY;
     attr.value.ipprefix = pfx;
-    attrs.push_back(attr);
-
-    attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_ROUTER_INTERFACE;
-    attr.value.oid = port.m_rif_id;
     attrs.push_back(attr);
 
     status = sai_bmtor_api->create_table_bitmap_router_entry(
