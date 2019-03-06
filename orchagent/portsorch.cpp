@@ -1786,7 +1786,8 @@ void PortsOrch::doPortTask(Consumer &consumer)
                         }
                         SWSS_LOG_NOTICE("Set port %s speed to %u", alias.c_str(), speed);
                     }
-                    m_portList[alias].m_speed = speed;
+                    p.m_speed = speed;
+                    m_portList[alias] = p;
                 }
 
                 if (mtu != 0 && mtu != p.m_mtu)
