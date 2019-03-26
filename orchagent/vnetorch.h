@@ -170,6 +170,29 @@ struct VnetBridgeInfo
     sai_object_id_t bridge_port_rif_id;
     sai_object_id_t bridge_port_tunnel_id;
     sai_object_id_t rif_id;
+    uint32_t use_count;
+};
+
+struct VnetNeighInfo
+{
+    sai_fdb_entry_t fdb_entry;
+    sai_neighbor_entry_t neigh_entry;
+    uint32_t use_count;
+};
+
+struct TunnelRouteInfo
+{
+    sai_object_id_t tunnelRouteTableEntryId;
+    sai_object_id_t nexthopId;
+    uint32_t vni;
+    MacAddress mac;
+    uint32_t offset;
+};
+
+struct RouteInfo
+{
+    sai_object_id_t routeTableEntryId;
+    uint32_t offset;
 };
 
 class VNetBitmapObject: public VNetObject
@@ -177,30 +200,42 @@ class VNetBitmapObject: public VNetObject
 public:
     VNetBitmapObject(const string& vnet, const VNetInfo& vnetInfo, vector<sai_attribute_t>& attrs);
 
-    virtual bool addIntf(const string& alias, const IpPrefix *prefix);
+    bool addIntf(const string& alias, const IpPrefix *prefix);
 
-    virtual bool addTunnelRoute(IpPrefix& ipPrefix, tunnelEndpoint& endp);
+    bool addTunnelRoute(IpPrefix& ipPrefix, tunnelEndpoint& endp);
+    bool removeTunnelRoute(IpPrefix& ipPrefix);
 
-    virtual bool addRoute(IpPrefix& ipPrefix, nextHop& nh);
+    bool addRoute(IpPrefix& ipPrefix, nextHop& nh);
+    bool removeRoute(IpPrefix& ipPrefix);
 
     void setVniInfo(uint32_t vni);
 
     bool updateObj(vector<sai_attribute_t>&);
 
-    virtual ~VNetBitmapObject() {}
+    size_t getRouteCount() const
+    {
+        return (routeMap_.size() + tunnelRouteMap_.size());
+    }
+
+    string getVnetName() const
+    {
+        return vnet_name_;
+    }
+
+    ~VNetBitmapObject();
 
 private:
     static uint32_t getFreeBitmapId(const string& name);
-
     static uint32_t getBitmapId(const string& name);
-
-    static void recycleBitmapId(uint32_t id);
-
+    static void recycleBitmapId(const string& name);
+    
     static uint32_t getFreeTunnelRouteTableOffset();
-
     static void recycleTunnelRouteTableOffset(uint32_t offset);
 
     static VnetBridgeInfo getBridgeInfoByVni(uint32_t vni, string tunnelName);
+    static bool clearBridgeInfoByVni(uint32_t vni, string tunnelName);
+
+    static bool clearNeighInfo(MacAddress mac, sai_object_id_t bridge);
 
     static uint32_t getFreeNeighbor(void);
 
@@ -208,10 +243,14 @@ private:
     static map<string, uint32_t> vnetIds_;
     static std::bitset<VNET_TUNNEL_SIZE> tunnelOffsets_;
     static map<uint32_t, VnetBridgeInfo> bridgeInfoMap_;
-    static map<tuple<MacAddress, sai_object_id_t>, sai_fdb_entry_t> fdbMap_;
-    static map<tuple<MacAddress, sai_object_id_t>, sai_neighbor_entry_t> neighMap_;
+    static map<tuple<MacAddress, sai_object_id_t>, VnetNeighInfo> neighInfoMap_;
+
+    map<IpPrefix, RouteInfo> routeMap_;
+    map<IpPrefix, TunnelRouteInfo> tunnelRouteMap_;
 
     uint32_t vnet_id_;
+    string vnet_name_;
+    sai_object_id_t vnetTableEntryId_;
 };
 
 typedef std::unique_ptr<VNetObject> VNetObject_T;
