@@ -948,7 +948,7 @@ bool RouteOrch::removeRoute(IpPrefix ipPrefix)
         /*
          * Decrease the reference count only when the route is pointing to a next hop.
          * Decrease the reference count when the route is pointing to a next hop group,
-         * and check wheather the reference count decreases to zero. If yes, then we need
+         * and check whether the reference count decreases to zero. If yes, then we need
          * to remove the next hop group.
          */
         decreaseNextHopRefCount(it_route->second);
