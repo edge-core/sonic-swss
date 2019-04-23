@@ -49,7 +49,12 @@ persists.
     sudo ./create_vnet.sh sw
     docker run --privileged -v /var/run/redis-vs/sw:/var/run/redis --network container:sw -d --name vs docker-sonic-vs
     ```
-
+    
+- If you need to simulate other platforms, e.g. Broadcom or Mellanox, you will need to add the environment variable while starting the docker.
+    ```
+    -e "fake_platform=mellanox"
+    ```
+    
 - Run test using the existing vs container
 
     ```
