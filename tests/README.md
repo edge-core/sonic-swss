@@ -58,5 +58,5 @@ persists.
 - Run test using the existing vs container
 
     ```
-    sudo pytest -v --dvsname=vs
+    sudo pytest -s -v --dvsname=vs
     ```
