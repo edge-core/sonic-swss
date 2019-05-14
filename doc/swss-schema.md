@@ -630,6 +630,45 @@ Equivalent RedisDB entry:
     12) "0"
     127.0.0.1:6379>
 
+---------------------------------------------
+
+### POLICER_TABLE
+Policer table
+The settings in this table configure policers, which could be attached to mirror sessions.
+
+packet_action = "drop" | "forward" | "copy" | "copy_cancel" | "trap" | "log" | "deny" | "transit"
+
+    ;Key
+    key = "POLICER_TABLE:name"
+
+    ;Field-Value tuples
+    meter_type  = "packets" | "bytes"
+    mode        = "sr_tcm" | "tr_tcm" | "storm"
+    color       = "aware" | "blind"
+    cbs         = number ;packets or bytes depending on the meter_type value
+    cir         = number ;packets or bytes depending on the meter_type value
+    pbs         = number ;packets or bytes depending on the meter_type value
+    pir         = number ;packets or bytes depending on the meter_type value
+
+    green_action   = packet_action
+    yellow_action  = packet_action
+    red_action     = packet_action
+
+    Example:
+    127.0.0.1:6379> hgetall "POLICER_TABLE:POLICER_1"
+     1) "cbs"
+     2) "600"
+     3) "cir"
+     4) "600"
+     5) "meter_type"
+     6) "packets"
+     7) "mode"
+     8) "sr_tcm"
+     9) "red_action"
+    10) "drop"
+
+----------------------------------------------
+
 ### VXLAN\_TUNNEL\_MAP
     ;Stores vxlan tunnel map configuration. Defines mapping between vxlan vni and vrf
 
