@@ -570,12 +570,13 @@ Equivalent RedisDB entry:
 
 ----------------------------------------------
 
-### PORT\_MIRROR\_TABLE
-Stores information about mirroring session and its properties.
+### MIRROR\_SESSION\_TABLE
+Mirror session table
+Stores information about mirror sessions and their properties.
 
-    key       = PORT_MIRROR_TABLE:mirror_session_name ; mirror_session_name is
-                                                      ; unique session
-                                                      ; identifier
+    key       = MIRROR_SESSION_TABLE:mirror_session_name ; mirror_session_name is
+                                                         ; unique session
+                                                         ; identifier
     ; field   = value
     status    = "active"/"inactive"   ; Session state.
     src_ip    = ipv4_address          ; Session souce IP address
@@ -584,9 +585,11 @@ Stores information about mirroring session and its properties.
     dscp      = h8                    ; Session DSCP
     ttl       = h8                    ; Session TTL
     queue     = h8                    ; Session output queue
+    policer   = policer_name          ; Session policer name
 
     ;value annotations
     mirror_session_name = 1*255VCHAR
+    policer_name        = 1*255VCHAR
     h8                  = 1*2HEXDIG
     h16                 = 1*4HEXDIG
     ipv4_address        = dec-octet "." dec-octet "." dec-octet "." dec-octet “/” %d1-32
@@ -628,13 +631,12 @@ Equivalent RedisDB entry:
     10) "64"
     11) "queue"
     12) "0"
-    127.0.0.1:6379>
 
 ---------------------------------------------
 
 ### POLICER_TABLE
 Policer table
-The settings in this table configure policers, which could be attached to mirror sessions.
+Stores information about policers and their properties.
 
 packet_action = "drop" | "forward" | "copy" | "copy_cancel" | "trap" | "log" | "deny" | "transit"
 
