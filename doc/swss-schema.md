@@ -112,14 +112,6 @@ For example (reorder output)
     mtu                 = 1*4DIGIT             ; MTU for the IP interface of the VLAN
 
 ---------------------------------------------
-### VLAN_MEMBER_TABLE
-    ;Defines interfaces which are members of a vlan
-    ;Status: work in progress
-
-    key                 = VLAN_MEMBER_TABLE:"Vlan"vlanid:ifname ; physical port "ifname" is a member of a VLAN "VlanX"
-    tagging_mode        = "untagged" / "tagged" / "priority_tagged" ; default value as untagged
-
----------------------------------------------
 ### LAG_TABLE
     ;a logical, link aggregation group interface (802.3ad) made of one or more ports
     ;In SONiC, data is loaded by teamsyncd
