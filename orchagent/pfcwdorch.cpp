@@ -101,11 +101,6 @@ void PfcWdOrch<DropHandler, ForwardHandler>::doTask(Consumer& consumer)
                     break;
             }
         }
-
-        if (consumer.m_toSync.empty())
-        {
-            m_entriesCreated = true;
-        }
     }
 }
 
@@ -763,11 +758,6 @@ void PfcWdSwOrch<DropHandler, ForwardHandler>::doTask(Consumer& consumer)
 {
     PfcWdOrch<DropHandler, ForwardHandler>::doTask(consumer);
 
-    if (!this->m_entriesCreated)
-    {
-        return;
-    }
-
     if ((consumer.getDbId() == APPL_DB) && (consumer.getTableName() == APP_PFC_WD_TABLE_NAME))
     {
         auto it = consumer.m_toSync.begin();
@@ -833,6 +823,39 @@ void PfcWdSwOrch<DropHandler, ForwardHandler>::doTask(Consumer& consumer)
 
             it = consumer.m_toSync.erase(it);
         }
+    }
+}
+
+template <typename DropHandler, typename ForwardHandler>
+void PfcWdSwOrch<DropHandler, ForwardHandler>::doTask()
+{
+    SWSS_LOG_ENTER();
+
+    // In the warm-reboot case with ongoing PFC storm,
+    // we care about dependency.
+    // PFC watchdog should be started on a port queue before
+    // a storm action can be taken in effect. The PFC watchdog
+    // configuration is stored in CONFIG_DB CFG_PFC_WD_TABLE_NAME,
+    // while the ongoing storming port queue is recorded
+    // in APPL_DB APP_PFC_WD_TABLE_NAME. We thus invoke the Executor
+    // in this order.
+    // In the cold-boot case, APP_PFC_WD_TABLE_NAME will not
+    // be populated. No dependency is introduced in this case.
+    auto *cfg_exec = this->getExecutor(CFG_PFC_WD_TABLE_NAME);
+    cfg_exec->drain();
+
+    auto *appl_exec = this->getExecutor(APP_PFC_WD_TABLE_NAME);
+    appl_exec->drain();
+
+    for (const auto &it : this->m_consumerMap)
+    {
+        auto *exec = it.second.get();
+
+        if ((exec == cfg_exec) || (exec == appl_exec))
+        {
+            continue;
+        }
+        exec->drain();
     }
 }
 

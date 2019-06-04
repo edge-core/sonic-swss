@@ -54,7 +54,6 @@ public:
 protected:
     virtual bool startWdActionOnQueue(const string &event, sai_object_id_t queueId) = 0;
 
-    bool m_entriesCreated = false;
 private:
 
     shared_ptr<DBConnector> m_countersDb = nullptr;
@@ -84,6 +83,7 @@ public:
     //XXX Add port/queue state change event handlers
 
     bool bake() override;
+    void doTask() override;
 
 protected:
     bool startWdActionOnQueue(const string &event, sai_object_id_t queueId) override;
