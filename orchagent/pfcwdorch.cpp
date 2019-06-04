@@ -991,7 +991,7 @@ bool PfcWdSwOrch<DropHandler, ForwardHandler>::startWdActionOnQueue(const string
 template <typename DropHandler, typename ForwardHandler>
 bool PfcWdSwOrch<DropHandler, ForwardHandler>::bake()
 {
-    // clean all *_last fields in COUNTERS_TABLE
+    // clean all *_last and *_LEFT fields in COUNTERS_TABLE
     // to allow warm-reboot pfc detect & restore state machine to enter the same init state as cold-reboot
     RedisClient redisClient(this->getCountersDb().get());
 
@@ -1004,7 +1004,7 @@ bool PfcWdSwOrch<DropHandler, ForwardHandler>::bake()
         vector<string> wLasts;
         for (const auto &fv : fvTuples)
         {
-            if (fvField(fv).find("_last") != string::npos)
+            if ((fvField(fv).find("_last") != string::npos) || (fvField(fv).find("_LEFT") != string::npos))
             {
                 wLasts.push_back(fvField(fv));
             }
