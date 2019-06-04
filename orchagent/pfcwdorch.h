@@ -135,7 +135,7 @@ private:
     shared_ptr<DBConnector> m_applDb = nullptr;
     // Track queues in storm
     shared_ptr<Table> m_applTable = nullptr;
-    // used for hdel
+    // used for hset and hdel
     RedisClient m_applDbRedisClient;
 };
 
