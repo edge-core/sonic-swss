@@ -111,11 +111,11 @@ def check_deleted_object(db, table, key):
 
 
 def create_vnet_local_routes(dvs, prefix, vnet_name, ifname):
-    app_db = swsscommon.DBConnector(swsscommon.APPL_DB, dvs.redis_sock, 0)
+    conf_db = swsscommon.DBConnector(swsscommon.CONFIG_DB, dvs.redis_sock, 0)
 
-    create_entry_pst(
-        app_db,
-        "VNET_ROUTE_TABLE", ':', "%s:%s" % (vnet_name, prefix),
+    create_entry_tbl(
+        conf_db,
+        "VNET_ROUTE", '|', "%s|%s" % (vnet_name, prefix),
         [
             ("ifname", ifname),
         ]
@@ -133,7 +133,7 @@ def delete_vnet_local_routes(dvs, prefix, vnet_name):
 
 
 def create_vnet_routes(dvs, prefix, vnet_name, endpoint, mac="", vni=0):
-    app_db = swsscommon.DBConnector(swsscommon.APPL_DB, dvs.redis_sock, 0)
+    conf_db = swsscommon.DBConnector(swsscommon.CONFIG_DB, dvs.redis_sock, 0)
 
     attrs = [
             ("endpoint", endpoint),
@@ -145,9 +145,9 @@ def create_vnet_routes(dvs, prefix, vnet_name, endpoint, mac="", vni=0):
     if mac:
         attrs.append(('mac_address', mac))
 
-    create_entry_pst(
-        app_db,
-        "VNET_ROUTE_TUNNEL_TABLE", ':', "%s:%s" % (vnet_name, prefix),
+    create_entry_tbl(
+        conf_db,
+        "VNET_ROUTE_TUNNEL", '|', "%s|%s" % (vnet_name, prefix),
         attrs,
     )
 
