@@ -551,6 +551,7 @@ def test_CrmAcl(dvs, testlog):
     adb = swsscommon.DBConnector(1, dvs.redis_sock, 0)
 
     dvs.runcmd("crm config polling interval 1")
+    time.sleep(1)
 
     bind_ports = ["Ethernet0", "Ethernet4"]
 
@@ -599,3 +600,7 @@ def test_CrmAcl(dvs, testlog):
     table_used_counter = getCrmCounterValue(dvs, 'ACL_STATS:INGRESS:PORT', 'crm_stats_acl_table_used')
     assert table_used_counter == 0
 
+    counters_db = swsscommon.DBConnector(swsscommon.COUNTERS_DB, dvs.redis_sock, 0)
+    crm_stats_table = swsscommon.Table(counters_db, 'CRM')
+    keys = crm_stats_table.getKeys()
+    assert key not in keys
