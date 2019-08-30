@@ -1498,19 +1498,22 @@ bool AclTable::add(shared_ptr<AclRule> newRule)
         if (ruleIter->second->remove())
         {
             rules.erase(ruleIter);
-            SWSS_LOG_NOTICE("Successfully deleted ACL rule: %s", rule_id.c_str());
+            SWSS_LOG_NOTICE("Successfully deleted ACL rule %s in table %s",
+                    rule_id.c_str(), id.c_str());
         }
     }
 
     if (newRule->create())
     {
         rules[rule_id] = newRule;
-        SWSS_LOG_NOTICE("Successfully created ACL rule %s in table %s", rule_id.c_str(), id.c_str());
+        SWSS_LOG_NOTICE("Successfully created ACL rule %s in table %s",
+                rule_id.c_str(), id.c_str());
         return true;
     }
     else
     {
-        SWSS_LOG_ERROR("Failed to create rule in table %s", id.c_str());
+        SWSS_LOG_ERROR("Failed to create ACL rule %s in table %s",
+                rule_id.c_str(), id.c_str());
         return false;
     }
 }
@@ -1525,18 +1528,21 @@ bool AclTable::remove(string rule_id)
         if (ruleIter->second->remove())
         {
             rules.erase(ruleIter);
-            SWSS_LOG_NOTICE("Successfully deleted ACL rule %s", rule_id.c_str());
+            SWSS_LOG_NOTICE("Successfully deleted ACL rule %s in table %s",
+                    rule_id.c_str(), id.c_str());
             return true;
         }
         else
         {
-            SWSS_LOG_ERROR("Failed to delete ACL rule: %s", rule_id.c_str());
+            SWSS_LOG_ERROR("Failed to delete ACL rule %s in table %s",
+                    rule_id.c_str(), id.c_str());
             return false;
         }
     }
     else
     {
-        SWSS_LOG_WARN("Skip deleting ACL rule. Unknown rule %s", rule_id.c_str());
+        SWSS_LOG_WARN("Skip deleting unknown ACL rule %s in table %s",
+                rule_id.c_str(), id.c_str());
         return true;
     }
 }
@@ -1551,7 +1557,8 @@ bool AclTable::clear()
         bool suc = rule.remove();
         if (!suc)
         {
-            SWSS_LOG_ERROR("Failed to delete existing ACL rule %s when removing the ACL table %s", rule.getId().c_str(), id.c_str());
+            SWSS_LOG_ERROR("Failed to delete ACL rule %s when removing the ACL table %s",
+                    rule.getId().c_str(), id.c_str());
             return false;
         }
     }
