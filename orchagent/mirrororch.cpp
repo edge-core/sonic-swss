@@ -816,6 +816,12 @@ bool MirrorOrch::updateSessionType(const string& name, MirrorEntry& session)
 {
     SWSS_LOG_ENTER();
 
+    deactivateSession(name, session);
+    activateSession(name, session);
+
+    return true;
+
+#ifdef 0
     sai_attribute_t attr;
     vector<sai_attribute_t> attrs;
 
@@ -868,6 +874,7 @@ bool MirrorOrch::updateSessionType(const string& name, MirrorEntry& session)
     setSessionState(name, session, MIRROR_SESSION_VLAN_ID);
 
     return true;
+#endif
 }
 
 // The function is called when SUBJECT_TYPE_NEXTHOP_CHANGE is received
