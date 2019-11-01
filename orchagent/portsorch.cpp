@@ -1471,6 +1471,16 @@ bool PortsOrch::bake()
         return false;
     }
 
+    for (const auto& alias: keys)
+    {
+        if (alias == "PortConfigDone" || alias == "PortInitDone")
+        {
+            continue;
+        }
+
+        m_pendingPortSet.emplace(alias);
+    }
+
     addExistingData(m_portTable.get());
     addExistingData(APP_LAG_TABLE_NAME);
     addExistingData(APP_LAG_MEMBER_TABLE_NAME);

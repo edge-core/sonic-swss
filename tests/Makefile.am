@@ -2,6 +2,8 @@ CFLAGS_SAI = -I /usr/include/sai
 
 TESTS = tests
 
+SUBDIRS = mock_tests
+
 noinst_PROGRAMS = tests
 
 if DEBUG
