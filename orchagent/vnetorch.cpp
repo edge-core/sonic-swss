@@ -1748,7 +1748,7 @@ bool VNetRouteOrch::doRouteTask<VNetVrfObject>(const string& vnet, IpPrefix& ipP
     }
     else if (vr_id == port.m_vr_id)
     {
-        vr_set.insert(vrf_obj->getVRidEgress());
+        vr_set = vrf_obj->getVRids();
     }
     else
     {

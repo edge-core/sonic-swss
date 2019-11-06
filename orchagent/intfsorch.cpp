@@ -35,6 +35,8 @@ const int intfsorch_pri = 35;
 #define RIF_FLEX_STAT_COUNTER_POLL_MSECS "1000"
 #define UPDATE_MAPS_SEC 1
 
+#define LOOPBACK_PREFIX     "Loopback"
+
 static const vector<sai_router_interface_stat_t> rifStatIds =
 {
     SAI_ROUTER_INTERFACE_STAT_IN_PACKETS,
@@ -80,6 +82,22 @@ sai_object_id_t IntfsOrch::getRouterIntfsId(const string &alias)
     Port port;
     gPortsOrch->getPort(alias, port);
     return port.m_rif_id;
+}
+
+bool IntfsOrch::isPrefixSubnet(const IpPrefix &ip_prefix, const string &alias)
+{
+    if (m_syncdIntfses.find(alias) == m_syncdIntfses.end())
+    {
+        return false;
+    }
+    for (auto &prefixIt: m_syncdIntfses[alias].ip_addresses)
+    {
+        if (prefixIt.getSubnet() == ip_prefix)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 string IntfsOrch::getRouterIntfsAlias(const IpAddress &ip, const string &vrf_name)
@@ -174,13 +192,14 @@ bool IntfsOrch::setIntf(const string& alias, sai_object_id_t vrf_id, const IpPre
     auto it_intfs = m_syncdIntfses.find(alias);
     if (it_intfs == m_syncdIntfses.end())
     {
-        if (addRouterIntfs(vrf_id, port))
+        if (!ip_prefix && addRouterIntfs(vrf_id, port))
         {
             gPortsOrch->increasePortRefCount(alias);
             IntfsEntry intfs_entry;
             intfs_entry.ref_count = 0;
             intfs_entry.vrf_id = vrf_id;
             m_syncdIntfses[alias] = intfs_entry;
+            m_vrfOrch->increaseVrfRefCount(vrf_id);
         }
         else
         {
@@ -202,28 +221,36 @@ bool IntfsOrch::setIntf(const string& alias, sai_object_id_t vrf_id, const IpPre
      * delete IP with netmask /8. To handle this we in case of overlap
      * we should wait until entry with /8 netmask will be removed.
      * Time frame between those event is quite small.*/
+    /* NOTE: Overlap checking in this interface is not enough.
+     * So extend to check in all interfaces of this VRF */
     bool overlaps = false;
-    for (const auto &prefixIt: m_syncdIntfses[alias].ip_addresses)
+    for (const auto &intfsIt: m_syncdIntfses)
     {
-        if (prefixIt.isAddressInSubnet(ip_prefix->getIp()) ||
-                ip_prefix->isAddressInSubnet(prefixIt.getIp()))
+        if (port.m_vr_id != intfsIt.second.vrf_id)
         {
-            overlaps = true;
-            SWSS_LOG_NOTICE("Router interface %s IP %s overlaps with %s.", port.m_alias.c_str(),
-                    prefixIt.to_string().c_str(), ip_prefix->to_string().c_str());
-            break;
+            continue;
+        }
+
+        for (const auto &prefixIt: intfsIt.second.ip_addresses)
+        {
+            if (prefixIt.isAddressInSubnet(ip_prefix->getIp()) ||
+                    ip_prefix->isAddressInSubnet(prefixIt.getIp()))
+            {
+                overlaps = true;
+                SWSS_LOG_NOTICE("Router interface %s IP %s overlaps with %s.", port.m_alias.c_str(),
+                        prefixIt.to_string().c_str(), ip_prefix->to_string().c_str());
+                break;
+            }
+        }
+
+        if (overlaps)
+        {
+            /* Overlap of IP address network */
+            return false;
         }
     }
 
-    if (overlaps)
-    {
-        /* Overlap of IP address network */
-        return false;
-    }
-
-    vrf_id = port.m_vr_id;
-    addSubnetRoute(port, *ip_prefix);
-    addIp2MeRoute(vrf_id, *ip_prefix);
+    addIp2MeRoute(port.m_vr_id, *ip_prefix);
 
     if (port.m_type == Port::VLAN)
     {
@@ -246,8 +273,7 @@ bool IntfsOrch::removeIntf(const string& alias, sai_object_id_t vrf_id, const Ip
 
     if (ip_prefix && m_syncdIntfses[alias].ip_addresses.count(*ip_prefix))
     {
-        removeSubnetRoute(port, *ip_prefix);
-        removeIp2MeRoute(vrf_id, *ip_prefix);
+        removeIp2MeRoute(port.m_vr_id, *ip_prefix);
 
         if(port.m_type == Port::VLAN)
         {
@@ -257,13 +283,13 @@ bool IntfsOrch::removeIntf(const string& alias, sai_object_id_t vrf_id, const Ip
         m_syncdIntfses[alias].ip_addresses.erase(*ip_prefix);
     }
 
-    /* Remove router interface that no IP addresses are associated with */
-    if (m_syncdIntfses[alias].ip_addresses.size() == 0)
+    if (!ip_prefix)
     {
-        if (removeRouterIntfs(port))
+        if (m_syncdIntfses[alias].ip_addresses.size() == 0 && removeRouterIntfs(port))
         {
             gPortsOrch->decreasePortRefCount(alias);
             m_syncdIntfses.erase(alias);
+            m_vrfOrch->decreaseVrfRefCount(vrf_id);
             return true;
         }
         else
@@ -293,6 +319,7 @@ void IntfsOrch::doTask(Consumer &consumer)
         string alias(keys[0]);
         IpPrefix ip_prefix;
         bool ip_prefix_in_key = false;
+        bool is_lo = !alias.compare(0, strlen(LOOPBACK_PREFIX), LOOPBACK_PREFIX);
 
         if (keys.size() > 1)
         {
@@ -337,50 +364,34 @@ void IntfsOrch::doTask(Consumer &consumer)
         string op = kfvOp(t);
         if (op == SET_COMMAND)
         {
-            if (alias == "lo")
+            if (is_lo)
             {
                 if (!ip_prefix_in_key)
                 {
-                    it = consumer.m_toSync.erase(it);
-                    continue;
-                }
-
-                bool addIp2Me = false;
-                // set request for lo may come after warm start restore.
-                // It is also to prevent dupicate set requests in normal running case.
-                auto it_intfs = m_syncdIntfses.find(alias);
-                if (it_intfs == m_syncdIntfses.end())
-                {
-                    IntfsEntry intfs_entry;
-
-                    intfs_entry.ref_count = 0;
-                    intfs_entry.vrf_id = vrf_id;
-                    intfs_entry.ip_addresses.insert(ip_prefix);
-                    m_syncdIntfses[alias] = intfs_entry;
-                    addIp2Me = true;
+                    if (m_syncdIntfses.find(alias) == m_syncdIntfses.end())
+                    {
+                        IntfsEntry intfs_entry;
+                        intfs_entry.ref_count = 0;
+                        intfs_entry.vrf_id = vrf_id;
+                        m_syncdIntfses[alias] = intfs_entry;
+                        m_vrfOrch->increaseVrfRefCount(vrf_id);
+                    }
                 }
                 else
                 {
-                     if (m_syncdIntfses[alias].ip_addresses.count(ip_prefix) == 0)
-                     {
+                    if (m_syncdIntfses.find(alias) == m_syncdIntfses.end())
+                    {
+                        it++;
+                        continue;
+                    }
+                    if (m_syncdIntfses[alias].ip_addresses.count(ip_prefix) == 0)
+                    {
                         m_syncdIntfses[alias].ip_addresses.insert(ip_prefix);
-                        addIp2Me = true;
-                     }
-                }
-                if (addIp2Me)
-                {
-                    addIp2MeRoute(vrf_id, ip_prefix);
+                        addIp2MeRoute(m_syncdIntfses[alias].vrf_id, ip_prefix);
+                    }
                 }
 
                 it = consumer.m_toSync.erase(it);
-                continue;
-            }
-
-            /* Wait for the Interface entry first */
-            auto it_intfs = m_syncdIntfses.find(alias);
-            if (ip_prefix_in_key && it_intfs == m_syncdIntfses.end())
-            {
-                it++;
                 continue;
             }
 
@@ -429,19 +440,33 @@ void IntfsOrch::doTask(Consumer &consumer)
         }
         else if (op == DEL_COMMAND)
         {
-            if (alias == "lo")
+            if (is_lo)
             {
-                // TODO: handle case for which lo is not in default vrf gVirtualRouterId
-                if (m_syncdIntfses.find(alias) != m_syncdIntfses.end())
+                if (!ip_prefix_in_key)
                 {
-                    if (m_syncdIntfses[alias].ip_addresses.count(ip_prefix))
+                    if (m_syncdIntfses.find(alias) != m_syncdIntfses.end())
                     {
-                        m_syncdIntfses[alias].ip_addresses.erase(ip_prefix);
-                        removeIp2MeRoute(vrf_id, ip_prefix);
+                        if (m_syncdIntfses[alias].ip_addresses.size() == 0)
+                        {
+                            m_vrfOrch->decreaseVrfRefCount(m_syncdIntfses[alias].vrf_id);
+                            m_syncdIntfses.erase(alias);
+                        }
+                        else
+                        {
+                            it++;
+                            continue;
+                        }
                     }
-                    if (m_syncdIntfses[alias].ip_addresses.size() == 0)
+                }
+                else
+                {
+                    if (m_syncdIntfses.find(alias) != m_syncdIntfses.end())
                     {
-                        m_syncdIntfses.erase(alias);
+                        if (m_syncdIntfses[alias].ip_addresses.count(ip_prefix))
+                        {
+                            m_syncdIntfses[alias].ip_addresses.erase(ip_prefix);
+                            removeIp2MeRoute(m_syncdIntfses[alias].vrf_id, ip_prefix);
+                        }
                     }
                 }
 
@@ -614,89 +639,6 @@ bool IntfsOrch::removeRouterIntfs(Port &port)
     SWSS_LOG_NOTICE("Remove router interface for port %s", port.m_alias.c_str());
 
     return true;
-}
-
-void IntfsOrch::addSubnetRoute(const Port &port, const IpPrefix &ip_prefix)
-{
-    sai_route_entry_t unicast_route_entry;
-    unicast_route_entry.switch_id = gSwitchId;
-    unicast_route_entry.vr_id = port.m_vr_id;
-    copy(unicast_route_entry.destination, ip_prefix);
-    subnet(unicast_route_entry.destination, unicast_route_entry.destination);
-
-    sai_attribute_t attr;
-    vector<sai_attribute_t> attrs;
-
-    attr.id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
-    attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
-    attrs.push_back(attr);
-
-    attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
-    attr.value.oid = port.m_rif_id;
-    attrs.push_back(attr);
-
-    sai_status_t status = sai_route_api->create_route_entry(&unicast_route_entry, (uint32_t)attrs.size(), attrs.data());
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("Failed to create subnet route to %s from %s, rv:%d",
-                       ip_prefix.to_string().c_str(), port.m_alias.c_str(), status);
-        throw runtime_error("Failed to create subnet route.");
-    }
-
-    SWSS_LOG_NOTICE("Create subnet route to %s from %s",
-                    ip_prefix.to_string().c_str(), port.m_alias.c_str());
-    increaseRouterIntfsRefCount(port.m_alias);
-
-    if (unicast_route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
-    {
-        gCrmOrch->incCrmResUsedCounter(CrmResourceType::CRM_IPV4_ROUTE);
-    }
-    else
-    {
-        gCrmOrch->incCrmResUsedCounter(CrmResourceType::CRM_IPV6_ROUTE);
-    }
-
-    gRouteOrch->notifyNextHopChangeObservers(ip_prefix, NextHopGroupKey(), true);
-}
-
-void IntfsOrch::removeSubnetRoute(const Port &port, const IpPrefix &ip_prefix)
-{
-    sai_route_entry_t unicast_route_entry;
-    unicast_route_entry.switch_id = gSwitchId;
-    unicast_route_entry.vr_id = port.m_vr_id;
-    copy(unicast_route_entry.destination, ip_prefix);
-    subnet(unicast_route_entry.destination, unicast_route_entry.destination);
-
-    sai_status_t status = sai_route_api->remove_route_entry(&unicast_route_entry);
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        if (status == SAI_STATUS_ITEM_NOT_FOUND)
-        {
-            SWSS_LOG_ERROR("No subnet route found for %s", ip_prefix.to_string().c_str());
-            return;
-        }
-        else
-        {
-            SWSS_LOG_ERROR("Failed to remove subnet route to %s from %s, rv:%d",
-                           ip_prefix.to_string().c_str(), port.m_alias.c_str(), status);
-            throw runtime_error("Failed to remove subnet route.");
-        }
-    }
-
-    SWSS_LOG_NOTICE("Remove subnet route to %s from %s",
-                    ip_prefix.to_string().c_str(), port.m_alias.c_str());
-    decreaseRouterIntfsRefCount(port.m_alias);
-
-    if (unicast_route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
-    {
-        gCrmOrch->decCrmResUsedCounter(CrmResourceType::CRM_IPV4_ROUTE);
-    }
-    else
-    {
-        gCrmOrch->decCrmResUsedCounter(CrmResourceType::CRM_IPV6_ROUTE);
-    }
-
-    gRouteOrch->notifyNextHopChangeObservers(ip_prefix, NextHopGroupKey(), false);
 }
 
 void IntfsOrch::addIp2MeRoute(sai_object_id_t vrf_id, const IpPrefix &ip_prefix)

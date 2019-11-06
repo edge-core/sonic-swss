@@ -15,6 +15,9 @@ using namespace swss;
 #define LAG_PREFIX          "PortChannel"
 #define LOOPBACK_PREFIX     "Loopback"
 #define VNET_PREFIX         "Vnet"
+#define VRF_PREFIX          "Vrf"
+
+#define LOOPBACK_DEFAULT_MTU_STR "65536"
 
 IntfMgr::IntfMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, const vector<string> &tableNames) :
         Orch(cfgDb, tableNames),
@@ -58,7 +61,7 @@ void IntfMgr::setIntfIp(const string &alias, const string &opCmd,
     }
 }
 
-void IntfMgr::setIntfVrf(const string &alias, const string vrfName)
+void IntfMgr::setIntfVrf(const string &alias, const string &vrfName)
 {
     stringstream cmd;
     string res;
@@ -71,7 +74,97 @@ void IntfMgr::setIntfVrf(const string &alias, const string vrfName)
     {
         cmd << IP_CMD << " link set " << shellquote(alias) << " nomaster";
     }
-    EXEC_WITH_ERROR_THROW(cmd.str(), res);
+    int ret = swss::exec(cmd.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+    }
+}
+
+void IntfMgr::addLoopbackIntf(const string &alias)
+{
+    stringstream cmd;
+    string res;
+
+    cmd << IP_CMD << " link add " << alias << " mtu " << LOOPBACK_DEFAULT_MTU_STR << " type dummy && ";
+    cmd << IP_CMD << " link set " << alias << " up";
+    int ret = swss::exec(cmd.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+    }
+}
+
+void IntfMgr::delLoopbackIntf(const string &alias)
+{
+    stringstream cmd;
+    string res;
+
+    cmd << IP_CMD << " link del " << alias;
+    int ret = swss::exec(cmd.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+    }
+}
+
+int IntfMgr::getIntfIpCount(const string &alias)
+{
+    stringstream cmd;
+    string res;
+
+    /* query ip address of the device with master name, it is much faster */
+    // ip address show {{intf_name}}
+    // $(ip link show {{intf_name}} | grep -o 'master [^\\s]*') ==> [master {{vrf_name}}]
+    // | grep inet | grep -v 'inet6 fe80:' | wc -l
+    cmd << IP_CMD << " address show " << alias
+        << " $(" << IP_CMD << " link show " << alias << " | grep -o 'master [^\\s]*')"
+        << " | grep inet | grep -v 'inet6 fe80:' | wc -l";
+
+    int ret = swss::exec(cmd.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+        return 0;
+    }
+
+    return std::stoi(res);
+}
+
+bool IntfMgr::isIntfCreated(const string &alias)
+{
+    vector<FieldValueTuple> temp;
+
+    if (m_stateIntfTable.get(alias, temp))
+    {
+        SWSS_LOG_DEBUG("Intf %s is ready", alias.c_str());
+        return true;
+    }
+
+    return false;
+}
+
+bool IntfMgr::isIntfChangeVrf(const string &alias, const string &vrfName)
+{
+    vector<FieldValueTuple> temp;
+
+    if (m_stateIntfTable.get(alias, temp))
+    {
+        for (auto idx : temp)
+        {
+            const auto &field = fvField(idx);
+            const auto &value = fvValue(idx);
+            if (field == "vrf")
+            {
+                if (value == vrfName)
+                    return false;
+                else
+                    return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 bool IntfMgr::isIntfStateOk(const string &alias)
@@ -99,6 +192,14 @@ bool IntfMgr::isIntfStateOk(const string &alias)
         if (m_stateVrfTable.get(alias, temp))
         {
             SWSS_LOG_DEBUG("Vnet %s is ready", alias.c_str());
+            return true;
+        }
+    }
+    else if (!alias.compare(0, strlen(VRF_PREFIX), VRF_PREFIX))
+    {
+        if (m_stateVrfTable.get(alias, temp))
+        {
+            SWSS_LOG_DEBUG("Vrf %s is ready", alias.c_str());
             return true;
         }
     }
@@ -149,32 +250,38 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
             return false;
         }
 
-        // Set Interface VRF except for lo
-        if (!is_lo)
+        /* if to change vrf then skip */
+        if (isIntfChangeVrf(alias, vrf_name))
         {
-            if (!vrf_name.empty())
-            {
-                setIntfVrf(alias, vrf_name);
-            }
-            m_appIntfTableProducer.set(alias, data);
+            SWSS_LOG_ERROR("%s can not change to %s directly, skipping", alias.c_str(), vrf_name.c_str());
+            return true;
         }
-        else
+        if (is_lo)
         {
-            m_appIntfTableProducer.set("lo", data);
+            addLoopbackIntf(alias);
         }
+        if (!vrf_name.empty())
+        {
+            setIntfVrf(alias, vrf_name);
+        }
+        m_appIntfTableProducer.set(alias, data);
+        m_stateIntfTable.hset(alias, "vrf", vrf_name);
     }
     else if (op == DEL_COMMAND)
     {
-        // Set Interface VRF except for lo
-        if (!is_lo)
+        /* make sure all ip addresses associated with interface are removed, otherwise these ip address would
+           be set with global vrf and it may cause ip address confliction. */
+        if (getIntfIpCount(alias))
         {
-            setIntfVrf(alias, "");
-            m_appIntfTableProducer.del(alias);
+            return false;
         }
-        else
+        setIntfVrf(alias, "");
+        if (is_lo)
         {
-            m_appIntfTableProducer.del("lo");
+            delLoopbackIntf(alias);
         }
+        m_appIntfTableProducer.del(alias);
+        m_stateIntfTable.del(alias);
     }
     else
     {
@@ -192,26 +299,21 @@ bool IntfMgr::doIntfAddrTask(const vector<string>& keys,
 
     string alias(keys[0]);
     IpPrefix ip_prefix(keys[1]);
-    bool is_lo = !alias.compare(0, strlen(LOOPBACK_PREFIX), LOOPBACK_PREFIX);
-    string appKey = (is_lo ? "lo" : keys[0]) + ":" + keys[1];
+    string appKey = keys[0] + ":" + keys[1];
 
     if (op == SET_COMMAND)
     {
         /*
-         * Don't proceed if port/LAG/VLAN is not ready yet.
+         * Don't proceed if port/LAG/VLAN and intfGeneral are not ready yet.
          * The pending task will be checked periodically and retried.
          */
-        if (!isIntfStateOk(alias))
+        if (!isIntfStateOk(alias) || !isIntfCreated(alias))
         {
             SWSS_LOG_DEBUG("Interface is not ready, skipping %s", alias.c_str());
             return false;
         }
 
-        // Set Interface IP except for lo
-        if (!is_lo)
-        {
-            setIntfIp(alias, "add", ip_prefix);
-        }
+        setIntfIp(alias, "add", ip_prefix);
 
         std::vector<FieldValueTuple> fvVector;
         FieldValueTuple f("family", ip_prefix.isV4() ? IPV4_NAME : IPV6_NAME);
@@ -224,11 +326,8 @@ bool IntfMgr::doIntfAddrTask(const vector<string>& keys,
     }
     else if (op == DEL_COMMAND)
     {
-        // Set Interface IP except for lo
-        if (!is_lo)
-        {
-            setIntfIp(alias, "del", ip_prefix);
-        }
+        setIntfIp(alias, "del", ip_prefix);
+
         m_appIntfTableProducer.del(appKey);
         m_stateIntfTable.del(keys[0] + state_db_key_delimiter + keys[1]);
     }
