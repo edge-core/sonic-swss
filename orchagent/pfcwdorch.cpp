@@ -758,7 +758,7 @@ void PfcWdSwOrch<DropHandler, ForwardHandler>::doTask(Consumer& consumer)
 {
     PfcWdOrch<DropHandler, ForwardHandler>::doTask(consumer);
 
-    if (!gPortsOrch->allPortsReady())
+    if (!gPortsOrch->isPortReady())
     {
         return;
     }
