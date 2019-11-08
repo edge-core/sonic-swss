@@ -144,7 +144,7 @@ void IntfsOrch::decreaseRouterIntfsRefCount(const string &alias)
                   alias.c_str(), m_syncdIntfses[alias].ref_count);
 }
 
-bool IntfsOrch::setRouterIntfsMtu(Port &port)
+bool IntfsOrch::setRouterIntfsMtu(const Port &port)
 {
     SWSS_LOG_ENTER();
 
@@ -165,6 +165,36 @@ bool IntfsOrch::setRouterIntfsMtu(Port &port)
     return true;
 }
 
+bool IntfsOrch::setRouterIntfsAdminStatus(const Port &port)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    attr.value.booldata = port.m_admin_state_up;
+
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    sai_status_t status = sai_router_intfs_api->
+            set_router_interface_attribute(port.m_rif_id, &attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to set router interface %s V4 admin status to %s, rv:%d",
+                port.m_alias.c_str(), port.m_admin_state_up == true ? "up" : "down", status);
+        return false;
+    }
+
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    status = sai_router_intfs_api->
+            set_router_interface_attribute(port.m_rif_id, &attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to set router interface %s V6 admin status to %s, rv:%d",
+                port.m_alias.c_str(), port.m_admin_state_up == true ? "up" : "down", status);
+        return false;
+    }
+
+    return true;
+}
+
 set<IpPrefix> IntfsOrch:: getSubnetRoutes()
 {
     SWSS_LOG_ENTER();
@@ -182,7 +212,7 @@ set<IpPrefix> IntfsOrch:: getSubnetRoutes()
     return subnet_routes;
 }
 
-bool IntfsOrch::setIntf(const string& alias, sai_object_id_t vrf_id, const IpPrefix *ip_prefix)
+bool IntfsOrch::setIntf(const string& alias, sai_object_id_t vrf_id, const IpPrefix *ip_prefix, const bool adminUp, const uint32_t mtu)
 {
     SWSS_LOG_ENTER();
 
@@ -204,6 +234,35 @@ bool IntfsOrch::setIntf(const string& alias, sai_object_id_t vrf_id, const IpPre
         else
         {
             return false;
+        }
+    }
+    else
+    {
+        if (!ip_prefix && port.m_type == Port::SUBPORT)
+        {
+            // port represents a sub interface
+            // Change sub interface config at run time
+            bool attrChanged = false;
+            if (mtu && port.m_mtu != mtu)
+            {
+                port.m_mtu = mtu;
+                attrChanged = true;
+
+                setRouterIntfsMtu(port);
+            }
+
+            if (port.m_admin_state_up != adminUp)
+            {
+                port.m_admin_state_up = adminUp;
+                attrChanged = true;
+
+                setRouterIntfsAdminStatus(port);
+            }
+
+            if (attrChanged)
+            {
+                gPortsOrch->setPort(alias, port);
+            }
         }
     }
 
@@ -290,6 +349,15 @@ bool IntfsOrch::removeIntf(const string& alias, sai_object_id_t vrf_id, const Ip
             gPortsOrch->decreasePortRefCount(alias);
             m_syncdIntfses.erase(alias);
             m_vrfOrch->decreaseVrfRefCount(vrf_id);
+
+            if (port.m_type == Port::SUBPORT)
+            {
+                if (!gPortsOrch->removeSubPort(alias))
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
         else
@@ -317,6 +385,14 @@ void IntfsOrch::doTask(Consumer &consumer)
 
         vector<string> keys = tokenize(kfvKey(t), ':');
         string alias(keys[0]);
+
+        bool isSubIntf = false;
+        size_t found = alias.find(VLAN_SUB_INTERFACE_SEPARATOR);
+        if (found != string::npos)
+        {
+            isSubIntf = true;
+        }
+
         IpPrefix ip_prefix;
         bool ip_prefix_in_key = false;
         bool is_lo = !alias.compare(0, strlen(LOOPBACK_PREFIX), LOOPBACK_PREFIX);
@@ -329,7 +405,8 @@ void IntfsOrch::doTask(Consumer &consumer)
 
         const vector<FieldValueTuple>& data = kfvFieldsValues(t);
         string vrf_name = "", vnet_name = "";
-
+        uint32_t mtu;
+        bool adminUp;
         for (auto idx : data)
         {
             const auto &field = fvField(idx);
@@ -341,6 +418,39 @@ void IntfsOrch::doTask(Consumer &consumer)
             else if (field == "vnet_name")
             {
                 vnet_name = value;
+            }
+            else if (field == "mtu")
+            {
+                try
+                {
+                    mtu = static_cast<uint32_t>(stoul(value));
+                }
+                catch (const std::invalid_argument &e)
+                {
+                    SWSS_LOG_ERROR("Invalid argument %s to %s()", value.c_str(), e.what());
+                    continue;
+                }
+                catch (const std::out_of_range &e)
+                {
+                    SWSS_LOG_ERROR("Out of range argument %s to %s()", value.c_str(), e.what());
+                    continue;
+                }
+            }
+            else if (field == "admin_status")
+            {
+                if (value == "up")
+                {
+                    adminUp = true;
+                }
+                else
+                {
+                    adminUp = false;
+
+                    if (value != "down")
+                    {
+                        SWSS_LOG_WARN("Sub interface %s unknown admin status %s", alias.c_str(), value.c_str());
+                    }
+                }
             }
         }
 
@@ -398,9 +508,20 @@ void IntfsOrch::doTask(Consumer &consumer)
             Port port;
             if (!gPortsOrch->getPort(alias, port))
             {
-                /* TODO: Resolve the dependency relationship and add ref_count to port */
-                it++;
-                continue;
+                if (isSubIntf)
+                {
+                    if (!gPortsOrch->addSubPort(port, alias, adminUp, mtu))
+                    {
+                        it++;
+                        continue;
+                    }
+                }
+                else
+                {
+                    /* TODO: Resolve the dependency relationship and add ref_count to port */
+                    it++;
+                    continue;
+                }
             }
 
             if (m_vnetInfses.find(alias) != m_vnetInfses.end())
@@ -416,7 +537,7 @@ void IntfsOrch::doTask(Consumer &consumer)
                     it++;
                     continue;
                 }
-                if (!vnet_orch->setIntf(alias, vnet_name, ip_prefix_in_key ? &ip_prefix : nullptr))
+                if (!vnet_orch->setIntf(alias, vnet_name, ip_prefix_in_key ? &ip_prefix : nullptr, adminUp, mtu))
                 {
                     it++;
                     continue;
@@ -429,7 +550,7 @@ void IntfsOrch::doTask(Consumer &consumer)
             }
             else
             {
-                if (!setIntf(alias, vrf_id, ip_prefix_in_key ? &ip_prefix : nullptr))
+                if (!setIntf(alias, vrf_id, ip_prefix_in_key ? &ip_prefix : nullptr, adminUp, mtu))
                 {
                     it++;
                     continue;
@@ -560,35 +681,59 @@ bool IntfsOrch::addRouterIntfs(sai_object_id_t vrf_id, Port &port)
         case Port::PHY:
         case Port::LAG:
             attr.value.s32 = SAI_ROUTER_INTERFACE_TYPE_PORT;
+            attrs.push_back(attr);
             break;
         case Port::VLAN:
             attr.value.s32 = SAI_ROUTER_INTERFACE_TYPE_VLAN;
+            attrs.push_back(attr);
+            break;
+        case Port::SUBPORT:
+            attr.value.s32 = SAI_ROUTER_INTERFACE_TYPE_SUB_PORT;
+            attrs.push_back(attr);
             break;
         default:
             SWSS_LOG_ERROR("Unsupported port type: %d", port.m_type);
             break;
     }
-    attrs.push_back(attr);
 
     switch(port.m_type)
     {
         case Port::PHY:
             attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
             attr.value.oid = port.m_port_id;
+            attrs.push_back(attr);
             break;
         case Port::LAG:
             attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
             attr.value.oid = port.m_lag_id;
+            attrs.push_back(attr);
             break;
         case Port::VLAN:
             attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
             attr.value.oid = port.m_vlan_info.vlan_oid;
+            attrs.push_back(attr);
+            break;
+        case Port::SUBPORT:
+            attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+            attr.value.oid = port.m_parent_port_id;
+            attrs.push_back(attr);
+
+            attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+            attr.value.u16 = port.m_vlan_info.vlan_id;
+            attrs.push_back(attr);
+
+            attr.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+            attr.value.booldata = port.m_admin_state_up;
+            attrs.push_back(attr);
+
+            attr.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+            attr.value.booldata = port.m_admin_state_up;
+            attrs.push_back(attr);
             break;
         default:
             SWSS_LOG_ERROR("Unsupported port type: %d", port.m_type);
             break;
     }
-    attrs.push_back(attr);
 
     attr.id = SAI_ROUTER_INTERFACE_ATTR_MTU;
     attr.value.u32 = port.m_mtu;
@@ -849,6 +994,9 @@ void IntfsOrch::doTask(SelectableTimer &timer)
                 break;
             case Port::VLAN:
                 type = "SAI_ROUTER_INTERFACE_TYPE_VLAN";
+                break;
+            case Port::SUBPORT:
+                type = "SAI_ROUTER_INTERFACE_TYPE_SUB_PORT";
                 break;
             default:
                 SWSS_LOG_ERROR("Unsupported port type: %d", it->m_type);

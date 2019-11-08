@@ -598,7 +598,7 @@ task_process_status BufferOrch::processQueue(Consumer &consumer)
 }
 
 /*
-Input sample "BUFFER_PG_TABLE|Ethernet4,Ethernet45|10-15"
+Input sample "BUFFER_PG|Ethernet4,Ethernet45|10-15"
 */
 task_process_status BufferOrch::processPriorityGroup(Consumer &consumer)
 {

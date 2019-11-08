@@ -40,6 +40,7 @@ extern BufferOrch *gBufferOrch;
 
 #define VLAN_PREFIX         "Vlan"
 #define DEFAULT_VLAN_ID     1
+#define MAX_VALID_VLAN_ID   4094
 #define PORT_FLEX_STAT_COUNTER_POLL_MSECS "1000"
 #define QUEUE_FLEX_STAT_COUNTER_POLL_MSECS "10000"
 #define QUEUE_WATERMARK_FLEX_STAT_COUNTER_POLL_MSECS "10000"
@@ -546,6 +547,101 @@ bool PortsOrch::getAclBindPortId(string alias, sai_object_id_t &port_id)
     {
         return false;
     }
+}
+
+bool PortsOrch::addSubPort(Port &port, const string &alias, const bool &adminUp, const uint32_t &mtu)
+{
+    size_t found = alias.find(VLAN_SUB_INTERFACE_SEPARATOR);
+    if (found == string::npos)
+    {
+        SWSS_LOG_ERROR("%s is not a sub interface", alias.c_str());
+        return false;
+    }
+    string parentAlias = alias.substr(0, found);
+    string vlanId = alias.substr(found + 1);
+    sai_vlan_id_t vlan_id;
+    try
+    {
+        vlan_id = static_cast<sai_vlan_id_t>(stoul(vlanId));
+    }
+    catch (const std::invalid_argument &e)
+    {
+        SWSS_LOG_ERROR("Invalid argument %s to %s()", vlanId.c_str(), e.what());
+        return false;
+    }
+    catch (const std::out_of_range &e)
+    {
+        SWSS_LOG_ERROR("Out of range argument %s to %s()", vlanId.c_str(), e.what());
+        return false;
+    }
+    if (vlan_id > MAX_VALID_VLAN_ID)
+    {
+        SWSS_LOG_ERROR("sub interface %s Port object creation: invalid VLAN id %u", alias.c_str(), vlan_id);
+        return false;
+    }
+
+    auto it = m_portList.find(parentAlias);
+    if (it == m_portList.end())
+    {
+        SWSS_LOG_NOTICE("Sub interface %s Port object creation: parent port %s is not ready", alias.c_str(), parentAlias.c_str());
+        return false;
+    }
+    Port &parentPort = it->second;
+
+    Port p(alias, Port::SUBPORT);
+
+    p.m_admin_state_up = adminUp;
+
+    if (mtu)
+    {
+        p.m_mtu = mtu;
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("Sub interface %s inherits mtu size %u from parent port %s", alias.c_str(), parentPort.m_mtu, parentAlias.c_str());
+        p.m_mtu = parentPort.m_mtu;
+    }
+
+    p.m_parent_port_id = parentPort.m_port_id;
+    p.m_vlan_info.vlan_id = vlan_id;
+
+    parentPort.m_child_ports.insert(p.m_alias);
+
+    m_portList[alias] = p;
+    port = p;
+    return true;
+}
+
+bool PortsOrch::removeSubPort(const string &alias)
+{
+    auto it = m_portList.find(alias);
+    if (it == m_portList.end())
+    {
+        SWSS_LOG_WARN("Sub interface %s Port object not found", alias.c_str());
+        return false;
+    }
+    Port &port = it->second;
+
+    if (port.m_type != Port::SUBPORT)
+    {
+        SWSS_LOG_ERROR("Sub interface %s not of type sub port", alias.c_str());
+        return false;
+    }
+
+    Port parentPort;
+    if (!getPort(port.m_parent_port_id, parentPort))
+    {
+        SWSS_LOG_WARN("Sub interface %s: parent Port object not found", alias.c_str());
+    }
+
+    if (!parentPort.m_child_ports.erase(alias))
+    {
+        SWSS_LOG_WARN("Sub interface %s not associated to parent port %s", alias.c_str(), parentPort.m_alias.c_str());
+    }
+    m_portList[parentPort.m_alias] = parentPort;
+
+    m_portList.erase(it);
+    return true;
 }
 
 void PortsOrch::setPort(string alias, Port p)
