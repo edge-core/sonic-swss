@@ -72,6 +72,7 @@ public:
     int                 m_index = 0;    // PHY_PORT: index
     uint32_t            m_mtu = DEFAULT_MTU;
     uint32_t            m_speed = 0;    // Mbps
+    std::string         m_learn_mode = "hardware";
     bool                m_autoneg = false;
     bool                m_admin_state_up = false;
     sai_object_id_t     m_port_id = 0;
