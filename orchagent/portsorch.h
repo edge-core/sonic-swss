@@ -135,9 +135,9 @@ private:
     map<string, uint32_t> m_port_ref_count;
     unordered_set<string> m_pendingPortSet;
 
-	
     NotificationConsumer* m_portStatusNotificationConsumer;
 
+    void doTask() override;
     void doTask(Consumer &consumer);
     void doPortTask(Consumer &consumer);
     void doVlanTask(Consumer &consumer);

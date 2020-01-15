@@ -383,7 +383,7 @@ namespace portsorch_test
         Port port;
         gPortsOrch->getPort("Ethernet0", port);
 
-        auto countersTable = make_shared<Table>(m_counters_db.get(), COUNTERS_TABLE); 
+        auto countersTable = make_shared<Table>(m_counters_db.get(), COUNTERS_TABLE);
         auto dropHandler = make_unique<PfcWdZeroBufferHandler>(port.m_port_id, port.m_queue_ids[3], 3, countersTable);
 
         // Create test buffer pool
@@ -432,4 +432,144 @@ namespace portsorch_test
         ASSERT_TRUE(ts.empty()); // PG should be proceesed now
         ts.clear();
     }
+
+    /*
+    * The scope of this test is to verify that LAG member is
+    * added to a LAG before any other object on LAG is created, like RIF, bridge port in warm mode.
+    * For objects like RIF which are created by a different Orch we know that they will wait until
+    * allPortsReady(), so we can guaranty they won't be created if PortsOrch can process ports, lags,
+    * vlans in single doTask().
+    * If objects are created in PortsOrch, like bridge port, we will spy on SAI API to verify they are
+    * not called before create_lag_member.
+    * This is done like this because of limitation on Mellanox platform that does not allow to create objects
+    * on LAG before at least one LAG members is added in warm reboot. Later this will be fixed.
+    *
+    */
+    TEST_F(PortsOrchTest, LagMemberIsCreatedBeforeOtherObjectsAreCreatedOnLag)
+    {
+
+        Table portTable = Table(m_app_db.get(), APP_PORT_TABLE_NAME);
+        Table lagTable = Table(m_app_db.get(), APP_LAG_TABLE_NAME);
+        Table lagMemberTable = Table(m_app_db.get(), APP_LAG_MEMBER_TABLE_NAME);
+        Table vlanTable = Table(m_app_db.get(), APP_VLAN_TABLE_NAME);
+        Table vlanMemberTable = Table(m_app_db.get(), APP_VLAN_MEMBER_TABLE_NAME);
+
+        // Get SAI default ports to populate DB
+        auto ports = ut_helper::getInitialSaiPorts();
+
+        // Create dependencies ...
+        const int portsorch_base_pri = 40;
+
+        vector<table_name_with_pri_t> ports_tables = {
+            { APP_PORT_TABLE_NAME, portsorch_base_pri + 5 },
+            { APP_VLAN_TABLE_NAME, portsorch_base_pri + 2 },
+            { APP_VLAN_MEMBER_TABLE_NAME, portsorch_base_pri },
+            { APP_LAG_TABLE_NAME, portsorch_base_pri + 4 },
+            { APP_LAG_MEMBER_TABLE_NAME, portsorch_base_pri }
+        };
+
+        ASSERT_EQ(gPortsOrch, nullptr);
+        gPortsOrch = new PortsOrch(m_app_db.get(), ports_tables);
+        vector<string> buffer_tables = { CFG_BUFFER_POOL_TABLE_NAME,
+                                         CFG_BUFFER_PROFILE_TABLE_NAME,
+                                         CFG_BUFFER_QUEUE_TABLE_NAME,
+                                         CFG_BUFFER_PG_TABLE_NAME,
+                                         CFG_BUFFER_PORT_INGRESS_PROFILE_LIST_NAME,
+                                         CFG_BUFFER_PORT_EGRESS_PROFILE_LIST_NAME };
+
+        ASSERT_EQ(gBufferOrch, nullptr);
+        gBufferOrch = new BufferOrch(m_config_db.get(), buffer_tables);
+
+        /*
+         * Next we will prepare some configuration data to be consumed by PortsOrch
+         * 32 Ports, 1 LAG, 1 port is LAG member and LAG is in Vlan.
+         */
+
+        // Populate pot table with SAI ports
+        for (const auto &it : ports)
+        {
+            portTable.set(it.first, it.second);
+        }
+
+        // Set PortConfigDone
+        portTable.set("PortConfigDone", { { "count", to_string(ports.size()) } });
+        portTable.set("PortInitDone", { { } });
+
+        lagTable.set("PortChannel0001",
+            {
+                {"admin_status", "up"},
+                {"mtu", "9100"}
+            }
+        );
+        lagMemberTable.set(
+            std::string("PortChannel0001") + lagMemberTable.getTableNameSeparator() + ports.begin()->first,
+            { {"status", "enabled"} });
+        vlanTable.set("Vlan5",
+            {
+                {"admin_status", "up"},
+                {"mtu", "9100"}
+            }
+        );
+        vlanMemberTable.set(
+            std::string("Vlan5") + vlanMemberTable.getTableNameSeparator() + std::string("PortChannel0001"),
+            { {"tagging_mode", "untagged"} }
+        );
+
+        // refill consumer
+        gPortsOrch->addExistingData(&portTable);
+        gPortsOrch->addExistingData(&lagTable);
+        gPortsOrch->addExistingData(&lagMemberTable);
+        gPortsOrch->addExistingData(&vlanTable);
+        gPortsOrch->addExistingData(&vlanMemberTable);
+
+        // save original api since we will spy
+        auto orig_lag_api = sai_lag_api;
+        sai_lag_api = new sai_lag_api_t();
+        memcpy(sai_lag_api, orig_lag_api, sizeof(*sai_lag_api));
+
+        auto orig_bridge_api = sai_bridge_api;
+        sai_bridge_api = new sai_bridge_api_t();
+        memcpy(sai_bridge_api, orig_bridge_api, sizeof(*sai_bridge_api));
+
+        bool bridgePortCalled = false;
+        bool bridgePortCalledBeforeLagMember = false;
+
+        auto lagSpy = SpyOn<SAI_API_LAG, SAI_OBJECT_TYPE_LAG_MEMBER>(&sai_lag_api->create_lag_member);
+        lagSpy->callFake([&](sai_object_id_t *oid, sai_object_id_t swoid, uint32_t count, const sai_attribute_t * attrs) -> sai_status_t {
+                if (bridgePortCalled) {
+                    bridgePortCalledBeforeLagMember = true;
+                }
+                return orig_lag_api->create_lag_member(oid, swoid, count, attrs);
+            }
+        );
+
+        auto bridgeSpy = SpyOn<SAI_API_BRIDGE, SAI_OBJECT_TYPE_BRIDGE_PORT>(&sai_bridge_api->create_bridge_port);
+        bridgeSpy->callFake([&](sai_object_id_t *oid, sai_object_id_t swoid, uint32_t count, const sai_attribute_t * attrs) -> sai_status_t {
+                bridgePortCalled = true;
+                return orig_bridge_api->create_bridge_port(oid, swoid, count, attrs);
+            }
+        );
+
+        static_cast<Orch *>(gPortsOrch)->doTask();
+
+        vector<string> ts;
+
+        // check LAG, VLAN tasks were proceesed
+        // port table may require one more doTask iteration
+        for (auto tableName: {
+                APP_LAG_TABLE_NAME,
+                APP_LAG_MEMBER_TABLE_NAME,
+                APP_VLAN_TABLE_NAME,
+                APP_VLAN_MEMBER_TABLE_NAME})
+        {
+            auto exec = gPortsOrch->getExecutor(tableName);
+            auto consumer = static_cast<Consumer*>(exec);
+            ts.clear();
+            consumer->dumpPendingTasks(ts);
+            ASSERT_TRUE(ts.empty());
+        }
+
+        ASSERT_FALSE(bridgePortCalledBeforeLagMember); // bridge port created on lag before lag member was created
+    }
+
 }

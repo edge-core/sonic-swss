@@ -2556,6 +2556,34 @@ void PortsOrch::doLagMemberTask(Consumer &consumer)
     }
 }
 
+void PortsOrch::doTask()
+{
+    constexpr auto tableOrder = {
+        APP_PORT_TABLE_NAME,
+        APP_LAG_TABLE_NAME,
+        APP_LAG_MEMBER_TABLE_NAME,
+        APP_VLAN_TABLE_NAME,
+        APP_VLAN_MEMBER_TABLE_NAME,
+    };
+
+    for (auto tableName: tableOrder)
+    {
+        auto consumer = getExecutor(tableName);
+        consumer->drain();
+    }
+
+    // drain remaining tables
+    for (auto& it: m_consumerMap)
+    {
+        auto tableName = it.first;
+        auto consumer = it.second.get();
+        if (find(tableOrder.begin(), tableOrder.end(), tableName) == tableOrder.end())
+        {
+            consumer->drain();
+        }
+    }
+}
+
 void PortsOrch::doTask(Consumer &consumer)
 {
     SWSS_LOG_ENTER();
