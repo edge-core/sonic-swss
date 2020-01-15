@@ -211,11 +211,11 @@ bool OrchDaemon::init()
      * The order of the orch list is important for state restore of warm start and
      * the queued processing in m_toSync map after gPortsOrch->allPortsReady() is set.
      *
-     * For the multiple consumers in ports_tables, tasks for LAG_TABLE is processed before VLAN_TABLE
-     * when iterating ConsumerMap.
-     * That is ensured implicitly by the order of map key, "LAG_TABLE" is smaller than "VLAN_TABLE" in lexicographic order.
+     * For the multiple consumers in Orchs, tasks in a table which name is smaller in lexicographic order are processed first
+     * when iterating ConsumerMap. This is ensured implicitly by the order of keys in ordered map.
+     * For cases when Orch has to process tables in specific order, like PortsOrch during warm start, it has to override Orch::doTask()
      */
-    m_orchList = { gSwitchOrch, gCrmOrch, gBufferOrch, gPortsOrch, gIntfsOrch, gNeighOrch, gRouteOrch, copp_orch, tunnel_decap_orch, qos_orch, wm_orch, policer_orch, sflow_orch, debug_counter_orch};
+    m_orchList = { gSwitchOrch, gCrmOrch, gPortsOrch, gBufferOrch, gIntfsOrch, gNeighOrch, gRouteOrch, copp_orch, tunnel_decap_orch, qos_orch, wm_orch, policer_orch, sflow_orch, debug_counter_orch};
 
     bool initialize_dtel = false;
     if (platform == BFN_PLATFORM_SUBSTRING || platform == VS_PLATFORM_SUBSTRING)
@@ -496,20 +496,17 @@ bool OrchDaemon::warmRestoreAndSyncUp()
     }
 
     /*
-     * Four iterations are needed.
+     * Three iterations are needed.
      *
-     * First iteration: switchorch, Port init/hostif create part of portorch.
+     * First iteration: switchorch, Port init/hostif create part of portorch, buffers configuration
      *
-     * Second iteratoin: gBufferOrch which requires port created,
-     *   then port speed/mtu/fec_mode/pfc_asym/admin_status config.
+     * Second iteratoin: port speed/mtu/fec_mode/pfc_asym/admin_status config,
+     * other orch(s) which wait for port to become ready.
      *
-     * Third iteration: other orch(s) which wait for port init done.
-     *
-     * Fourth iteration: Drain remaining data that are out of order like LAG_MEMBER_TABLE and
-     * VLAN_MEMBER_TABLE since they were checked before LAG_TABLE and VLAN_TABLE within gPortsOrch.
+     * Third iteration: Drain remaining data that are out of order.
      */
 
-    for (auto it = 0; it < 4; it++)
+    for (auto it = 0; it < 3; it++)
     {
         SWSS_LOG_DEBUG("The current iteration is %d", it);
 
