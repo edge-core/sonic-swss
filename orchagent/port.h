@@ -96,6 +96,8 @@ public:
     std::vector<sai_object_id_t> m_priority_group_ids;
     sai_port_priority_flow_control_mode_t m_pfc_asym = SAI_PORT_PRIORITY_FLOW_CONTROL_MODE_COMBINED;
     uint8_t m_pfc_bitmask = 0;
+    uint32_t m_nat_zone_id = 0;
+
     /*
      * Following two bit vectors are used to lock
      * the PG/queue from being changed in BufferOrch.

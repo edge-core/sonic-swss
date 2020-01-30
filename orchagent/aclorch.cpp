@@ -65,6 +65,7 @@ static acl_rule_attr_lookup_t aclL3ActionLookup =
 {
     { ACTION_PACKET_ACTION,                    SAI_ACL_ENTRY_ATTR_ACTION_PACKET_ACTION },
     { ACTION_REDIRECT_ACTION,                  SAI_ACL_ENTRY_ATTR_ACTION_REDIRECT },
+    { ACTION_DO_NOT_NAT_ACTION,                SAI_ACL_ENTRY_ATTR_ACTION_NO_NAT },
 };
 
 static acl_rule_attr_lookup_t aclMirrorStageLookup =
@@ -796,6 +797,12 @@ bool AclRuleL3::validateAddAction(string attr_name, string _attr_value)
             value.aclaction.parameter.oid = param_id;
 
             action_str = ACTION_REDIRECT_ACTION;
+        }
+        // handle PACKET_ACTION_DO_NOT_NAT in ACTION_PACKET_ACTION
+        else if (attr_value == PACKET_ACTION_DO_NOT_NAT)
+        {
+            value.aclaction.parameter.booldata = true;
+            action_str = ACTION_DO_NOT_NAT_ACTION;
         }
         else
         {
