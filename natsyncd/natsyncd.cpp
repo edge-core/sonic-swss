@@ -5,54 +5,56 @@
 #include "logger.h"
 #include "select.h"
 #include "netdispatcher.h"
-#include "netlink.h"
-#include "neighsyncd/neighsync.h"
+#include "natsync.h"
+#include <netlink/netfilter/nfnl.h>
 
 using namespace std;
 using namespace swss;
 
 int main(int argc, char **argv)
 {
-    Logger::linkToDbNative("neighsyncd");
+    Logger::linkToDbNative("natsyncd");
 
-    DBConnector appDb("APPL_DB", 0);
-    RedisPipeline pipelineAppDB(&appDb);
-    DBConnector stateDb("STATE_DB", 0);
+    DBConnector     appDb(APPL_DB, DBConnector::DEFAULT_UNIXSOCKET, 0);
+    RedisPipeline   pipelineAppDB(&appDb);
+    DBConnector     stateDb(STATE_DB, DBConnector::DEFAULT_UNIXSOCKET, 0);
+    NfNetlink       nfnl;
 
-    NeighSync sync(&pipelineAppDB, &stateDb);
+    nfnl.registerRecvCallbacks();
+    NatSync sync(&pipelineAppDB, &appDb, &stateDb, &nfnl);
 
-    NetDispatcher::getInstance().registerMessageHandler(RTM_NEWNEIGH, &sync);
-    NetDispatcher::getInstance().registerMessageHandler(RTM_DELNEIGH, &sync);
+    sync.isPortInitDone(&appDb);
+
+    NetDispatcher::getInstance().registerMessageHandler(NFNLMSG_TYPE(NFNL_SUBSYS_CTNETLINK, IPCTNL_MSG_CT_NEW), &sync);
+    NetDispatcher::getInstance().registerMessageHandler(NFNLMSG_TYPE(NFNL_SUBSYS_CTNETLINK, IPCTNL_MSG_CT_DELETE), &sync);
 
     while (1)
     {
         try
         {
-            NetLink netlink;
             Select s;
 
             using namespace std::chrono;
             /*
-             * If warmstart, read neighbor table to cache map.
-             * Wait the kernel neighbor table restore to finish in case of warmreboot.
-             * Regular swss docker warmstart should have marked the restore flag to true always.
-             * Start reconcile timer once restore flag is set
+             * If warmstart, read the NAT tables to cache map.
+             * Wait for the kernel NAT conntrack table restore to finish in case of warmreboot.
+             * Start reconcile timer once restore flag is set.
              */
             if (sync.getRestartAssist()->isWarmStartInProgress())
             {
                 sync.getRestartAssist()->readTablesToMap();
 
                 steady_clock::time_point starttime = steady_clock::now();
-                while (!sync.isNeighRestoreDone())
+                while (!sync.isNatRestoreDone())
                 {
                     duration<double> time_span =
                         duration_cast<duration<double>>(steady_clock::now() - starttime);
                     int pasttime = int(time_span.count());
-                    SWSS_LOG_INFO("waited neighbor table to be restored to kernel"
+                    SWSS_LOG_INFO("Waited for NAT conntrack table to be restored to kernel"
                       " for %d seconds", pasttime);
-                    if (pasttime > RESTORE_NEIGH_WAIT_TIME_OUT)
+                    if (pasttime > RESTORE_NAT_WAIT_TIME_OUT)
                     {
-                        SWSS_LOG_ERROR("neighbor table restore is not finished"
+                        SWSS_LOG_ERROR("Nat conntrack table restore is not finished"
                             " after timed-out, exit!!!");
                         exit(EXIT_FAILURE);
                     }
@@ -61,11 +63,14 @@ int main(int argc, char **argv)
                 sync.getRestartAssist()->startReconcileTimer(s);
             }
 
-            netlink.registerGroup(RTNLGRP_NEIGH);
-            cout << "Listens to neigh messages..." << endl;
-            netlink.dumpRequest(RTM_GETNEIGH);
+            nfnl.registerGroup(NFNLGRP_CONNTRACK_NEW);
+            nfnl.registerGroup(NFNLGRP_CONNTRACK_UPDATE);
+            nfnl.registerGroup(NFNLGRP_CONNTRACK_DESTROY);
 
-            s.addSelectable(&netlink);
+            SWSS_LOG_INFO("Listens to conntrack messages...");
+            nfnl.dumpRequest(IPCTNL_MSG_CT_GET);
+
+            s.addSelectable(&nfnl);
             while (true)
             {
                 Selectable *temps;
@@ -86,7 +91,7 @@ int main(int argc, char **argv)
         }
         catch (const std::exception& e)
         {
-            cout << "Exception \"" << e.what() << "\" had been thrown in deamon" << endl;
+            SWSS_LOG_ERROR("Runtime error: %s", e.what());
             return 0;
         }
     }
