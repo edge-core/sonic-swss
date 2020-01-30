@@ -390,6 +390,7 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
     string vrf_name = "";
     string mtu = "";
     string adminStatus = "";
+    string nat_zone = "";
     for (auto idx : data)
     {
         const auto &field = fvField(idx);
@@ -403,6 +404,11 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
         if (field == "admin_status")
         {
             adminStatus = value;
+        }
+
+        if (field == "nat_zone")
+        {
+            nat_zone = value;
         }
     }
 
@@ -430,6 +436,15 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
         if (is_lo)
         {
             addLoopbackIntf(alias);
+        }
+        else
+        {
+            /* Set nat zone */
+            if (!nat_zone.empty())
+            {
+                FieldValueTuple fvTuple("nat_zone", nat_zone);
+                data.push_back(fvTuple);
+            }
         }
 
         if (!vrf_name.empty())
