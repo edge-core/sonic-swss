@@ -35,6 +35,9 @@ CrmOrch *gCrmOrch;
 BufferOrch *gBufferOrch;
 SwitchOrch *gSwitchOrch;
 Directory<Orch*> gDirectory;
+NatOrch *gNatOrch;
+
+bool gIsNatSupported = false;
 
 OrchDaemon::OrchDaemon(DBConnector *applDb, DBConnector *configDb, DBConnector *stateDb) :
         m_applDb(applDb),
@@ -208,6 +211,18 @@ bool OrchDaemon::init()
 
     DebugCounterOrch *debug_counter_orch = new DebugCounterOrch(m_configDb, debug_counter_tables, 1000);
 
+    const int natorch_base_pri = 50;
+
+    vector<table_name_with_pri_t> nat_tables = {
+        { APP_NAT_TABLE_NAME,        natorch_base_pri + 4 },
+        { APP_NAPT_TABLE_NAME,       natorch_base_pri + 3 },
+        { APP_NAT_TWICE_TABLE_NAME,  natorch_base_pri + 2 },
+        { APP_NAPT_TWICE_TABLE_NAME, natorch_base_pri + 1 },
+        { APP_NAT_GLOBAL_TABLE_NAME, natorch_base_pri     }
+    };
+
+    gNatOrch = new NatOrch(m_applDb, m_stateDb, nat_tables, gRouteOrch, gNeighOrch);
+
     /*
      * The order of the orch list is important for state restore of warm start and
      * the queued processing in m_toSync map after gPortsOrch->allPortsReady() is set.
@@ -262,6 +277,7 @@ bool OrchDaemon::init()
     m_orchList.push_back(cfg_vnet_rt_orch);
     m_orchList.push_back(vnet_orch);
     m_orchList.push_back(vnet_rt_orch);
+    m_orchList.push_back(gNatOrch);
 
     m_select = new Select();
 
