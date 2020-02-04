@@ -1379,6 +1379,8 @@ bool AclTable::create()
      * |------------------------------------------------------------------|
      * | MARTCH_ETHERTYPE  |      √       |      √       |                |
      * |------------------------------------------------------------------|
+     * | MATCH_IN_PORTS    |      √       |      √       |                |
+     * |------------------------------------------------------------------|
      */
 
     if (type == ACL_TABLE_MIRROR)
@@ -1396,6 +1398,10 @@ bool AclTable::create()
         table_attrs.push_back(attr);
 
         attr.id = SAI_ACL_TABLE_ATTR_FIELD_ICMP_CODE;
+        attr.value.booldata = true;
+        table_attrs.push_back(attr);
+
+        attr.id = SAI_ACL_TABLE_ATTR_FIELD_IN_PORTS;
         attr.value.booldata = true;
         table_attrs.push_back(attr);
 
