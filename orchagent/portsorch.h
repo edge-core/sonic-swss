@@ -149,6 +149,8 @@ private:
 
     void doTask(NotificationConsumer &consumer);
 
+    void removePortFromLanesMap(string alias);
+    void removePortFromPortListMap(sai_object_id_t port_id);
     void removeDefaultVlanMembers();
     void removeDefaultBridgePorts();
 
@@ -179,6 +181,7 @@ private:
     bool addPort(const set<int> &lane_set, uint32_t speed, int an=0, string fec="");
     bool removePort(sai_object_id_t port_id);
     bool initPort(const string &alias, const set<int> &lane_set);
+    void deInitPort(string alias, sai_object_id_t port_id);
 
     bool setPortAdminStatus(sai_object_id_t id, bool up);
     bool getPortAdminStatus(sai_object_id_t id, bool& up);

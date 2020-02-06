@@ -5,7 +5,6 @@ import pytest
 
 from swsscommon import swsscommon
 
-
 class BaseTestAcl(object):
     """ base class with helpers for Test classes """
     def setup_db(self, dvs):

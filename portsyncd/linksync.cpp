@@ -155,6 +155,8 @@ LinkSync::LinkSync(DBConnector *appl_db, DBConnector *state_db) :
 
 void LinkSync::onMsg(int nlmsg_type, struct nl_object *obj)
 {
+    SWSS_LOG_ENTER();
+
     if ((nlmsg_type != RTM_NEWLINK) && (nlmsg_type != RTM_DELLINK))
     {
         return;
@@ -209,6 +211,14 @@ void LinkSync::onMsg(int nlmsg_type, struct nl_object *obj)
         return;
     }
 
+    /* If netlink for this port has master, we ignore that for now
+     * This could be the case where the port was removed from VLAN bridge
+     */
+    if (master)
+    {
+        return;
+    }
+
     /* In the event of swss restart, it is possible to get netlink messages during bridge
      * delete, interface delete etc which are part of cleanup. These netlink messages for
      * the front-panel interface must not be published or it will update the statedb with
@@ -226,27 +236,24 @@ void LinkSync::onMsg(int nlmsg_type, struct nl_object *obj)
     /* Insert or update the ifindex to key map */
     m_ifindexNameMap[ifindex] = key;
 
+    if (nlmsg_type == RTM_DELLINK)
+    {
+        m_statePortTable.del(key);
+        SWSS_LOG_NOTICE("Delete %s(ok) from state db", key.c_str());
+        return;
+    }
+
     /* front panel interfaces: Check if the port is in the PORT_TABLE
      * non-front panel interfaces such as eth0, lo which are not in the
      * PORT_TABLE are ignored. */
     vector<FieldValueTuple> temp;
     if (m_portTable.get(key, temp))
     {
-        /* TODO: When port is removed from the kernel */
-        if (nlmsg_type == RTM_DELLINK)
-        {
-            return;
-        }
-
-        /* Host interface is created */
-        if (!g_init && g_portSet.find(key) != g_portSet.end())
-        {
-            g_portSet.erase(key);
-            FieldValueTuple tuple("state", "ok");
-            vector<FieldValueTuple> vector;
-            vector.push_back(tuple);
-            m_statePortTable.set(key, vector);
-            SWSS_LOG_INFO("Publish %s(ok) to state db", key.c_str());
-        }
+        g_portSet.erase(key);
+        FieldValueTuple tuple("state", "ok");
+        vector<FieldValueTuple> vector;
+        vector.push_back(tuple);
+        m_statePortTable.set(key, vector);
+        SWSS_LOG_NOTICE("Publish %s(ok) to state db", key.c_str());
     }
 }

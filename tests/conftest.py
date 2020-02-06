@@ -77,8 +77,8 @@ class AsicDbValidator(object):
 
 class ApplDbValidator(object):
     def __init__(self, dvs):
-        appl_db = swsscommon.DBConnector(swsscommon.APPL_DB, dvs.redis_sock, 0)
-        self.neighTbl = swsscommon.Table(appl_db, "NEIGH_TABLE")
+        self.appl_db = swsscommon.DBConnector(swsscommon.APPL_DB, dvs.redis_sock, 0)
+        self.neighTbl = swsscommon.Table(self.appl_db, "NEIGH_TABLE")
 
     def __del__(self):
         # Make sure no neighbors on physical interfaces
@@ -155,13 +155,14 @@ class DockerVirtualSwitch(object):
                       'vrfmgrd',
                       'portmgrd']
         self.syncd = ['syncd']
-        self.rtd   = ['fpmsyncd', 'zebra']
+        self.rtd   = ['fpmsyncd', 'zebra', 'staticd']
         self.teamd = ['teamsyncd', 'teammgrd']
         # FIXME: We need to verify that NAT processes are running, once the
         # appropriate changes are merged into sonic-buildimage
         # self.natd = ['natsyncd', 'natmgrd']
         self.alld  = self.basicd + self.swssd + self.syncd + self.rtd + self.teamd # + self.natd
         self.client = docker.from_env()
+        self.appldb = None
 
         if subprocess.check_call(["/sbin/modprobe", "team"]) != 0:
             raise NameError("cannot install kernel team module")
@@ -199,7 +200,7 @@ class DockerVirtualSwitch(object):
             self.mount = "/var/run/redis-vs/{}".format(ctn_sw_name)
 
             self.net_cleanup()
-            self.restart()
+            self.ctn_restart()
         else:
             self.ctn_sw = self.client.containers.run('debian:jessie', privileged=True, detach=True,
                     command="bash", stdin_open=True)
@@ -224,8 +225,20 @@ class DockerVirtualSwitch(object):
                     network_mode="container:%s" % self.ctn_sw.name,
                     volumes={ self.mount: { 'bind': '/var/run/redis', 'mode': 'rw' } })
 
-        self.appldb = None
         self.redis_sock = self.mount + '/' + "redis.sock"
+        self.check_ctn_status_and_db_connect()
+
+    def destroy(self):
+        if self.appldb:
+            del self.appldb
+        if self.cleanup:
+            self.ctn.remove(force=True)
+            self.ctn_sw.remove(force=True)
+            os.system("rm -rf {}".format(self.mount))
+            for s in self.servers:
+                s.destroy()
+
+    def check_ctn_status_and_db_connect(self):
         try:
             # temp fix: remove them once they are moved to vs start.sh
             self.ctn.exec_run("sysctl -w net.ipv6.conf.default.disable_ipv6=0")
@@ -239,15 +252,6 @@ class DockerVirtualSwitch(object):
             self.destroy()
             raise
 
-    def destroy(self):
-        if self.appldb:
-            del self.appldb
-        if self.cleanup:
-            self.ctn.remove(force=True)
-            self.ctn_sw.remove(force=True)
-            os.system("rm -rf {}".format(self.mount))
-            for s in self.servers:
-                s.destroy()
 
     def check_ready(self, timeout=30):
         '''check if all processes in the dvs is ready'''
@@ -314,8 +318,14 @@ class DockerVirtualSwitch(object):
                     print "remove extra link {}".format(pname)
         return
 
-    def restart(self):
+    def ctn_restart(self):
         self.ctn.restart()
+
+    def restart(self):
+        if self.appldb:
+            del self.appldb
+        self.ctn_restart()
+        self.check_ctn_status_and_db_connect()
 
     # start processes in SWSS
     def start_swss(self):
@@ -323,6 +333,7 @@ class DockerVirtualSwitch(object):
         for pname in self.swssd:
             cmd += "supervisorctl start {}; ".format(pname)
         self.runcmd(['sh', '-c', cmd])
+        time.sleep(5)
 
     # stop processes in SWSS
     def stop_swss(self):
@@ -839,3 +850,25 @@ def testlog(request, dvs):
     dvs.runcmd("logger === start test %s ===" % request.node.name)
     yield testlog
     dvs.runcmd("logger === finish test %s ===" % request.node.name)
+
+##################### DPB fixtures ###########################################
+@pytest.yield_fixture(scope="module")
+def create_dpb_config_file(dvs):
+    cmd = "sonic-cfggen -j /etc/sonic/init_cfg.json -j /tmp/ports.json --print-data > /tmp/dpb_config_db.json"
+    dvs.runcmd(['sh', '-c', cmd])
+    cmd = "mv /etc/sonic/config_db.json /etc/sonic/config_db.json.bak"
+    dvs.runcmd(cmd)
+    cmd = "cp /tmp/dpb_config_db.json /etc/sonic/config_db.json"
+    dvs.runcmd(cmd)
+
+@pytest.yield_fixture(scope="module")
+def remove_dpb_config_file(dvs):
+    cmd = "mv /etc/sonic/config_db.json.bak /etc/sonic/config_db.json"
+    dvs.runcmd(cmd)
+
+@pytest.yield_fixture(scope="module")
+def dpb_setup_fixture(dvs):
+    create_dpb_config_file(dvs)
+    dvs.restart()
+    yield
+    remove_dpb_config_file(dvs)
