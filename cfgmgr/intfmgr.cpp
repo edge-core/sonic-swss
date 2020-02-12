@@ -7,6 +7,7 @@
 #include "intfmgr.h"
 #include "exec.h"
 #include "shellcmd.h"
+#include "macaddress.h"
 #include "warm_restart.h"
 
 using namespace std;
@@ -57,6 +58,20 @@ void IntfMgr::setIntfIp(const string &alias, const string &opCmd,
         (cmd << IP_CMD << " -6 address " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " broadcast " << shellquote(broadcastIpStr) << " dev " << shellquote(alias)) :
         (cmd << IP_CMD << " -6 address " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias));
     }
+
+    int ret = swss::exec(cmd.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+    }
+}
+
+void IntfMgr::setIntfMac(const string &alias, const string &mac_str)
+{
+    stringstream cmd;
+    string res;
+
+    cmd << IP_CMD << " link set " << alias << " address " << mac_str;
 
     int ret = swss::exec(cmd.str(), res);
     if (ret)
@@ -326,7 +341,7 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
         alias = alias.substr(0, found);
     }
     bool is_lo = !alias.compare(0, strlen(LOOPBACK_PREFIX), LOOPBACK_PREFIX);
-
+    string mac = "";
     string vrf_name = "";
     string mtu = "";
     string adminStatus = "";
@@ -340,8 +355,11 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
         {
             vrf_name = value;
         }
-
-        if (field == "admin_status")
+        else if (field == "mac_addr")
+        {
+            mac = value;
+        }
+        else if (field == "admin_status")
         {
             adminStatus = value;
         }
@@ -392,6 +410,17 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
             setIntfVrf(alias, vrf_name);
         }
 
+        /*Set the mac of interface*/
+        if (!mac.empty())
+        {
+            setIntfMac(alias, mac);
+        }
+        else
+        {
+            FieldValueTuple fvTuple("mac_addr", MacAddress().to_string());
+            data.push_back(fvTuple);
+        }
+        
         if (!subIntfAlias.empty())
         {
             if (m_subIntfList.find(subIntfAlias) == m_subIntfList.end())

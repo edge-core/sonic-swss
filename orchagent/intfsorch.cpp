@@ -413,7 +413,6 @@ void IntfsOrch::doTask(Consumer &consumer)
     while (it != consumer.m_toSync.end())
     {
         KeyOpFieldsValuesTuple t = it->second;
-
         vector<string> keys = tokenize(kfvKey(t), ':');
         string alias(keys[0]);
 
@@ -436,6 +435,8 @@ void IntfsOrch::doTask(Consumer &consumer)
 
         const vector<FieldValueTuple>& data = kfvFieldsValues(t);
         string vrf_name = "", vnet_name = "", nat_zone = "";
+        MacAddress mac;
+
         uint32_t mtu;
         bool adminUp;
         uint32_t nat_zone_id = 0;
@@ -452,6 +453,18 @@ void IntfsOrch::doTask(Consumer &consumer)
             {
                 vnet_name = value;
             }
+            else if (field == "mac_addr")
+            {
+                try
+                {
+                    mac = MacAddress(value);
+                }
+                catch (const std::invalid_argument &e)
+                {
+                    SWSS_LOG_ERROR("Invalid mac argument %s to %s()", value.c_str(), e.what());
+                    continue;
+                }
+            }  
             else if (field == "nat_zone")
             {
                 try
@@ -621,6 +634,35 @@ void IntfsOrch::doTask(Consumer &consumer)
                                         port.m_alias.c_str(), port.m_nat_zone_id);
                     }
                     gPortsOrch->setPort(alias, port);
+                }
+            }
+
+            if (mac)
+            {
+                /* Get mac information and update mac of the interface*/
+                sai_attribute_t attr;
+                attr.id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+                memcpy(attr.value.mac, mac.getMac(), sizeof(sai_mac_t));
+
+                /*port.m_rif_id is set in setIntf(), need get port again*/
+                if (gPortsOrch->getPort(alias, port))
+                {
+                    sai_status_t status = sai_router_intfs_api->set_router_interface_attribute(port.m_rif_id, &attr);
+                    if (status != SAI_STATUS_SUCCESS)
+                    {
+                        SWSS_LOG_ERROR("Failed to set router interface mac %s for port %s, rv:%d",
+                                                     mac.to_string().c_str(), port.m_alias.c_str(), status);
+                    }
+                    else
+                    {
+                        SWSS_LOG_NOTICE("Set router interface mac %s for port %s success",
+                                                      mac.to_string().c_str(), port.m_alias.c_str());
+                    }
+                }
+                else
+                {
+                    SWSS_LOG_ERROR("Failed to set router interface mac %s for port %s, getPort fail",
+                                                     mac.to_string().c_str(), alias.c_str());
                 }
             }
 
