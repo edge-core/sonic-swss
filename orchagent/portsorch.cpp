@@ -1826,27 +1826,17 @@ void PortsOrch::doPortTask(Consumer &consumer)
 
                 for (auto it = m_lanesAliasSpeedMap.begin(); it != m_lanesAliasSpeedMap.end();)
                 {
-                    bool port_created = false;
-
                     if (m_portListLaneMap.find(it->first) == m_portListLaneMap.end())
                     {
                         if (!addPort(it->first, get<1>(it->second), get<2>(it->second), get<3>(it->second)))
                         {
                             throw runtime_error("PortsOrch initialization failure.");
                         }
-                        port_created = true;
-                    }
-                    else
-                    {
-                        port_created = true;
                     }
 
-                    if (port_created)
+                    if (!initPort(get<0>(it->second), it->first))
                     {
-                        if (!initPort(get<0>(it->second), it->first))
-                        {
-                            throw runtime_error("PortsOrch initialization failure.");
-                        }
+                        throw runtime_error("PortsOrch initialization failure.");
                     }
 
                     it++;
