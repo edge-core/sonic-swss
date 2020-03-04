@@ -159,6 +159,12 @@ PortsOrch::PortsOrch(DBConnector *db, vector<table_name_with_pri_t> &tableNames)
     m_counter_db = shared_ptr<DBConnector>(new DBConnector("COUNTERS_DB", 0));
     m_counterTable = unique_ptr<Table>(new Table(m_counter_db.get(), COUNTERS_PORT_NAME_MAP));
 
+    m_counterLagTable = unique_ptr<Table>(new Table(m_counter_db.get(), COUNTERS_LAG_NAME_MAP));
+    FieldValueTuple tuple("", "");
+    vector<FieldValueTuple> defaultLagFv;
+    defaultLagFv.push_back(tuple);
+    m_counterLagTable->set("", defaultLagFv);
+
     /* Initialize port table */
     m_portTable = unique_ptr<Table>(new Table(db, APP_PORT_TABLE_NAME));
 
@@ -3202,6 +3208,11 @@ bool PortsOrch::addLag(string lag_alias)
     PortUpdate update = { lag, true };
     notify(SUBJECT_TYPE_PORT_CHANGE, static_cast<void *>(&update));
 
+    FieldValueTuple tuple(lag_alias, sai_serialize_object_id(lag_id));
+    vector<FieldValueTuple> fields;
+    fields.push_back(tuple);
+    m_counterLagTable->set("", fields);
+
     return true;
 }
 
@@ -3245,6 +3256,8 @@ bool PortsOrch::removeLag(Port lag)
 
     PortUpdate update = { lag, false };
     notify(SUBJECT_TYPE_PORT_CHANGE, static_cast<void *>(&update));
+
+    m_counterLagTable->hdel("", lag.m_alias);
 
     return true;
 }
