@@ -94,6 +94,7 @@ public:
     bool removeSubPort(const string &alias);
 private:
     unique_ptr<Table> m_counterTable;
+    unique_ptr<Table> m_counterLagTable;
     unique_ptr<Table> m_portTable;
     unique_ptr<Table> m_queueTable;
     unique_ptr<Table> m_queuePortTable;
