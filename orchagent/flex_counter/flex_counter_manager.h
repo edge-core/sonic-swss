@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include "dbconnector.h"
 #include "producertable.h"
+#include <inttypes.h>
 
 extern "C" {
 #include "sai.h"
