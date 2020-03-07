@@ -185,12 +185,12 @@ void LinkSync::onMsg(int nlmsg_type, struct nl_object *obj)
 
     if (type)
     {
-        SWSS_LOG_INFO("nlmsg type:%d key:%s admin:%d oper:%d addr:%s ifindex:%d master:%d type:%s",
+        SWSS_LOG_NOTICE("nlmsg type:%d key:%s admin:%d oper:%d addr:%s ifindex:%d master:%d type:%s",
                        nlmsg_type, key.c_str(), admin, oper, addrStr, ifindex, master, type);
     }
     else
     {
-        SWSS_LOG_INFO("nlmsg type:%d key:%s admin:%d oper:%d addr:%s ifindex:%d master:%d",
+        SWSS_LOG_NOTICE("nlmsg type:%d key:%s admin:%d oper:%d addr:%s ifindex:%d master:%d",
                        nlmsg_type, key.c_str(), admin, oper, addrStr, ifindex, master);
     }
 

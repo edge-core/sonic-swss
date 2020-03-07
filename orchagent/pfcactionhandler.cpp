@@ -299,7 +299,7 @@ void PfcWdAclHandler::createPfcAclTable(sai_object_id_t port, string strTable, b
     aclTable.link(port);
     aclTable.id = strTable;
     aclTable.stage = ingress ? ACL_STAGE_INGRESS : ACL_STAGE_EGRESS;
-    gAclOrch->addAclTable(aclTable, strTable);
+    gAclOrch->addAclTable(aclTable);
 }
 
 void PfcWdAclHandler::createPfcAclRule(shared_ptr<AclRulePfcwd> rule, uint8_t queueId, string strTable)

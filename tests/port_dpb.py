@@ -53,7 +53,7 @@ class Port():
         self._index = index
 
     def set_oid(self, oid = None):
-        self._oid = oid 
+        self._oid = oid
 
     def get_speed(self):
         return self._speed
@@ -217,7 +217,7 @@ class DPB():
 
         for cp in child_ports:
             cp.delete_from_config_db()
-            # TBD, need vs lib to support removing hostif 
+            # TBD, need vs lib to support removing hostif
             #dvs.runcmd("ip link delete " + cp.get_name())
         #print "Deleted child ports:%s from config DB"%port_names
 
@@ -285,9 +285,8 @@ class DPB():
         assert(p.exists_in_config_db() == False)
         assert(p.exists_in_app_db() == False)
         assert(p.exists_in_asic_db() == False)
-        
-        self.create_child_ports(dvs, p, num_child_ports)
 
+        self.create_child_ports(dvs, p, num_child_ports)
 
     def change_speed_and_verify(self, dvs, port_names, speed = 100000):
         for port_name  in port_names:

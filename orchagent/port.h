@@ -9,6 +9,7 @@ extern "C" {
 #include <string>
 #include <vector>
 #include <map>
+#include <bitset>
 
 #define DEFAULT_PORT_VLAN_ID    1
 /*
@@ -47,6 +48,14 @@ public:
         SUBPORT,
         UNKNOWN
     } ;
+
+    enum Dependency {
+            ACL_DEP,
+            FDB_DEP,
+            INTF_DEP,
+            LAG_DEP,
+            VLAN_DEP
+    };
 
     Port() {};
     Port(std::string alias, Type type) :
@@ -89,6 +98,7 @@ public:
     sai_object_id_t     m_egress_acl_table_group_id = 0;
     vlan_members_t      m_vlan_members;
     sai_object_id_t     m_parent_port_id = 0;
+    uint32_t            m_dependency_bitmap = 0;
     sai_port_oper_status_t m_oper_status = SAI_PORT_OPER_STATUS_UNKNOWN;
     std::set<std::string> m_members;
     std::set<std::string> m_child_ports;
@@ -108,6 +118,21 @@ public:
     std::vector<bool> m_queue_lock;
     std::vector<bool> m_priority_group_lock;
 
+    std::unordered_set<sai_object_id_t> m_ingress_acl_tables_uset;
+    std::unordered_set<sai_object_id_t> m_egress_acl_tables_uset;
+
+    inline void set_dependency(Dependency dep)
+    {
+        m_dependency_bitmap |= (1 << dep);
+    }
+    inline void clear_dependency(Dependency dep)
+    {
+        m_dependency_bitmap &= ~(1 << dep);
+    }
+    inline bool has_dependency()
+    {
+        return (m_dependency_bitmap != 0);
+    }
 };
 
 }
