@@ -588,7 +588,7 @@ bool PortsOrch::addSubPort(Port &port, const string &alias, const bool &adminUp,
     }
     if (vlan_id > MAX_VALID_VLAN_ID)
     {
-        SWSS_LOG_ERROR("sub interface %s Port object creation: invalid VLAN id %u", alias.c_str(), vlan_id);
+        SWSS_LOG_ERROR("sub interface %s Port object creation failed: invalid VLAN id %u", alias.c_str(), vlan_id);
         return false;
     }
 
@@ -614,7 +614,19 @@ bool PortsOrch::addSubPort(Port &port, const string &alias, const bool &adminUp,
         p.m_mtu = parentPort.m_mtu;
     }
 
-    p.m_parent_port_id = parentPort.m_port_id;
+    switch (parentPort.m_type)
+    {
+        case Port::PHY:
+            p.m_parent_port_id = parentPort.m_port_id;
+            break;
+        case Port::LAG:
+            p.m_parent_port_id = parentPort.m_lag_id;
+            break;
+        default:
+            SWSS_LOG_ERROR("Sub interface %s Port object creation failed: \
+                    parent port %s of invalid type (must be physical port or LAG)", alias.c_str(), parentAlias.c_str());
+            return false;
+    }
     p.m_vlan_info.vlan_id = vlan_id;
 
     parentPort.m_child_ports.insert(p.m_alias);
