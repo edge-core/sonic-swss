@@ -128,7 +128,7 @@ public:
 
     int getDbId() const
     {
-        return getConsumerTable()->getDbId();
+        return getConsumerTable()->getDbConnector()->getDbId();
     }
 
     std::string dumpTuple(swss::KeyOpFieldsValuesTuple &tuple);
