@@ -429,6 +429,10 @@ VnetBridgeInfo VNetBitmapObject::getBridgeInfoByVni(uint32_t vni, string tunnelN
     attr.value.oid = info.bridge_id;
     rif_attrs.push_back(attr);
 
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_MTU;
+    attr.value.u32 = VNET_BITMAP_RIF_MTU;
+    rif_attrs.push_back(attr);
+
     status = sai_router_intfs_api->create_router_interface(
             &info.rif_id,
             gSwitchId,
