@@ -717,7 +717,7 @@ bool VNetBitmapObject::addIntf(const string& alias, const IpPrefix *prefix)
         intfMap_.emplace(alias, intfInfo);
     }
 
-    if (prefix)
+    if (prefix && gIntfsOrch->updateSyncdIntfPfx(alias, *prefix))
     {
         gIntfsOrch->addIp2MeRoute(gVirtualRouterId, *prefix);
     }
@@ -739,7 +739,7 @@ bool VNetBitmapObject::removeIntf(const string& alias, const IpPrefix *prefix)
 
     auto& intf = intfMap_.at(alias);
 
-    if (prefix)
+    if (prefix && gIntfsOrch->updateSyncdIntfPfx(alias, *prefix, false))
     {
         gIntfsOrch->removeIp2MeRoute(gVirtualRouterId, *prefix);
     }
