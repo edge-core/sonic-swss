@@ -447,13 +447,10 @@ class TestVlan(object):
         assert len(lag_member_entries) == 1
 
         (status, fvs) = tbl.get(lag_member_entries[0])
-        for fv in fvs:
-            if fv[0] == "SAI_LAG_MEMBER_ATTR_LAG_ID":
-                assert fv[1] == lag_entries[0]
-            elif fv[0] == "SAI_LAG_MEMBER_ATTR_PORT_ID":
-                assert dvs.asicdb.portoidmap[fv[1]] == "Ethernet0"
-            else:
-                assert False
+        fvs = dict(fvs)
+        assert len(fvs) == 4
+        assert fvs.get("SAI_LAG_MEMBER_ATTR_LAG_ID") == lag_entries[0]
+        assert dvs.asicdb.portoidmap[fvs.get("SAI_LAG_MEMBER_ATTR_PORT_ID")] == "Ethernet0"
 
         # create vlan
         self.create_vlan(vlan)
