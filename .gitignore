@@ -30,10 +30,12 @@ libtool
 Makefile.in
 stamp-h1
 **/Makefile
+autom4te.cache
 
 # Dependency Folder #
 #####################
 deps/
+**/.deps
 
 # Executables #
 ###############
@@ -47,6 +49,9 @@ cfgmgr/teammgrd
 cfgmgr/vlanmgrd
 cfgmgr/vrfmgrd
 cfgmgr/vxlanmgrd
+cfgmgr/natmgrd
+cfgmgr/sflowmgrd
+portsyncd/portsyncd
 fpmsyncd/fpmsyncd
 mclagsyncd/mclagsyncd
 natsyncd/natsyncd
@@ -57,11 +62,16 @@ orchagent/routeresync
 portsyncd/portsyncd
 swssconfig/swssconfig
 swssconfig/swssplayer
+tlm_teamd/tlm_teamd
 teamsyncd/teamsyncd
 tests/tests
 
 # Test Files #
 ##############
+tests/log
+tests/mock_tests/test-suite.log
+tests/mock_tests/tests.log
+tests/mock_tests/tests.trs
 tests/test-suite.log
 tests/tests.log
 tests/tests.trs
