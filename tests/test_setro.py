@@ -20,7 +20,8 @@ class TestSetRo(object):
 
         swVid = keys[0]
 
-        r = redis.Redis(unix_socket_path=dvs.redis_sock, db=swsscommon.ASIC_DB)
+        r = redis.Redis(unix_socket_path=dvs.redis_sock, db=swsscommon.ASIC_DB,
+                        encoding="utf-8", decode_responses=True)
 
         swRid = r.hget("VIDTORID", swVid)
 

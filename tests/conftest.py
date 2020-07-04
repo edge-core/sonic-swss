@@ -451,13 +451,15 @@ class DockerVirtualSwitch(object):
         return marker
 
     def SubscribeAppDbObject(self, objpfx):
-        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.APPL_DB)
+        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.APPL_DB,
+                        encoding="utf-8", decode_responses=True)
         pubsub = r.pubsub()
         pubsub.psubscribe("__keyspace@0__:%s*" % objpfx)
         return pubsub
 
     def SubscribeAsicDbObject(self, objpfx):
-        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB)
+        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB,
+                        encoding="utf-8", decode_responses=True)
         pubsub = r.pubsub()
         pubsub.psubscribe("__keyspace@1__:ASIC_STATE:%s*" % objpfx)
         return pubsub
@@ -486,7 +488,8 @@ class DockerVirtualSwitch(object):
         return (nadd, ndel)
 
     def GetSubscribedAppDbObjects(self, pubsub, ignore=None, timeout=10):
-        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.APPL_DB)
+        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.APPL_DB,
+                        encoding="utf-8", decode_responses=True)
 
         addobjs = []
         delobjs = []
@@ -529,7 +532,8 @@ class DockerVirtualSwitch(object):
 
 
     def GetSubscribedAsicDbObjects(self, pubsub, ignore=None, timeout=10):
-        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB)
+        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB,
+                        encoding="utf-8", decode_responses=True)
 
         addobjs = []
         delobjs = []
@@ -560,7 +564,8 @@ class DockerVirtualSwitch(object):
 
     def SubscribeDbObjects(self, dbobjs):
         # assuming all the db object pairs are in the same db instance
-        r = redis.Redis(unix_socket_path=self.redis_sock)
+        r = redis.Redis(unix_socket_path=self.redis_sock, encoding="utf-8",
+                        decode_responses=True)
         pubsub = r.pubsub()
         substr = ""
         for db, obj in dbobjs:
@@ -852,7 +857,8 @@ class DockerVirtualSwitch(object):
         assert len(keys) == 1
 
         swVid = keys[0]
-        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB)
+        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB,
+                        encoding="utf-8", decode_responses=True)
         swRid = r.hget("VIDTORID", swVid)
 
         assert swRid is not None
