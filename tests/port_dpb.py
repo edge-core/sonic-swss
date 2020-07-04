@@ -112,7 +112,7 @@ class Port():
         child_port_list = []
         port_num = self.get_port_num()
         num_lanes = len(self._lanes)
-        offset = num_lanes/child_ports;
+        offset = num_lanes//child_ports
         lanes_per_child = offset
         for i in range(child_ports):
             child_port_num = port_num + (i * offset)
@@ -121,7 +121,7 @@ class Port():
             child_port_lanes = []
             for j in range(lanes_per_child):
                 child_port_lanes.append(self._lanes[(i*offset)+j])
-            child_port_speed = self._speed/child_ports
+            child_port_speed = self._speed//child_ports
             child_port_index = self._index
 
             child_port = Port(self._dvs, child_port_name)
@@ -219,7 +219,7 @@ class Port():
         (status, fvs) = self._asic_db_ptbl.get(self.get_oid())
         assert(status == True)
         fvs_dict = self.get_fvs_dict(fvs)
-        if ("SAI_PORT_ATTR_HW_LANE_LIST" in fvs_dict):
+        if "SAI_PORT_ATTR_HW_LANE_LIST" in fvs_dict:
             assert(fvs_dict['SAI_PORT_ATTR_HW_LANE_LIST'] == self.get_lanes_asic_db_str())
         assert(fvs_dict['SAI_PORT_ATTR_SPEED'] == str(self.get_speed()))
 
