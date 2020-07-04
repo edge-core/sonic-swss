@@ -175,7 +175,7 @@ class TestVrf(object):
             ('l3_mc_action',  'SAI_VIRTUAL_ROUTER_ATTR_UNKNOWN_L3_MULTICAST_PACKET_ACTION', self.packet_action_gen),
         ]
 
-        random.seed(int(time.clock()))
+        random.seed(int(time.time()))
 
         for n in range(2**len(attributes)):
             # generate testcases for all combinations of attributes
@@ -228,7 +228,7 @@ class TestVrf(object):
             ('l3_mc_action',  'SAI_VIRTUAL_ROUTER_ATTR_UNKNOWN_L3_MULTICAST_PACKET_ACTION', self.packet_action_gen),
         ]
 
-        random.seed(int(time.clock()))
+        random.seed(int(time.time()))
 
         state = self.vrf_create(dvs, "Vrf_a",
             [
