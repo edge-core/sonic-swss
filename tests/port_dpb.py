@@ -1,5 +1,4 @@
 from swsscommon import swsscommon
-import redis
 import time
 import os
 import pytest
@@ -26,8 +25,7 @@ class Port():
         self._app_db_ptbl = swsscommon.Table(self._app_db, swsscommon.APP_PORT_TABLE_NAME)
         self._asic_db = swsscommon.DBConnector(swsscommon.ASIC_DB, dvs.redis_sock, 0)
         self._asic_db_ptbl = swsscommon.Table(self._asic_db, "ASIC_STATE:SAI_OBJECT_TYPE_PORT")
-        self._counters_db = redis.Redis(unix_socket_path=self._dvs.redis_sock, db=swsscommon.COUNTERS_DB,
-                                        encoding="utf-8", decode_responses=True)
+        self._counters_db = dvs.get_counters_db()
         self._dvs_asic_db = dvs.get_asic_db()
 
     def set_name(self, name):
@@ -173,7 +171,11 @@ class Port():
         return status
 
     def sync_oid(self):
-        self._oid = self._counters_db.hget("COUNTERS_PORT_NAME_MAP", self.get_name())
+        fvs = dict(self._counters_db.get_entry("COUNTERS_PORT_NAME_MAP", ""))
+        try:
+            self._oid = fvs[self.get_name()]
+        except KeyError:
+            self._oid = None
 
     """
         Expectation of the caller is that the port does exist in ASIC DB.

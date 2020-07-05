@@ -51,7 +51,8 @@ class TestWatermark(object):
         fvp = swsscommon.FieldValuePairs([(attr, val)])
         key = rid
 
-        ntf.send("set_stats", key, fvp)
+        # explicit convert unicode string to str for python2
+        ntf.send("set_stats", str(key), fvp)
 
     def populate_asic(self, dvs, obj_type, attr, val):
 

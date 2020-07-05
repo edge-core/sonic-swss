@@ -39,7 +39,8 @@ class TestSetRo(object):
 
         print(key)
 
-        ntf.send("set_ro", key, fvp)
+        # explicit convert unicode string to str for python2
+        ntf.send("set_ro", str(key), fvp)
 
         # make action on appdb so orchagent will get RO value
         # read asic db to see if orchagent behaved correctly

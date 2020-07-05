@@ -869,7 +869,8 @@ class DockerVirtualSwitch(object):
         fvp = swsscommon.FieldValuePairs([(attr, val)])
         key = "SAI_OBJECT_TYPE_SWITCH:" + swRid
 
-        ntf.send("set_ro", key, fvp)
+        # explicit convert unicode string to str for python2
+        ntf.send("set_ro", str(key), fvp)
 
     def create_acl_table(self, table, type, ports):
         tbl = swsscommon.Table(self.cdb, "ACL_TABLE")
