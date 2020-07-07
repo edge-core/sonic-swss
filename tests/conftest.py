@@ -6,10 +6,12 @@ import json
 import redis
 import docker
 import pytest
-import commands
 import tarfile
-import StringIO
+import io
 import subprocess
+import sys
+if sys.version_info < (3, 0):
+    import commands
 
 from datetime import datetime
 from swsscommon import swsscommon
@@ -21,7 +23,10 @@ from dvslib import dvs_mirror
 from dvslib import dvs_policer
 
 def ensure_system(cmd):
-    (rc, output) = commands.getstatusoutput(cmd)
+    if sys.version_info < (3, 0):
+        (rc, output) = commands.getstatusoutput(cmd)
+    else:
+        (rc, output) = subprocess.getstatusoutput(cmd)
     if rc:
         raise RuntimeError('Failed to run command: %s. rc=%d. output: %s' % (cmd, rc, output))
 
@@ -138,9 +143,9 @@ class VirtualServer(object):
         try:
             out = subprocess.check_output("ip netns exec %s %s" % (self.nsname, cmd), stderr=subprocess.STDOUT, shell=True)
         except subprocess.CalledProcessError as e:
-            print "------rc={} for cmd: {}------".format(e.returncode, e.cmd)
-            print e.output.rstrip()
-            print "------"
+            print("------rc={} for cmd: {}------".format(e.returncode, e.cmd))
+            print(e.output.rstrip())
+            print("------")
             return e.returncode
         return 0
 
@@ -148,7 +153,7 @@ class VirtualServer(object):
         return subprocess.Popen("ip netns exec %s %s" % (self.nsname, cmd), shell=True)
 
     def runcmd_output(self, cmd):
-        return subprocess.check_output("ip netns exec %s %s" % (self.nsname, cmd), shell=True)
+        return subprocess.check_output("ip netns exec %s %s" % (self.nsname, cmd), shell=True).decode('utf-8')
 
 class DockerVirtualSwitch(object):
     APP_DB_ID = 0
@@ -189,7 +194,10 @@ class DockerVirtualSwitch(object):
             for ctn in self.client.containers.list():
                 if ctn.name == name:
                     self.ctn = ctn
-                    (status, output) = commands.getstatusoutput("docker inspect --format '{{.HostConfig.NetworkMode}}' %s" % name)
+                    if sys.version_info < (3, 0):
+                        (status, output) = commands.getstatusoutput("docker inspect --format '{{.HostConfig.NetworkMode}}' %s" % name)
+                    else:
+                        (status, output) = subprocess.getstatusoutput("docker inspect --format '{{.HostConfig.NetworkMode}}' %s" % name)
                     ctn_sw_id = output.split(':')[1]
                     self.cleanup = False
             if self.ctn == None:
@@ -200,7 +208,10 @@ class DockerVirtualSwitch(object):
                 if ctn.id == ctn_sw_id or ctn.name == ctn_sw_id:
                     ctn_sw_name = ctn.name
 
-            (status, output) = commands.getstatusoutput("docker inspect --format '{{.State.Pid}}' %s" % ctn_sw_name)
+            if sys.version_info < (3, 0):
+                (status, output) = commands.getstatusoutput("docker inspect --format '{{.State.Pid}}' %s" % ctn_sw_name)
+            else:
+                (status, output) = subprocess.getstatusoutput("docker inspect --format '{{.State.Pid}}' %s" % ctn_sw_name)
             self.ctn_sw_pid = int(output)
 
             # create virtual servers
@@ -216,7 +227,10 @@ class DockerVirtualSwitch(object):
         else:
             self.ctn_sw = self.client.containers.run('debian:jessie', privileged=True, detach=True,
                     command="bash", stdin_open=True)
-            (status, output) = commands.getstatusoutput("docker inspect --format '{{.State.Pid}}' %s" % self.ctn_sw.name)
+            if sys.version_info < (3, 0):
+                (status, output) = commands.getstatusoutput("docker inspect --format '{{.State.Pid}}' %s" % self.ctn_sw.name)
+            else:
+                (status, output) = subprocess.getstatusoutput("docker inspect --format '{{.State.Pid}}' %s" % self.ctn_sw.name)
             self.ctn_sw_pid = int(output)
 
             # create virtual server
@@ -286,7 +300,7 @@ class DockerVirtualSwitch(object):
             # get process status
             res = self.ctn.exec_run("supervisorctl status")
             try:
-                out = res.output
+                out = res.output.decode('utf-8')
             except AttributeError:
                 out = res
             for l in out.split('\n'):
@@ -324,7 +338,7 @@ class DockerVirtualSwitch(object):
 
         res = self.ctn.exec_run("ip link show")
         try:
-            out = res.output
+            out = res.output.decode('utf-8')
         except AttributeError:
             out = res
         for l in out.split('\n'):
@@ -337,7 +351,7 @@ class DockerVirtualSwitch(object):
                 m = re.compile("(eth|lo|Bridge|Ethernet)").match(pname)
                 if not m:
                     self.ctn.exec_run("ip link del {}".format(pname))
-                    print "remove extra link {}".format(pname)
+                    print("remove extra link {}".format(pname))
         return
 
     def ctn_restart(self):
@@ -391,19 +405,19 @@ class DockerVirtualSwitch(object):
         res = self.ctn.exec_run(cmd)
         try:
             exitcode = res.exit_code
-            out = res.output
+            out = res.output.decode('utf-8')
         except AttributeError:
             exitcode = 0
             out = res
         if exitcode != 0:
-            print "-----rc={} for cmd {}-----".format(exitcode, cmd)
-            print out.rstrip()
-            print "-----"
+            print("-----rc={} for cmd {}-----".format(exitcode, cmd))
+            print(out.rstrip())
+            print("-----")
 
         return (exitcode, out)
 
     def copy_file(self, path, filename):
-        tarstr = StringIO.StringIO()
+        tarstr = io.StringIO()
         tar = tarfile.open(fileobj=tarstr, mode="w")
         tar.add(filename, os.path.basename(filename))
         tar.close()
@@ -439,13 +453,15 @@ class DockerVirtualSwitch(object):
         return marker
 
     def SubscribeAppDbObject(self, objpfx):
-        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.APPL_DB)
+        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.APPL_DB,
+                        encoding="utf-8", decode_responses=True)
         pubsub = r.pubsub()
         pubsub.psubscribe("__keyspace@0__:%s*" % objpfx)
         return pubsub
 
     def SubscribeAsicDbObject(self, objpfx):
-        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB)
+        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB,
+                        encoding="utf-8", decode_responses=True)
         pubsub = r.pubsub()
         pubsub.psubscribe("__keyspace@1__:ASIC_STATE:%s*" % objpfx)
         return pubsub
@@ -457,7 +473,7 @@ class DockerVirtualSwitch(object):
         while True and idle < timeout:
             message = pubsub.get_message()
             if message:
-                print message
+                print(message)
                 if ignore:
                     fds = message['channel'].split(':')
                     if fds[2] in ignore:
@@ -474,7 +490,8 @@ class DockerVirtualSwitch(object):
         return (nadd, ndel)
 
     def GetSubscribedAppDbObjects(self, pubsub, ignore=None, timeout=10):
-        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.APPL_DB)
+        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.APPL_DB,
+                        encoding="utf-8", decode_responses=True)
 
         addobjs = []
         delobjs = []
@@ -484,7 +501,7 @@ class DockerVirtualSwitch(object):
         while True and idle < timeout:
             message = pubsub.get_message()
             if message:
-                print message
+                print(message)
                 key = message['channel'].split(':', 1)[1]
                 # In producer/consumer_state_table scenarios, every entry will
                 # show up twice for every push/pop operation, so skip the second
@@ -517,7 +534,8 @@ class DockerVirtualSwitch(object):
 
 
     def GetSubscribedAsicDbObjects(self, pubsub, ignore=None, timeout=10):
-        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB)
+        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB,
+                        encoding="utf-8", decode_responses=True)
 
         addobjs = []
         delobjs = []
@@ -526,7 +544,7 @@ class DockerVirtualSwitch(object):
         while True and idle < timeout:
             message = pubsub.get_message()
             if message:
-                print message
+                print(message)
                 key = message['channel'].split(':', 1)[1]
                 if ignore:
                     fds = message['channel'].split(':')
@@ -548,7 +566,8 @@ class DockerVirtualSwitch(object):
 
     def SubscribeDbObjects(self, dbobjs):
         # assuming all the db object pairs are in the same db instance
-        r = redis.Redis(unix_socket_path=self.redis_sock)
+        r = redis.Redis(unix_socket_path=self.redis_sock, encoding="utf-8",
+                        decode_responses=True)
         pubsub = r.pubsub()
         substr = ""
         for db, obj in dbobjs:
@@ -860,7 +879,8 @@ class DockerVirtualSwitch(object):
         assert len(keys) == 1
 
         swVid = keys[0]
-        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB)
+        r = redis.Redis(unix_socket_path=self.redis_sock, db=swsscommon.ASIC_DB,
+                        encoding="utf-8", decode_responses=True)
         swRid = r.hget("VIDTORID", swVid)
 
         assert swRid is not None
@@ -871,7 +891,8 @@ class DockerVirtualSwitch(object):
         fvp = swsscommon.FieldValuePairs([(attr, val)])
         key = "SAI_OBJECT_TYPE_SWITCH:" + swRid
 
-        ntf.send("set_ro", key, fvp)
+        # explicit convert unicode string to str for python2
+        ntf.send("set_ro", str(key), fvp)
 
     def create_acl_table(self, table, type, ports):
         tbl = swsscommon.Table(self.cdb, "ACL_TABLE")
