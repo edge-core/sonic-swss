@@ -2162,6 +2162,13 @@ bool VxlanVrfMapOrch::addOperation(const Request& request)
         return true;
     }
 
+    if (tunnel_orch->getVlanMappedToVni(vni_id) == 0)
+    {
+        SWSS_LOG_NOTICE("VRF VNI mapping '%s', vni %d to VLAN mapping must be set first",
+            full_map_entry_name.c_str(), vni_id);
+        return false;
+    }
+
     auto tunnel_obj = tunnel_orch->getVxlanTunnel(tunnel_name);
     sai_object_id_t vrf_id;
 
