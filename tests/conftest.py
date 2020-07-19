@@ -421,7 +421,7 @@ class DockerVirtualSwitch(object):
         return (exitcode, out)
 
     def copy_file(self, path, filename):
-        tarstr = io.StringIO()
+        tarstr = io.BytesIO()
         tar = tarfile.open(fileobj=tarstr, mode="w")
         tar.add(filename, os.path.basename(filename))
         tar.close()
