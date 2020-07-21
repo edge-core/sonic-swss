@@ -560,10 +560,16 @@ bool PfcWdSwOrch<DropHandler, ForwardHandler>::registerInWdDb(const Port& port,
                 sai_serialize_object_id(queueId));
     }
 
-    // Create egress ACL table group for each port of pfcwd's interest
-    sai_object_id_t groupId;
-    gPortsOrch->createBindAclTableGroup(port.m_port_id, groupId, ACL_STAGE_INGRESS);
-    gPortsOrch->createBindAclTableGroup(port.m_port_id, groupId, ACL_STAGE_EGRESS);
+    auto platform_env_var = getenv("platform");
+    string platform = platform_env_var ? platform_env_var: "";
+    if ((platform == BFN_PLATFORM_SUBSTRING)
+        || (platform == BRCM_PLATFORM_SUBSTRING))
+    {
+        // Create egress ACL table group for each port of pfcwd's interest
+        sai_object_id_t groupId;
+        gPortsOrch->createBindAclTableGroup(port.m_port_id, groupId, ACL_STAGE_INGRESS);
+        gPortsOrch->createBindAclTableGroup(port.m_port_id, groupId, ACL_STAGE_EGRESS);
+    }
 
     return true;
 }
