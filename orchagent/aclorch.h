@@ -9,6 +9,7 @@
 #include <map>
 #include <condition_variable>
 #include "orch.h"
+#include "switchorch.h"
 #include "portsorch.h"
 #include "mirrororch.h"
 #include "dtelorch.h"
@@ -378,8 +379,13 @@ public:
 class AclOrch : public Orch, public Observer
 {
 public:
-    AclOrch(vector<TableConnector>& connectors, TableConnector switchTable,
-            PortsOrch *portOrch, MirrorOrch *mirrorOrch, NeighOrch *neighOrch, RouteOrch *routeOrch, DTelOrch *m_dTelOrch = NULL);
+    AclOrch(vector<TableConnector>& connectors,
+            SwitchOrch              *m_switchOrch,
+            PortsOrch               *portOrch,
+            MirrorOrch              *mirrorOrch,
+            NeighOrch               *neighOrch,
+            RouteOrch               *routeOrch,
+            DTelOrch                *m_dTelOrch = NULL);
     ~AclOrch();
     void update(SubjectType, void *);
 
@@ -391,7 +397,6 @@ public:
         return m_countersTable;
     }
 
-    Table m_switchTable;
 
     // FIXME: Add getters for them? I'd better to add a common directory of orch objects and use it everywhere
     MirrorOrch *m_mirrorOrch;
@@ -414,6 +419,7 @@ public:
     static sai_acl_action_type_t getAclActionFromAclEntry(sai_acl_entry_attr_t attr);
 
 private:
+    SwitchOrch *m_switchOrch;
     void doTask(Consumer &consumer);
     void doAclTableTask(Consumer &consumer);
     void doAclRuleTask(Consumer &consumer);

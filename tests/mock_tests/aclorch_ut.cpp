@@ -2,6 +2,7 @@
 
 extern sai_object_id_t gSwitchId;
 
+extern SwitchOrch *gSwitchOrch;
 extern CrmOrch *gCrmOrch;
 extern PortsOrch *gPortsOrch;
 extern RouteOrch *gRouteOrch;
@@ -169,7 +170,7 @@ namespace aclorch_test
         AclOrch *m_aclOrch;
         swss::DBConnector *config_db;
 
-        MockAclOrch(swss::DBConnector *config_db, swss::DBConnector *state_db,
+        MockAclOrch(swss::DBConnector *config_db, swss::DBConnector *state_db, SwitchOrch *switchOrch,
                     PortsOrch *portsOrch, MirrorOrch *mirrorOrch, NeighOrch *neighOrch, RouteOrch *routeOrch) :
             config_db(config_db)
         {
@@ -178,9 +179,7 @@ namespace aclorch_test
 
             vector<TableConnector> acl_table_connectors = { confDbAclTable, confDbAclRuleTable };
 
-            TableConnector stateDbSwitchTable(state_db, "SWITCH_CAPABILITY");
-
-            m_aclOrch = new AclOrch(acl_table_connectors, stateDbSwitchTable, portsOrch, mirrorOrch,
+            m_aclOrch = new AclOrch(acl_table_connectors, switchOrch, portsOrch, mirrorOrch,
                                     neighOrch, routeOrch);
         }
 
@@ -333,6 +332,10 @@ namespace aclorch_test
 
             gVirtualRouterId = attr.value.oid;
 
+            TableConnector stateDbSwitchTable(m_state_db.get(), "SWITCH_CAPABILITY");
+            ASSERT_EQ(gSwitchOrch, nullptr);
+            gSwitchOrch = new SwitchOrch(m_app_db.get(), APP_SWITCH_TABLE_NAME, stateDbSwitchTable);
+
             // Create dependencies ...
 
             const int portsorch_base_pri = 40;
@@ -361,7 +364,7 @@ namespace aclorch_test
             gNeighOrch = new NeighOrch(m_app_db.get(), APP_NEIGH_TABLE_NAME, gIntfsOrch);
 
             ASSERT_EQ(gRouteOrch, nullptr);
-            gRouteOrch = new RouteOrch(m_app_db.get(), APP_ROUTE_TABLE_NAME, gNeighOrch, gIntfsOrch, gVrfOrch);
+            gRouteOrch = new RouteOrch(m_app_db.get(), APP_ROUTE_TABLE_NAME, gSwitchOrch, gNeighOrch, gIntfsOrch, gVrfOrch);
 
             TableConnector applDbFdb(m_app_db.get(), APP_FDB_TABLE_NAME);
             TableConnector stateDbFdb(m_state_db.get(), STATE_FDB_TABLE_NAME);
@@ -390,6 +393,8 @@ namespace aclorch_test
         {
             AclTestBase::TearDown();
 
+            delete gSwitchOrch;
+            gSwitchOrch = nullptr;
             delete gFdbOrch;
             gFdbOrch = nullptr;
             delete gMirrorOrch;
@@ -423,7 +428,7 @@ namespace aclorch_test
 
         shared_ptr<MockAclOrch> createAclOrch()
         {
-            return make_shared<MockAclOrch>(m_config_db.get(), m_state_db.get(), gPortsOrch, gMirrorOrch,
+            return make_shared<MockAclOrch>(m_config_db.get(), m_state_db.get(), gSwitchOrch, gPortsOrch, gMirrorOrch,
                                             gNeighOrch, gRouteOrch);
         }
 
