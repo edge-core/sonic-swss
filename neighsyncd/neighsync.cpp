@@ -150,11 +150,6 @@ void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
     key+= ipStr;
 
     int state = rtnl_neigh_get_state(neigh);
-    if (state == NUD_NOARP)
-    {
-        return;
-    }
-
     bool delete_key = false;
     bool use_zero_mac = false;
     if (is_dualtor && (state == NUD_INCOMPLETE || state == NUD_FAILED))
