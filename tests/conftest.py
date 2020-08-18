@@ -41,6 +41,8 @@ def ensure_system(cmd):
 def pytest_addoption(parser):
     parser.addoption("--dvsname", action="store", default=None,
                       help="dvs name")
+    parser.addoption("--forcedvs", action="store_true", default=False,
+                      help="force persistent dvs when ports < 32")
     parser.addoption("--keeptb", action="store_true", default=False,
                       help="keep testbed after test")
     parser.addoption("--imgname", action="store", default="docker-sonic-vs",
@@ -191,7 +193,8 @@ class DockerVirtualSwitch(object):
             keeptb=False,
             fakeplatform=None,
             log_path=None,
-            max_cpu=2
+            max_cpu=2,
+            forcedvs=None,
     ):
         self.basicd = ['redis-server',
                        'rsyslogd']
@@ -220,6 +223,7 @@ class DockerVirtualSwitch(object):
             self.cleanup = False
         else:
             self.cleanup = True
+        self.persistent = False
         if name != None:
             # get virtual switch container
             for ctn in self.client.containers.list():
@@ -230,9 +234,19 @@ class DockerVirtualSwitch(object):
                     else:
                         (status, output) = subprocess.getstatusoutput("docker inspect --format '{{.HostConfig.NetworkMode}}' %s" % name)
                     ctn_sw_id = output.split(':')[1]
+                    # Persistent DVS is available.
                     self.cleanup = False
+                    self.persistent = True
             if self.ctn == None:
                 raise NameError("cannot find container %s" % name)
+
+            self.num_net_interfaces = self.net_interface_count()
+
+            if self.num_net_interfaces > NUM_PORTS:
+                raise ValueError("persistent dvs is not valid for testbed with ports > %d" % NUM_PORTS)
+
+            if self.num_net_interfaces < NUM_PORTS and not forcedvs:
+                raise ValueError("persistent dvs does not have %d ports needed by testbed" % NUM_PORTS)
 
             # get base container
             for ctn in self.client.containers.list():
@@ -254,6 +268,10 @@ class DockerVirtualSwitch(object):
             self.mount = "/var/run/redis-vs/{}".format(ctn_sw_name)
 
             self.net_cleanup()
+            # As part of https://github.com/Azure/sonic-buildimage/pull/4499
+            # VS support dynamically create Front-panel ports so save the orginal
+            # config db for persistent DVS
+            self.runcmd("mv /etc/sonic/config_db.json /etc/sonic/config_db.json.orig")
             self.ctn_restart()
         else:
             self.ctn_sw = self.client.containers.run('debian:jessie', privileged=True, detach=True,
@@ -301,7 +319,13 @@ class DockerVirtualSwitch(object):
     def destroy(self):
         if self.appldb:
             del self.appldb
-        if self.cleanup:
+        # In case persistent dvs was used removed all the extra server link
+        # that were created
+        if self.persistent:
+            for s in self.servers:
+                s.destroy()
+        # persistent and clean-up flag are mutually exclusive
+        elif self.cleanup:
             self.ctn.remove(force=True)
             self.ctn_sw.remove(force=True)
             os.system("rm -rf {}".format(self.mount))
@@ -417,6 +441,21 @@ class DockerVirtualSwitch(object):
                     self.ctn.exec_run("ip link del {}".format(pname))
                     print("remove extra link {}".format(pname))
         return
+
+    def net_interface_count(self):
+        """get the interface count in persistent DVS Container
+           if not found or some error then return 0 as default"""
+
+        res = self.ctn.exec_run(['sh', '-c', 'ip link show | grep -oE eth[0-9]+ | grep -vc eth0'])
+        if not res.exit_code:
+            try:
+                out = res.output.decode('utf-8')
+            except AttributeError:
+                return 0
+            return int(out.rstrip('\n'))
+        else:
+            return 0
+
 
     def ctn_restart(self):
         self.ctn.restart()
@@ -906,7 +945,7 @@ class DockerVirtualSwitch(object):
     def add_route(self, prefix, nexthop):
         self.runcmd("ip route add " + prefix + " via " + nexthop)
         time.sleep(1)
-
+    
     def remove_route(self, prefix):
         self.runcmd("ip route del " + prefix)
         time.sleep(1)
@@ -1008,18 +1047,23 @@ class DockerVirtualSwitch(object):
 @pytest.yield_fixture(scope="module")
 def dvs(request) -> DockerVirtualSwitch:
     name = request.config.getoption("--dvsname")
+    forcedvs = request.config.getoption("--forcedvs")
     keeptb = request.config.getoption("--keeptb")
     imgname = request.config.getoption("--imgname")
     max_cpu = request.config.getoption("--max_cpu")
     fakeplatform = getattr(request.module, "DVS_FAKE_PLATFORM", None)
     log_path = name if name else request.module.__name__
 
-    dvs = DockerVirtualSwitch(name, imgname, keeptb, fakeplatform, log_path, max_cpu)
+    dvs = DockerVirtualSwitch(name, imgname, keeptb, fakeplatform, log_path, max_cpu, forcedvs)
 
     yield dvs
 
     dvs.get_logs()
     dvs.destroy()
+    # restore original config db
+    if dvs.persistent:
+        dvs.runcmd("mv /etc/sonic/config_db.json.orig /etc/sonic/config_db.json")
+        dvs.ctn_restart()
 
 @pytest.yield_fixture
 def testlog(request, dvs):
