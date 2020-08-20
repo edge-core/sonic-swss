@@ -2006,7 +2006,7 @@ void PortsOrch::doPortTask(Consumer &consumer)
                             if (p.m_admin_state_up)
                             {
                                 /* Bring port down before applying fec mode*/
-                                if (!setPortAdminStatus(p, false))
+                                if (!setPortAdminStatus(p.m_port_id, false))
                                 {
                                     SWSS_LOG_ERROR("Failed to set port %s admin status DOWN to set fec mode", alias.c_str());
                                     it++;
@@ -2016,7 +2016,7 @@ void PortsOrch::doPortTask(Consumer &consumer)
                                 p.m_admin_state_up = false;
                                 p.m_fec_mode = fec_mode_map[fec_mode];
 
-                                if (setPortFec(p, p.m_fec_mode))
+                                if (setPortFec(p.m_port_id, p.m_fec_mode))
                                 {
                                     m_portList[alias] = p;
                                     SWSS_LOG_NOTICE("Set port %s fec to %s", alias.c_str(), fec_mode.c_str());
@@ -2032,7 +2032,7 @@ void PortsOrch::doPortTask(Consumer &consumer)
                             {
                                 /* Port is already down, setting fec mode*/
                                 p.m_fec_mode = fec_mode_map[fec_mode];
-                                if (setPortFec(p, p.m_fec_mode))
+                                if (setPortFec(p.m_port_id, p.m_fec_mode))
                                 {
                                     m_portList[alias] = p;
                                     SWSS_LOG_NOTICE("Set port %s fec to %s", alias.c_str(), fec_mode.c_str());
