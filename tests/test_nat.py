@@ -1,5 +1,4 @@
 import time
-import pytest
 
 from dvslib.dvs_common import wait_for_result
 from dvslib.dvs_database import DVSDatabase
@@ -283,7 +282,6 @@ class TestNat(object):
         # clear interfaces
         self.clear_interfaces(dvs)
 
-    @pytest.mark.skip("Issue #1409")
     def test_VerifyConntrackTimeoutForNatEntry(self, dvs, testlog):
         # get neighbor and arp entry
         dvs.servers[0].runcmd("ping -c 1 18.18.18.2")
@@ -308,10 +306,10 @@ class TestNat(object):
 
             proto_index = conntrack_list.index("udp")
 
-            # FIXME: conntrack_list[proto_index + 7] is consistently returning 431995. Need the feature owner
-            # to confirm if this check is wrong or if the behavior is wrong.
-            if int(conntrack_list[proto_index + 7]) < 432000 and int(conntrack_list[proto_index + 7]) > 431900:
+            if int(conntrack_list[proto_index + 7]) > 432000 or int(conntrack_list[proto_index + 7]) < 431900:
                 return (False, None)
+
+            return (True, None)
 
         wait_for_result(_check_conntrack_for_static_entry, DVSDatabase.DEFAULT_POLLING_CONFIG)
 
