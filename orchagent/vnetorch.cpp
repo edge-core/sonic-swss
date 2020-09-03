@@ -335,11 +335,20 @@ void VNetBitmapObject::recycleBitmapId(const string& vnet)
     }
 }
 
-uint32_t VNetBitmapObject::getFreeTunnelRouteTableOffset()
+uint32_t VNetBitmapObject::getFreeTunnelRouteTableOffset(IpPrefix ipPfx)
 {
     SWSS_LOG_ENTER();
 
-    for (uint32_t i = 0; i < tunnelOffsets_.size(); i++)
+    uint32_t offsetStart = VNET_ROUTE_FULL_MASK_OFFSET_MAX + 1;
+    uint32_t offsetEnd = tunnelOffsets_.size();
+
+    if (ipPfx.isFullMask())
+    {
+        offsetStart = 0;
+        offsetEnd = VNET_ROUTE_FULL_MASK_OFFSET_MAX;
+    }
+
+    for (uint32_t i = offsetStart; i < offsetEnd; i++)
     {
         if (tunnelOffsets_[i] == false)
         {
@@ -958,7 +967,7 @@ bool VNetBitmapObject::addTunnelRoute(IpPrefix& ipPrefix, tunnelEndpoint& endp)
     attr.value.s32 = SAI_TABLE_BITMAP_ROUTER_ENTRY_ACTION_TO_NEXTHOP;
     tr_attrs.push_back(attr);
 
-    tunnelRouteInfo.offset = getFreeTunnelRouteTableOffset();
+    tunnelRouteInfo.offset = getFreeTunnelRouteTableOffset(ipPrefix);
     attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_PRIORITY;
     attr.value.u32 = tunnelRouteInfo.offset;
     tr_attrs.push_back(attr);
@@ -1175,7 +1184,7 @@ bool VNetBitmapObject::addRoute(IpPrefix& ipPrefix, nextHop& nh)
         return true;
     }
 
-    routeInfo.offset = getFreeTunnelRouteTableOffset();
+    routeInfo.offset = getFreeTunnelRouteTableOffset(ipPrefix);
     attr.id = SAI_TABLE_BITMAP_ROUTER_ENTRY_ATTR_PRIORITY;
     attr.value.u32 = routeInfo.offset;
     attrs.push_back(attr);
