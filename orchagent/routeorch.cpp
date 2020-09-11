@@ -848,8 +848,8 @@ void RouteOrch::doTask(Consumer& consumer)
                     {
                         it = consumer.m_toSync.erase(it);
                     }
-                    /* fullmask subnet route is same as ip2me route */
-                    else if (ip_prefix.isFullMask() && m_intfsOrch->isPrefixSubnet(ip_prefix, alsv[0]))
+                    /* fullmask subnet route is not allowed */
+                    else if (ip_prefix.isFullMask())
                     {
                         it = consumer.m_toSync.erase(it);
                     }
