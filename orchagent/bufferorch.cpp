@@ -270,6 +270,14 @@ task_process_status BufferOrch::processBufferPool(Consumer &consumer)
             else if (field == buffer_pool_type_field_name)
             {
                 string type = value;
+
+                if (SAI_NULL_OBJECT_ID != sai_object)
+                {
+                    // We should skip the pool type because it's create only when setting a pool's attribute.
+                    SWSS_LOG_INFO("Skip setting buffer pool type %s for pool %s", type.c_str(), object_name.c_str());
+                    continue;
+                }
+
                 if (type == buffer_value_ingress)
                 {
                     attr.value.u32 = SAI_BUFFER_POOL_TYPE_INGRESS;
@@ -289,6 +297,14 @@ task_process_status BufferOrch::processBufferPool(Consumer &consumer)
             else if (field == buffer_pool_mode_field_name)
             {
                 string mode = value;
+
+                if (SAI_NULL_OBJECT_ID != sai_object)
+                {
+                    // We should skip the pool mode because it's create only when setting a pool's attribute.
+                    SWSS_LOG_INFO("Skip setting buffer pool mode %s for pool %s", mode.c_str(), object_name.c_str());
+                    continue;
+                }
+
                 if (mode == buffer_pool_mode_dynamic_value)
                 {
                     attr.value.u32 = SAI_BUFFER_POOL_THRESHOLD_MODE_DYNAMIC;
@@ -396,6 +412,13 @@ task_process_status BufferOrch::processBufferProfile(Consumer &consumer)
             sai_attribute_t attr;
             if (field == buffer_pool_field_name)
             {
+                if (SAI_NULL_OBJECT_ID != sai_object)
+                {
+                    // We should skip the profile's pool name because it's create only when setting a profile's attribute.
+                    SWSS_LOG_INFO("Skip setting buffer profile's pool %s for profile %s", value.c_str(), object_name.c_str());
+                    continue;
+                }
+
                 sai_object_id_t sai_pool;
                 ref_resolve_status resolve_result = resolveFieldRefValue(m_buffer_type_maps, buffer_pool_field_name, tuple, sai_pool);
                 if (ref_resolve_status::success != resolve_result)
@@ -438,9 +461,17 @@ task_process_status BufferOrch::processBufferProfile(Consumer &consumer)
             }
             else if (field == buffer_dynamic_th_field_name)
             {
-                attr.id = SAI_BUFFER_PROFILE_ATTR_THRESHOLD_MODE;
-                attr.value.s32 = SAI_BUFFER_PROFILE_THRESHOLD_MODE_DYNAMIC;
-                attribs.push_back(attr);
+                if (SAI_NULL_OBJECT_ID != sai_object)
+                {
+                    // We should skip the profile's threshold type because it's create only when setting a profile's attribute.
+                    SWSS_LOG_INFO("Skip setting buffer profile's threshold type for profile %s", object_name.c_str());
+                }
+                else
+                {
+                    attr.id = SAI_BUFFER_PROFILE_ATTR_THRESHOLD_MODE;
+                    attr.value.s32 = SAI_BUFFER_PROFILE_THRESHOLD_MODE_DYNAMIC;
+                    attribs.push_back(attr);
+                }
 
                 attr.id = SAI_BUFFER_PROFILE_ATTR_SHARED_DYNAMIC_TH;
                 attr.value.s8 = (sai_int8_t)stol(value);
@@ -448,9 +479,17 @@ task_process_status BufferOrch::processBufferProfile(Consumer &consumer)
             }
             else if (field == buffer_static_th_field_name)
             {
-                attr.id = SAI_BUFFER_PROFILE_ATTR_THRESHOLD_MODE;
-                attr.value.s32 = SAI_BUFFER_PROFILE_THRESHOLD_MODE_STATIC;
-                attribs.push_back(attr);
+                if (SAI_NULL_OBJECT_ID != sai_object)
+                {
+                    // We should skip the profile's threshold type because it's create only when setting a profile's attribute.
+                    SWSS_LOG_INFO("Skip setting buffer profile's threshold type for profile %s", object_name.c_str());
+                }
+                else
+                {
+                    attr.id = SAI_BUFFER_PROFILE_ATTR_THRESHOLD_MODE;
+                    attr.value.s32 = SAI_BUFFER_PROFILE_THRESHOLD_MODE_STATIC;
+                    attribs.push_back(attr);
+                }
 
                 attr.id = SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH;
                 attr.value.u64 = (uint64_t)stoul(value);
