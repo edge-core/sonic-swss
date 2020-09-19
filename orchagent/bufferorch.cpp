@@ -334,11 +334,14 @@ task_process_status BufferOrch::processBufferPool(Consumer &consumer)
         }
         if (SAI_NULL_OBJECT_ID != sai_object)
         {
-            sai_status = sai_buffer_api->set_buffer_pool_attribute(sai_object, &attribs[0]);
-            if (SAI_STATUS_SUCCESS != sai_status)
+            for (auto &attribute : attribs)
             {
-                SWSS_LOG_ERROR("Failed to modify buffer pool, name:%s, sai object:%" PRIx64 ", status:%d", object_name.c_str(), sai_object, sai_status);
-                return task_process_status::task_failed;
+                sai_status = sai_buffer_api->set_buffer_pool_attribute(sai_object, &attribute);
+                if (SAI_STATUS_SUCCESS != sai_status)
+                {
+                    SWSS_LOG_ERROR("Failed to modify buffer pool, name:%s, sai object:%" PRIx64 ", status:%d", object_name.c_str(), sai_object, sai_status);
+                    return task_process_status::task_failed;
+                }
             }
             SWSS_LOG_DEBUG("Modified existing pool:%" PRIx64 ", type:%s name:%s ", sai_object, map_type_name.c_str(), object_name.c_str());
         }
@@ -503,11 +506,14 @@ task_process_status BufferOrch::processBufferProfile(Consumer &consumer)
         if (SAI_NULL_OBJECT_ID != sai_object)
         {
             SWSS_LOG_DEBUG("Modifying existing sai object:%" PRIx64, sai_object);
-            sai_status = sai_buffer_api->set_buffer_profile_attribute(sai_object, &attribs[0]);
-            if (SAI_STATUS_SUCCESS != sai_status)
+            for (auto &attribute : attribs)
             {
-                SWSS_LOG_ERROR("Failed to modify buffer profile, name:%s, sai object:%" PRIx64 ", status:%d", object_name.c_str(), sai_object, sai_status);
-                return task_process_status::task_failed;
+                sai_status = sai_buffer_api->set_buffer_profile_attribute(sai_object, &attribute);
+                if (SAI_STATUS_SUCCESS != sai_status)
+                {
+                    SWSS_LOG_ERROR("Failed to modify buffer profile, name:%s, sai object:%" PRIx64 ", status:%d", object_name.c_str(), sai_object, sai_status);
+                    return task_process_status::task_failed;
+                }
             }
         }
         else
