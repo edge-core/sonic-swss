@@ -387,14 +387,12 @@ bool AclRule::validateAddMatch(string attr_name, string attr_value)
         return false;
     }
 
-    // NOTE: Temporary workaround to support matching protocol numbers on MLNX platform.
-    // In a later SAI version we will transition to using NEXT_HEADER for IPv6 on all platforms.
-    auto platform_env_var = getenv("platform");
-    string platform = platform_env_var ? platform_env_var: "";
+    // TODO: For backwards compatibility, users can substitute IP_PROTOCOL for NEXT_HEADER.
+    // This should be removed in a future release.
     if ((m_tableType == ACL_TABLE_MIRRORV6 || m_tableType == ACL_TABLE_L3V6)
-            && platform == MLNX_PLATFORM_SUBSTRING
             && attr_name == MATCH_IP_PROTOCOL)
     {
+        SWSS_LOG_WARN("Support for IP protocol on IPv6 tables will be removed in a future release, please switch to using NEXT_HEADER instead!");
         attr_name = MATCH_NEXT_HEADER;
     }
 
@@ -973,6 +971,12 @@ bool AclRuleL3::validateAddMatch(string attr_name, string attr_value)
         return false;
     }
 
+    if (attr_name == MATCH_NEXT_HEADER)
+    {
+        SWSS_LOG_ERROR("IPv6 Next Header match is not supported for table type L3");
+        return false;
+    }
+
     return AclRule::validateAddMatch(attr_name, attr_value);
 }
 
@@ -1041,6 +1045,9 @@ bool AclRuleL3V6::validateAddMatch(string attr_name, string attr_value)
         SWSS_LOG_ERROR("Ethertype match is not supported for table type L3V6");
         return false;
     }
+
+    // TODO: For backwards compatibility, users can substitute IP_PROTOCOL for NEXT_HEADER.
+    // Should add a check for IP_PROTOCOL in a future release.
 
     return AclRule::validateAddMatch(attr_name, attr_value);
 }
@@ -1129,13 +1136,16 @@ bool AclRuleMirror::validateAddMatch(string attr_name, string attr_value)
 
     if (m_tableType == ACL_TABLE_MIRROR &&
             (attr_name == MATCH_SRC_IPV6 || attr_name == MATCH_DST_IPV6 ||
-             attr_name == MATCH_ICMPV6_TYPE || attr_name == MATCH_ICMPV6_CODE))
+             attr_name == MATCH_ICMPV6_TYPE || attr_name == MATCH_ICMPV6_CODE ||
+             attr_name == MATCH_NEXT_HEADER))
     {
         SWSS_LOG_ERROR("%s match is not supported for the table of type MIRROR",
                 attr_name.c_str());
         return false;
     }
 
+    // TODO: For backwards compatibility, users can substitute IP_PROTOCOL for NEXT_HEADER.
+    // This check should be expanded to include IP_PROTOCOL in a future release.
     if (m_tableType == ACL_TABLE_MIRRORV6 &&
             (attr_name == MATCH_SRC_IP || attr_name == MATCH_DST_IP ||
              attr_name == MATCH_ICMP_TYPE || attr_name == MATCH_ICMP_CODE ||
@@ -1373,24 +1383,6 @@ bool AclTable::create()
     attr.value.booldata = true;
     table_attrs.push_back(attr);
 
-    // NOTE: Temporary workaround to support matching protocol numbers on MLNX platform.
-    // In a later SAI version we will transition to using NEXT_HEADER for IPv6 on all platforms.
-    auto platform_env_var = getenv("platform");
-    string platform = platform_env_var ? platform_env_var: "";
-    if ((type == ACL_TABLE_MIRRORV6 || type == ACL_TABLE_L3V6)
-            && platform == MLNX_PLATFORM_SUBSTRING)
-    {
-        attr.id = SAI_ACL_TABLE_ATTR_FIELD_IPV6_NEXT_HEADER;
-        attr.value.booldata = true;
-        table_attrs.push_back(attr);
-    }
-    else
-    {
-        attr.id = SAI_ACL_TABLE_ATTR_FIELD_IP_PROTOCOL;
-        attr.value.booldata = true;
-        table_attrs.push_back(attr);
-    }
-
     /*
      * Type of Tables and Supported Match Types (ASIC database)
      * |------------------------------------------------------------------|
@@ -1407,15 +1399,19 @@ bool AclTable::create()
      * | MATCH_SRC_IPV6    |      √       |              |       √        |
      * | MATCH_DST_IPV6    |      √       |              |       √        |
      * |------------------------------------------------------------------|
-     * | MATCH_ICMPV6_TYPE |      √       |             |        √        |
-     * | MATCH_ICMPV6_CODE |      √       |             |        √        |
+     * | MATCH_ICMPV6_TYPE |      √       |              |       √        |
+     * | MATCH_ICMPV6_CODE |      √       |              |       √        |
      * |------------------------------------------------------------------|
-     * | MARTCH_ETHERTYPE  |      √       |      √       |                |
+     * | MATCH_IP_PROTOCOL |      √       |      √       |                |
+     * | MATCH_NEXT_HEADER |      √       |              |       √        |
+     * | -----------------------------------------------------------------|
+     * | MATCH_ETHERTYPE   |      √       |      √       |                |
      * |------------------------------------------------------------------|
      * | MATCH_IN_PORTS    |      √       |      √       |                |
      * |------------------------------------------------------------------|
      */
 
+    // FIXME: This section has become hard to maintain and should be refactored.
     if (type == ACL_TABLE_MIRROR)
     {
         attr.id = SAI_ACL_TABLE_ATTR_FIELD_SRC_IP;
@@ -1431,6 +1427,10 @@ bool AclTable::create()
         table_attrs.push_back(attr);
 
         attr.id = SAI_ACL_TABLE_ATTR_FIELD_ICMP_CODE;
+        attr.value.booldata = true;
+        table_attrs.push_back(attr);
+
+        attr.id = SAI_ACL_TABLE_ATTR_FIELD_IP_PROTOCOL;
         attr.value.booldata = true;
         table_attrs.push_back(attr);
 
@@ -1457,6 +1457,10 @@ bool AclTable::create()
             attr.id = SAI_ACL_TABLE_ATTR_FIELD_ICMPV6_CODE;
             attr.value.booldata = true;
             table_attrs.push_back(attr);
+
+            attr.id = SAI_ACL_TABLE_ATTR_FIELD_IPV6_NEXT_HEADER;
+            attr.value.booldata = true;
+            table_attrs.push_back(attr);
         }
     }
     else if (type == ACL_TABLE_L3V6 || type == ACL_TABLE_MIRRORV6) // v6 only
@@ -1476,6 +1480,10 @@ bool AclTable::create()
         attr.id = SAI_ACL_TABLE_ATTR_FIELD_ICMPV6_CODE;
         attr.value.booldata = true;
         table_attrs.push_back(attr);
+
+        attr.id = SAI_ACL_TABLE_ATTR_FIELD_IPV6_NEXT_HEADER;
+        attr.value.booldata = true;
+        table_attrs.push_back(attr);
     }
     else // v4 only
     {
@@ -1492,6 +1500,10 @@ bool AclTable::create()
         table_attrs.push_back(attr);
 
         attr.id = SAI_ACL_TABLE_ATTR_FIELD_ICMP_CODE;
+        attr.value.booldata = true;
+        table_attrs.push_back(attr);
+
+        attr.id = SAI_ACL_TABLE_ATTR_FIELD_IP_PROTOCOL;
         attr.value.booldata = true;
         table_attrs.push_back(attr);
     }
