@@ -132,14 +132,7 @@ bool OrchDaemon::init()
     gDirectory.set(gFgNhgOrch);
     gRouteOrch = new RouteOrch(m_applDb, APP_ROUTE_TABLE_NAME, gSwitchOrch, gNeighOrch, gIntfsOrch, vrf_orch, gFgNhgOrch);
 
-    TableConnector confDbSflowTable(m_configDb, CFG_SFLOW_TABLE_NAME);
-    TableConnector appCoppTable(m_applDb, APP_COPP_TABLE_NAME);
-
-    vector<TableConnector> copp_table_connectors = {
-        confDbSflowTable,
-        appCoppTable
-    };
-    CoppOrch  *copp_orch  = new CoppOrch(copp_table_connectors);
+    CoppOrch  *copp_orch  = new CoppOrch(m_applDb, APP_COPP_TABLE_NAME);
     TunnelDecapOrch *tunnel_decap_orch = new TunnelDecapOrch(m_applDb, APP_TUNNEL_DECAP_TABLE_NAME);
 
     VxlanTunnelOrch *vxlan_tunnel_orch = new VxlanTunnelOrch(m_applDb, APP_VXLAN_TUNNEL_TABLE_NAME);
