@@ -1815,7 +1815,7 @@ bool PortsOrch::initPort(const string &alias, const int index, const set<int> &l
         {
             Port p(alias, Port::PHY);
 
-            p.m_index = index; 
+            p.m_index = index;
             p.m_port_id = id;
 
             /* Initialize the port and create corresponding host interface */
@@ -2843,8 +2843,8 @@ void PortsOrch::doLagTask(Consumer &consumer)
                     Port lag;
                     if (getPort(alias, lag))
                     {
-                        operation_status_changed = 
-                           (string_oper_status.at(operation_status) != 
+                        operation_status_changed =
+                           (string_oper_status.at(operation_status) !=
                                                     lag.m_oper_status);
                     }
                 }
