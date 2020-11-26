@@ -133,6 +133,15 @@ bool NeighOrch::addNextHop(const IpAddress &ipAddress, const string &alias)
                         ipAddress.to_string().c_str(), alias.c_str());
         return false;
     }
+    if (p.m_type == Port::SUBPORT)
+    {
+        if (!gPortsOrch->getPort(p.m_parent_port_id, p))
+        {
+            SWSS_LOG_ERROR("Neighbor %s seen on sub interface %s whose parent port doesn't exist",
+                            ipAddress.to_string().c_str(), alias.c_str());
+            return false;
+        }
+    }
 
     NextHopKey nexthop = { ipAddress, alias };
     assert(!hasNextHop(nexthop));
@@ -185,7 +194,7 @@ bool NeighOrch::addNextHop(const IpAddress &ipAddress, const string &alias)
     gFgNhgOrch->validNextHopInNextHopGroup(nexthop);
 
     // For nexthop with incoming port which has down oper status, NHFLAGS_IFDOWN
-    // flag Should be set on it.
+    // flag should be set on it.
     // This scenario may happen under race condition where buffered neighbor event
     // is processed after incoming port is down.
     if (p.m_oper_status == SAI_PORT_OPER_STATUS_DOWN)
