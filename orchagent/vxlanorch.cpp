@@ -2666,6 +2666,9 @@ bool EvpnNvoOrch::addOperation(const Request& request)
 
     source_vtep_ptr = tunnel_orch->getVxlanTunnel(vtep_name);
 
+    if (!source_vtep_ptr)
+        return false;
+
     SWSS_LOG_INFO("evpnnvo: %s vtep : %s \n",nvo_name.c_str(), vtep_name.c_str());
 
     return true;
