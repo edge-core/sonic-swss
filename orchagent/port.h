@@ -118,6 +118,7 @@ public:
      */
     std::vector<bool> m_queue_lock;
     std::vector<bool> m_priority_group_lock;
+    std::vector<sai_object_id_t> m_priority_group_pending_profile;
 
     std::unordered_set<sai_object_id_t> m_ingress_acl_tables_uset;
     std::unordered_set<sai_object_id_t> m_egress_acl_tables_uset;
