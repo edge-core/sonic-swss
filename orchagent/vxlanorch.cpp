@@ -845,7 +845,7 @@ bool VxlanTunnel::deleteTunnelHw(uint8_t mapper_list, tunnel_map_use_t map_src,
             remove_tunnel_termination(ids_.tunnel_term_id);
         }
   
-        remove_tunnel_termination(ids_.tunnel_id);
+        remove_tunnel(ids_.tunnel_id);
         deleteMapperHw(mapper_list, map_src);
     }
 

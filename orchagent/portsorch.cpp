@@ -1853,7 +1853,7 @@ bool PortsOrch::initPort(const string &alias, const int index, const set<int> &l
         /* Determine if the port has already been initialized before */
         if (m_portList.find(alias) != m_portList.end() && m_portList[alias].m_port_id == id)
         {
-            SWSS_LOG_INFO("Port has already been initialized before alias:%s", alias.c_str());
+            SWSS_LOG_DEBUG("Port has already been initialized before alias:%s", alias.c_str());
         }
         else
         {
