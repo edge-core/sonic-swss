@@ -165,14 +165,14 @@ bool OrchDaemon::init()
     QosOrch *qos_orch = new QosOrch(m_configDb, qos_tables);
 
     vector<string> buffer_tables = {
-        CFG_BUFFER_POOL_TABLE_NAME,
-        CFG_BUFFER_PROFILE_TABLE_NAME,
-        CFG_BUFFER_QUEUE_TABLE_NAME,
-        CFG_BUFFER_PG_TABLE_NAME,
-        CFG_BUFFER_PORT_INGRESS_PROFILE_LIST_NAME,
-        CFG_BUFFER_PORT_EGRESS_PROFILE_LIST_NAME
+        APP_BUFFER_POOL_TABLE_NAME,
+        APP_BUFFER_PROFILE_TABLE_NAME,
+        APP_BUFFER_QUEUE_TABLE_NAME,
+        APP_BUFFER_PG_TABLE_NAME,
+        APP_BUFFER_PORT_INGRESS_PROFILE_LIST_NAME,
+        APP_BUFFER_PORT_EGRESS_PROFILE_LIST_NAME
     };
-    gBufferOrch = new BufferOrch(m_configDb, buffer_tables);
+    gBufferOrch = new BufferOrch(m_applDb, m_configDb, m_stateDb, buffer_tables);
 
     PolicerOrch *policer_orch = new PolicerOrch(m_configDb, "POLICER");
 
