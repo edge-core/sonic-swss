@@ -229,14 +229,13 @@ PortsOrch::PortsOrch(DBConnector *db, vector<table_name_with_pri_t> &tableNames)
     /* Initialize counter table */
     m_counter_db = shared_ptr<DBConnector>(new DBConnector("COUNTERS_DB", 0));
     m_counterTable = unique_ptr<Table>(new Table(m_counter_db.get(), COUNTERS_PORT_NAME_MAP));
-
     m_counterLagTable = unique_ptr<Table>(new Table(m_counter_db.get(), COUNTERS_LAG_NAME_MAP));
     FieldValueTuple tuple("", "");
     vector<FieldValueTuple> defaultLagFv;
     defaultLagFv.push_back(tuple);
     m_counterLagTable->set("", defaultLagFv);
 
-    /* Initialize port table */
+    /* Initialize port and vlan table */
     m_portTable = unique_ptr<Table>(new Table(db, APP_PORT_TABLE_NAME));
 
     /* Initialize gearbox */
