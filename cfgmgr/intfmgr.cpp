@@ -707,6 +707,8 @@ void IntfMgr::doTask(Consumer &consumer)
     SWSS_LOG_ENTER();
     static bool replayDone = false;
 
+    string table_name = consumer.getTableName();
+
     auto it = consumer.m_toSync.begin();
     while (it != consumer.m_toSync.end())
     {
@@ -718,6 +720,16 @@ void IntfMgr::doTask(Consumer &consumer)
 
         if (keys.size() == 1)
         {
+            if((table_name == CFG_VOQ_INBAND_INTERFACE_TABLE_NAME) &&
+                    (op == SET_COMMAND))
+            {
+                //No further processing needed. Just relay to orchagent
+                m_appIntfTableProducer.set(keys[0], data);
+                m_stateIntfTable.hset(keys[0], "vrf", "");
+
+                it = consumer.m_toSync.erase(it);
+                continue;
+            }
             if (!doIntfGeneralTask(keys, data, op))
             {
                 it++;

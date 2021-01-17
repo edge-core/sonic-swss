@@ -92,6 +92,7 @@ public:
     bool getPortByBridgePortId(sai_object_id_t bridge_port_id, Port &port);
     void setPort(string alias, Port port);
     void getCpuPort(Port &port);
+    bool getInbandPort(Port &port);
     bool getVlanByVlanId(sai_vlan_id_t vlan_id, Port &vlan);
 
     bool setHostIntfsOperStatus(const Port& port, bool up) const;
@@ -137,6 +138,10 @@ public:
     bool addVlanMember(Port &vlan, Port &port, string& tagging_mode);
     bool removeVlanMember(Port &vlan, Port &port);
     bool isVlanMember(Port &vlan, Port &port);
+
+    string m_inbandPortName = "";
+    bool isInbandPort(const string &alias);
+    bool setVoqInbandIntf(string &alias, string &type);
 
 private:
     unique_ptr<Table> m_counterTable;
@@ -284,6 +289,12 @@ private:
                                 sai_acl_bind_point_type_t &sai_acl_bind_type);
     void initGearbox();
     bool initGearboxPort(Port &port);
+    
+    //map key is tuple of <attached_switch_id, core_index, core_port_index>
+    map<tuple<int, int, int>, sai_object_id_t> m_systemPortOidMap;
+    sai_uint32_t m_systemPortCount;
+    bool getSystemPorts();
+    bool addSystemPorts();
     
 };
 #endif /* SWSS_PORTSORCH_H */

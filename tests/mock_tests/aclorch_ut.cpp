@@ -21,6 +21,7 @@ extern sai_vlan_api_t *sai_vlan_api;
 extern sai_bridge_api_t *sai_bridge_api;
 extern sai_route_api_t *sai_route_api;
 extern sai_next_hop_group_api_t* sai_next_hop_group_api;
+extern string gMySwitchType;
 
 namespace aclorch_test
 {
@@ -182,6 +183,7 @@ namespace aclorch_test
         shared_ptr<swss::DBConnector> m_app_db;
         shared_ptr<swss::DBConnector> m_config_db;
         shared_ptr<swss::DBConnector> m_state_db;
+        shared_ptr<swss::DBConnector> m_chassis_app_db;
 
         AclOrchTest()
         {
@@ -189,6 +191,8 @@ namespace aclorch_test
             m_app_db = make_shared<swss::DBConnector>("APPL_DB", 0);
             m_config_db = make_shared<swss::DBConnector>("CONFIG_DB", 0);
             m_state_db = make_shared<swss::DBConnector>("STATE_DB", 0);
+            if(gMySwitchType == "voq")
+                m_chassis_app_db = make_shared<swss::DBConnector>("CHASSIS_APP_DB", 0);
         }
 
         static map<string, string> gProfileMap;
@@ -319,7 +323,7 @@ namespace aclorch_test
             gVrfOrch = new VRFOrch(m_app_db.get(), APP_VRF_TABLE_NAME, m_state_db.get(), STATE_VRF_OBJECT_TABLE_NAME);
 
             ASSERT_EQ(gIntfsOrch, nullptr);
-            gIntfsOrch = new IntfsOrch(m_app_db.get(), APP_INTF_TABLE_NAME, gVrfOrch);
+            gIntfsOrch = new IntfsOrch(m_app_db.get(), APP_INTF_TABLE_NAME, gVrfOrch, m_chassis_app_db.get());
 
             TableConnector applDbFdb(m_app_db.get(), APP_FDB_TABLE_NAME);
             TableConnector stateDbFdb(m_state_db.get(), STATE_FDB_TABLE_NAME);
@@ -333,7 +337,7 @@ namespace aclorch_test
             gFdbOrch = new FdbOrch(m_app_db.get(), app_fdb_tables, stateDbFdb, gPortsOrch);
 
             ASSERT_EQ(gNeighOrch, nullptr);
-            gNeighOrch = new NeighOrch(m_app_db.get(), APP_NEIGH_TABLE_NAME, gIntfsOrch, gFdbOrch, gPortsOrch);
+            gNeighOrch = new NeighOrch(m_app_db.get(), APP_NEIGH_TABLE_NAME, gIntfsOrch, gFdbOrch, gPortsOrch, m_chassis_app_db.get());
 
             ASSERT_EQ(gFgNhgOrch, nullptr);
             const int fgnhgorch_pri = 15;
