@@ -62,7 +62,7 @@ string gRecordFile;
 
 void usage()
 {
-    cout << "usage: orchagent [-h] [-r record_type] [-d record_location] [-b batch_size] [-m MAC] [-i INST_ID] [-s]" << endl;
+    cout << "usage: orchagent [-h] [-r record_type] [-d record_location] [-f swss_rec_filename] [-j sairedis_rec_filename] [-b batch_size] [-m MAC] [-i INST_ID] [-s]" << endl;
     cout << "    -h: display this message" << endl;
     cout << "    -r record_type: record orchagent logs with type (default 3)" << endl;
     cout << "                    0: do not record logs" << endl;
@@ -74,6 +74,8 @@ void usage()
     cout << "    -m MAC: set switch MAC address" << endl;
     cout << "    -i INST_ID: set the ASIC instance_id in multi-asic platform" << endl;
     cout << "    -s: enable synchronous mode" << endl;
+    cout << "    -f swss_rec_filename: swss record log filename(default 'swss.rec')" << endl;
+    cout << "    -j sairedis_rec_filename: sairedis record log filename(default sairedis.rec)" << endl;
 }
 
 void sighup_handler(int signo)
@@ -121,8 +123,10 @@ int main(int argc, char **argv)
     sai_status_t status;
 
     string record_location = ".";
+    string swss_rec_filename = "swss.rec";
+    string sairedis_rec_filename = "sairedis.rec";
 
-    while ((opt = getopt(argc, argv, "b:m:r:d:i:hs")) != -1)
+    while ((opt = getopt(argc, argv, "b:m:r:f:j:d:i:hs")) != -1)
     {
         switch (opt)
         {
@@ -175,7 +179,18 @@ int main(int argc, char **argv)
             gSyncMode = true;
             SWSS_LOG_NOTICE("Enabling synchronous mode");
             break;
-
+        case 'f':
+            if (optarg)
+            {
+                swss_rec_filename = optarg;
+            }
+            break;
+        case 'j':
+            if (optarg)
+            {
+                sairedis_rec_filename = optarg;
+            }
+            break;
         default: /* '?' */
             exit(EXIT_FAILURE);
         }
@@ -184,7 +199,7 @@ int main(int argc, char **argv)
     SWSS_LOG_NOTICE("--- Starting Orchestration Agent ---");
 
     initSaiApi();
-    initSaiRedis(record_location);
+    initSaiRedis(record_location, sairedis_rec_filename);
 
     sai_attribute_t attr;
     vector<sai_attribute_t> attrs;
@@ -199,7 +214,7 @@ int main(int argc, char **argv)
     /* Disable/enable SwSS recording */
     if (gSwssRecord)
     {
-        gRecordFile = record_location + "/" + "swss.rec";
+        gRecordFile = record_location + "/" + swss_rec_filename;
         gRecordOfs.open(gRecordFile, std::ofstream::out | std::ofstream::app);
         if (!gRecordOfs.is_open())
         {
