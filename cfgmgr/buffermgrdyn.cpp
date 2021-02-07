@@ -274,16 +274,16 @@ string BufferMgrDynamic::getPgPoolMode()
 }
 
 // Meta flows which are called by main flows
-void BufferMgrDynamic::calculateHeadroomSize(const string &speed, const string &cable, const string &port_mtu, const string &gearbox_model, buffer_profile_t &headroom)
+void BufferMgrDynamic::calculateHeadroomSize(buffer_profile_t &headroom)
 {
     // Call vendor-specific lua plugin to calculate the xon, xoff, xon_offset, size and threshold
     vector<string> keys = {};
     vector<string> argv = {};
 
     keys.emplace_back(headroom.name);
-    argv.emplace_back(speed);
-    argv.emplace_back(cable);
-    argv.emplace_back(port_mtu);
+    argv.emplace_back(headroom.speed);
+    argv.emplace_back(headroom.cable_length);
+    argv.emplace_back(headroom.port_mtu);
     argv.emplace_back(m_identifyGearboxDelay);
 
     try
@@ -316,6 +316,14 @@ void BufferMgrDynamic::calculateHeadroomSize(const string &speed, const string &
     }
 }
 
+// This function is designed to fetch the sizes of shared buffer pool and shared headroom pool
+// and programe them to APPL_DB if they differ from the current value.
+// The function is called periodically:
+// 1. Fetch the sizes by calling lug plugin
+//    - For each of the pools, it checks the size of shared buffer pool.
+//    - For ingress_lossless_pool, it checks the size of the shared headroom pool (field xoff of the pool) as well.
+// 2. Compare the fetched value and the previous value
+// 3. Program to APPL_DB.BUFFER_POOL_TABLE only if its sizes differ from the stored value
 void BufferMgrDynamic::recalculateSharedBufferPool()
 {
     try
@@ -326,8 +334,17 @@ void BufferMgrDynamic::recalculateSharedBufferPool()
         auto ret = runRedisScript(*m_applDb, m_bufferpoolSha, keys, argv);
 
         // The format of the result:
-        // a list of strings containing key, value pairs with colon as separator
+        // a list of lines containing key, value pairs with colon as separator
         // each is the size of a buffer pool
+        // possible format of each line:
+        // 1. shared buffer pool only:
+        //    <pool name>:<pool size>
+        //    eg: "egress_lossless_pool:12800000"
+        // 2. shared buffer pool and shared headroom pool, for ingress_lossless_pool only:
+        //    ingress_lossless_pool:<pool size>:<shared headroom pool size>,
+        //    eg: "ingress_lossless_pool:3200000:1024000"
+        // 3. debug information:
+        //    debug:<debug info>
 
         for ( auto i : ret)
         {
@@ -336,12 +353,62 @@ void BufferMgrDynamic::recalculateSharedBufferPool()
 
             if ("debug" != poolName)
             {
-                auto &pool = m_bufferPoolLookup[pairs[0]];
+                // We will handle the sizes of buffer pool update here.
+                // For the ingress_lossless_pool, there are some dedicated steps for shared headroom pool
+                //  - The sizes of both the shared headroom pool and the shared buffer pool should be taken into consideration
+                //  - In case the shared headroom pool size is statically configured, as it is programmed to APPL_DB during buffer pool handling,
+                //     - any change from lua plugin will be ignored.
+                //     - will handle ingress_lossless_pool in the way all other pools are handled in this case
+                auto &pool = m_bufferPoolLookup[poolName];
+                auto &poolSizeStr = pairs[1];
+                auto old_xoff = pool.xoff;
+                bool xoff_updated = false;
 
-                if (pool.total_size == pairs[1])
+                if (poolName == INGRESS_LOSSLESS_PG_POOL_NAME && !isNonZero(m_configuredSharedHeadroomPoolSize))
+                {
+                    // Shared headroom pool size is treated as "updated" if either of the following conditions satisfied:
+                    //  - It is legal and differs from the stored value.
+                    //  - The lua plugin doesn't return the shared headroom pool size but there is a non-zero value stored
+                    //    This indicates the shared headroom pool was enabled by over subscribe ratio and is disabled.
+                    //    In this case a "0" will programmed to APPL_DB, indicating the shared headroom pool is disabled.
+                    SWSS_LOG_DEBUG("Buffer pool ingress_lossless_pool xoff: %s, size %s", pool.xoff.c_str(), pool.total_size.c_str());
+
+                    if (pairs.size() > 2)
+                    {
+                        auto &xoffStr = pairs[2];
+                        if (pool.xoff != xoffStr)
+                        {
+                            unsigned long xoffNum = atol(xoffStr.c_str());
+                            if (m_mmuSizeNumber > 0 && m_mmuSizeNumber < xoffNum)
+                            {
+                                SWSS_LOG_ERROR("Buffer pool %s: Invalid xoff %s, exceeding the mmu size %s, ignored xoff but the pool size will be updated",
+                                               poolName.c_str(), xoffStr.c_str(), m_mmuSize.c_str());
+                            }
+                            else
+                            {
+                                pool.xoff = xoffStr;
+                                xoff_updated = true;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (isNonZero(pool.xoff))
+                        {
+                            xoff_updated = true;
+                        }
+                        pool.xoff = "0";
+                    }
+                }
+
+                // In general, the APPL_DB should be updated in case any of the following conditions satisfied
+                // 1. Shared headroom pool size has been updated
+                //    This indicates the shared headroom pool is enabled by configuring over subscribe ratio,
+                //    which means the shared headroom pool size has updated by lua plugin
+                // 2. The size of the shared buffer pool isn't configured and has been updated by lua plugin
+                if ((pool.total_size == poolSizeStr || !pool.dynamic_size) && !xoff_updated)
                     continue;
 
-                auto &poolSizeStr = pairs[1];
                 unsigned long poolSizeNum = atol(poolSizeStr.c_str());
                 if (m_mmuSizeNumber > 0 && m_mmuSizeNumber < poolSizeNum)
                 {
@@ -350,10 +417,19 @@ void BufferMgrDynamic::recalculateSharedBufferPool()
                     continue;
                 }
 
+                auto old_size = pool.total_size;
                 pool.total_size = poolSizeStr;
                 updateBufferPoolToDb(poolName, pool);
 
-                SWSS_LOG_NOTICE("Buffer pool %s had been updated with new size [%s]", poolName.c_str(), pool.total_size.c_str());
+                if (!pool.xoff.empty())
+                {
+                    SWSS_LOG_NOTICE("Buffer pool %s has been updated: size from [%s] to [%s], xoff from [%s] to [%s]",
+                                    poolName.c_str(), old_size.c_str(), pool.total_size.c_str(), old_xoff.c_str(), pool.xoff.c_str());
+                }
+                else
+                {
+                    SWSS_LOG_NOTICE("Buffer pool %s has been updated: size from [%s] to [%s]", poolName.c_str(), old_size.c_str(), pool.total_size.c_str());
+                }
             }
             else
             {
@@ -409,15 +485,16 @@ void BufferMgrDynamic::updateBufferPoolToDb(const string &name, const buffer_poo
     vector<FieldValueTuple> fvVector;
 
     if (pool.ingress)
-        fvVector.emplace_back(make_pair("type", "ingress"));
+        fvVector.emplace_back("type", "ingress");
     else
-        fvVector.emplace_back(make_pair("type", "egress"));
+        fvVector.emplace_back("type", "egress");
 
-    fvVector.emplace_back(make_pair("mode", pool.mode));
+    if (!pool.xoff.empty())
+        fvVector.emplace_back("xoff", pool.xoff);
 
-    SWSS_LOG_INFO("Buffer pool %s is initialized", name.c_str());
+    fvVector.emplace_back("mode", pool.mode);
 
-    fvVector.emplace_back(make_pair("size", pool.total_size));
+    fvVector.emplace_back("size", pool.total_size);
 
     m_applBufferPoolTable.set(name, fvVector);
 
@@ -476,7 +553,7 @@ void BufferMgrDynamic::updateBufferPgToDb(const string &key, const string &profi
 }
 
 // We have to check the headroom ahead of applying them
-task_process_status BufferMgrDynamic::allocateProfile(const string &speed, const string &cable, const string &mtu, const string &threshold, const string &gearbox_model, string &profile_name)
+task_process_status BufferMgrDynamic::allocateProfile(const string &speed, const string &cable_len, const string &mtu, const string &threshold, const string &gearbox_model, string &profile_name)
 {
     // Create record in BUFFER_PROFILE table
 
@@ -496,12 +573,16 @@ task_process_status BufferMgrDynamic::allocateProfile(const string &speed, const
             return task_process_status::task_need_retry;
         }
 
+        profile.speed = speed;
+        profile.cable_length = cable_len;
+        profile.port_mtu = mtu;
+        profile.gearbox_model = gearbox_model;
+
         // Call vendor-specific lua plugin to calculate the xon, xoff, xon_offset, size
         // Pay attention, the threshold can contain valid value
-        calculateHeadroomSize(speed, cable, mtu, gearbox_model, profile);
+        calculateHeadroomSize(profile);
 
         profile.threshold = threshold;
-        profile.dynamic_calculated = true;
         profile.static_configured = false;
         profile.lossless = true;
         profile.name = profile_name;
@@ -512,7 +593,7 @@ task_process_status BufferMgrDynamic::allocateProfile(const string &speed, const
         SWSS_LOG_NOTICE("BUFFER_PROFILE %s has been created successfully", profile_name.c_str());
         SWSS_LOG_DEBUG("New profile created %s according to (%s %s %s): xon %s xoff %s size %s",
                        profile_name.c_str(),
-                       speed.c_str(), cable.c_str(), gearbox_model.c_str(),
+                       speed.c_str(), cable_len.c_str(), gearbox_model.c_str(),
                        profile.xon.c_str(), profile.xoff.c_str(), profile.size.c_str());
     }
     else
@@ -768,6 +849,106 @@ task_process_status BufferMgrDynamic::refreshPriorityGroupsForPort(const string 
     return task_process_status::task_success;
 }
 
+void BufferMgrDynamic::refreshSharedHeadroomPool(bool enable_state_updated_by_ratio, bool enable_state_updated_by_size)
+{
+    // The lossless profiles need to be refreshed only if system is switched between SHP and non-SHP
+    bool need_refresh_profiles = false;
+    bool shp_enabled_by_size = isNonZero(m_configuredSharedHeadroomPoolSize);
+    bool shp_enabled_by_ratio = isNonZero(m_overSubscribeRatio);
+
+    /*
+     * STATE               EVENT           ACTION
+     * enabled by size  -> config ratio:   no action
+     * enabled by size  -> remove ratio:   no action
+     * enabled by size  -> remove size:    shared headroom pool disabled
+     *                                     SHP size will be set here (zero) and programmed to APPL_DB in handleBufferPoolTable
+     * enabled by ratio -> config size:    SHP size will be set here (non zero) and programmed to APPL_DB in handleBufferPoolTable
+     * enabled by ratio -> remove size:    SHP size will be set and programmed to APPL_DB during buffer pool size update
+     * enabled by ratio -> remove ratio:   shared headroom pool disabled
+     *                                     dynamic size: SHP size will be handled and programmed to APPL_DB during buffer pool size update
+     *                                     static size: SHP size will be set (zero) and programmed to APPL_DB here
+     * disabled         -> config ratio:   shared headroom pool enabled. all lossless profiles refreshed
+     *                                     SHP size will be handled during buffer pool size update
+     * disabled         -> config size:    shared headroom pool enabled. all lossless profiles refreshed
+     *                                     SHP size will be handled here and programmed to APPL_DB during buffer pool table handling
+     */
+
+    auto &ingressLosslessPool = m_bufferPoolLookup[INGRESS_LOSSLESS_PG_POOL_NAME];
+    if (enable_state_updated_by_ratio)
+    {
+        if (shp_enabled_by_size)
+        {
+            // enabled by size -> config or remove ratio, no action
+            SWSS_LOG_INFO("SHP: No need to refresh lossless profiles even if enable state updated by over subscribe ratio, already enabled by SHP size");
+        }
+        else
+        {
+            // enabled by ratio -> remove ratio
+            // disabled -> config ratio
+            need_refresh_profiles = true;
+        }
+    }
+
+    if (enable_state_updated_by_size)
+    {
+        if (shp_enabled_by_ratio)
+        {
+            // enabled by ratio -> config size, size will be updated (later in this function)
+            // enabled by ratio -> remove size, no action here, will be handled during buffer pool size update
+            SWSS_LOG_INFO("SHP: No need to refresh lossless profiles even if enable state updated by SHP size, already enabled by over subscribe ratio");
+        }
+        else
+        {
+            // disabled -> config size
+            // enabled by size -> remove size
+            need_refresh_profiles = true;
+        }
+    }
+
+    if (need_refresh_profiles)
+    {
+        SWSS_LOG_NOTICE("Updating dynamic buffer profiles due to shared headroom pool state updated");
+
+        for (auto it = m_bufferProfileLookup.begin(); it != m_bufferProfileLookup.end(); ++it)
+        {
+            auto &name = it->first;
+            auto &profile = it->second;
+            if (profile.static_configured)
+            {
+                SWSS_LOG_INFO("Non dynamic profile %s skipped", name.c_str());
+                continue;
+            }
+            SWSS_LOG_INFO("Updating profile %s with speed %s cable length %s mtu %s gearbox model %s",
+                          name.c_str(),
+                          profile.speed.c_str(), profile.cable_length.c_str(), profile.port_mtu.c_str(), profile.gearbox_model.c_str());
+            // recalculate the headroom size
+            calculateHeadroomSize(profile);
+            if (task_process_status::task_success != doUpdateBufferProfileForSize(profile, false))
+            {
+                SWSS_LOG_ERROR("Failed to update buffer profile %s when toggle shared headroom pool. See previous message for detail. Please adjust the configuration manually", name.c_str());
+            }
+        }
+        SWSS_LOG_NOTICE("Updating dynamic buffer profiles finished");
+    }
+
+    if (shp_enabled_by_size)
+    {
+        ingressLosslessPool.xoff = m_configuredSharedHeadroomPoolSize;
+        if (isNonZero(ingressLosslessPool.total_size))
+            updateBufferPoolToDb(INGRESS_LOSSLESS_PG_POOL_NAME, ingressLosslessPool);
+    }
+    else if (!shp_enabled_by_ratio && enable_state_updated_by_ratio)
+    {
+        // shared headroom pool is enabled by ratio and will be disabled
+        // need to program APPL_DB because nobody else will take care of it
+        ingressLosslessPool.xoff = "0";
+        if (isNonZero(ingressLosslessPool.total_size))
+            updateBufferPoolToDb(INGRESS_LOSSLESS_PG_POOL_NAME, ingressLosslessPool);
+    }
+
+    checkSharedBufferPoolSize();
+}
+
 // Main flows
 
 // Update lossless pg on a port after an PG has been installed on the port
@@ -842,13 +1023,13 @@ task_process_status BufferMgrDynamic::doRemovePgTask(const string &pg_key, const
     return task_process_status::task_success;
 }
 
-task_process_status BufferMgrDynamic::doUpdateStaticProfileTask(buffer_profile_t &profile)
+task_process_status BufferMgrDynamic::doUpdateBufferProfileForDynamicTh(buffer_profile_t &profile)
 {
     const string &profileName = profile.name;
     auto &profileToMap = profile.port_pgs;
     set<string> portsChecked;
 
-    if (profile.dynamic_calculated)
+    if (profile.static_configured && profile.dynamic_calculated)
     {
         for (auto &key : profileToMap)
         {
@@ -870,7 +1051,19 @@ task_process_status BufferMgrDynamic::doUpdateStaticProfileTask(buffer_profile_t
             }
         }
     }
-    else
+
+    checkSharedBufferPoolSize();
+
+    return task_process_status::task_success;
+}
+
+task_process_status BufferMgrDynamic::doUpdateBufferProfileForSize(buffer_profile_t &profile, bool update_pool_size=true)
+{
+    const string &profileName = profile.name;
+    auto &profileToMap = profile.port_pgs;
+    set<string> portsChecked;
+
+    if (!profile.static_configured || !profile.dynamic_calculated)
     {
         for (auto &key : profileToMap)
         {
@@ -883,7 +1076,6 @@ task_process_status BufferMgrDynamic::doUpdateStaticProfileTask(buffer_profile_t
 
             if (!isHeadroomResourceValid(port, profile))
             {
-                // to do: get the value from application database
                 SWSS_LOG_ERROR("BUFFER_PROFILE %s cannot be updated because %s referencing it violates the resource limitation",
                                profileName.c_str(), key.c_str());
                 return task_process_status::task_failed;
@@ -895,7 +1087,8 @@ task_process_status BufferMgrDynamic::doUpdateStaticProfileTask(buffer_profile_t
         updateBufferProfileToDb(profileName, profile);
     }
 
-    checkSharedBufferPoolSize();
+    if (update_pool_size)
+        checkSharedBufferPoolSize();
 
     return task_process_status::task_success;
 }
@@ -931,6 +1124,7 @@ task_process_status BufferMgrDynamic::handleBufferMaxParam(KeyOpFieldsValuesTupl
 task_process_status BufferMgrDynamic::handleDefaultLossLessBufferParam(KeyOpFieldsValuesTuple &tuple)
 {
     string op = kfvOp(tuple);
+    string newRatio = "0";
 
     if (op == SET_COMMAND)
     {
@@ -939,9 +1133,29 @@ task_process_status BufferMgrDynamic::handleDefaultLossLessBufferParam(KeyOpFiel
             if (fvField(i) == "default_dynamic_th")
             {
                 m_defaultThreshold = fvValue(i);
-                SWSS_LOG_DEBUG("Handling Buffer Maximum value table field default_dynamic_th value %s", m_defaultThreshold.c_str());
+                SWSS_LOG_DEBUG("Handling Buffer parameter table field default_dynamic_th value %s", m_defaultThreshold.c_str());
+            }
+            else if (fvField(i) == "over_subscribe_ratio")
+            {
+                newRatio = fvValue(i);
+                SWSS_LOG_DEBUG("Handling Buffer parameter table field over_subscribe_ratio value %s", fvValue(i).c_str());
             }
         }
+    }
+    else
+    {
+        SWSS_LOG_ERROR("Unsupported command %s received for DEFAULT_LOSSLESS_BUFFER_PARAMETER table", op.c_str());
+        return task_process_status::task_failed;
+    }
+
+    if (newRatio != m_overSubscribeRatio)
+    {
+        bool isSHPEnabled = isNonZero(m_overSubscribeRatio);
+        bool willSHPBeEnabled = isNonZero(newRatio);
+        SWSS_LOG_INFO("Recalculate shared buffer pool size due to over subscribe ratio has been updated from %s to %s",
+                      m_overSubscribeRatio.c_str(), newRatio.c_str());
+        m_overSubscribeRatio = newRatio;
+        refreshSharedHeadroomPool(isSHPEnabled != willSHPBeEnabled, false);
     }
 
     return task_process_status::task_success;
@@ -1149,6 +1363,7 @@ task_process_status BufferMgrDynamic::handleBufferPoolTable(KeyOpFieldsValuesTup
         // 1. Create the corresponding table entries in APPL_DB
         // 2. Record the table in the internal cache m_bufferPoolLookup
         buffer_pool_t &bufferPool = m_bufferPoolLookup[pool];
+        string newSHPSize = "0";
 
         bufferPool.dynamic_size = true;
         for (auto i = kfvFieldsValues(tuple).begin(); i != kfvFieldsValues(tuple).end(); i++)
@@ -1163,7 +1378,7 @@ task_process_status BufferMgrDynamic::handleBufferPoolTable(KeyOpFieldsValuesTup
             }
             if (field == buffer_pool_xoff_field_name)
             {
-                bufferPool.xoff = value;
+                newSHPSize = value;
             }
             if (field == buffer_pool_mode_field_name)
             {
@@ -1173,10 +1388,46 @@ task_process_status BufferMgrDynamic::handleBufferPoolTable(KeyOpFieldsValuesTup
             {
                 bufferPool.ingress = (value == buffer_value_ingress);
             }
-            fvVector.emplace_back(FieldValueTuple(field, value));
+            fvVector.emplace_back(field, value);
             SWSS_LOG_INFO("Inserting BUFFER_POOL table field %s value %s", field.c_str(), value.c_str());
         }
-        if (!bufferPool.dynamic_size)
+
+        bool dontUpdatePoolToDb = bufferPool.dynamic_size;
+        if (pool == INGRESS_LOSSLESS_PG_POOL_NAME)
+        {
+            /*
+             * "dontUpdatPoolToDb" is calculated for ingress_lossless_pool according to following rules:
+             * Don't update | pool size | SHP enabled by size | SHP enabled by over subscribe ratio
+             * True         | Dynamic   | Any                 | Any
+             * False        | Static    | True                | Any
+             * True         | Static    | False               | True
+             * False        | Static    | False               | False
+             */
+            bool willSHPBeEnabledBySize = isNonZero(newSHPSize);
+            if (newSHPSize != m_configuredSharedHeadroomPoolSize)
+            {
+                bool isSHPEnabledBySize = isNonZero(m_configuredSharedHeadroomPoolSize);
+
+                m_configuredSharedHeadroomPoolSize = newSHPSize;
+                refreshSharedHeadroomPool(false, isSHPEnabledBySize != willSHPBeEnabledBySize);
+            }
+            else if (!newSHPSize.empty())
+            {
+                SWSS_LOG_INFO("Shared headroom pool size updated without change (new %s vs current %s), skipped", newSHPSize.c_str(), m_configuredSharedHeadroomPoolSize.c_str());
+            }
+
+            if (!willSHPBeEnabledBySize)
+            {
+                // Don't need to program APPL_DB if shared headroom pool is enabled
+                dontUpdatePoolToDb |= isNonZero(m_overSubscribeRatio);
+            }
+        }
+        else if (isNonZero(newSHPSize))
+        {
+            SWSS_LOG_ERROR("Field xoff is supported for %s only, but got for %s, ignored", INGRESS_LOSSLESS_PG_POOL_NAME, pool.c_str());
+        }
+
+        if (!dontUpdatePoolToDb)
         {
             m_applBufferPoolTable.set(pool, fvVector);
             m_stateBufferPoolTable.set(pool, fvVector);
@@ -1299,12 +1550,12 @@ task_process_status BufferMgrDynamic::handleBufferProfileTable(KeyOpFieldsValues
                 profileApp.state = PROFILE_NORMAL;
                 SWSS_LOG_NOTICE("BUFFER_PROFILE %s is dynamic calculation so it won't be deployed to APPL_DB until referenced by a port",
                                 profileName.c_str());
-                doUpdateStaticProfileTask(profileApp);
+                doUpdateBufferProfileForDynamicTh(profileApp);
             }
             else
             {
                 profileApp.state = PROFILE_NORMAL;
-                doUpdateStaticProfileTask(profileApp);
+                doUpdateBufferProfileForSize(profileApp);
                 SWSS_LOG_NOTICE("BUFFER_PROFILE %s has been inserted into APPL_DB", profileName.c_str());
                 SWSS_LOG_DEBUG("BUFFER_PROFILE %s for headroom override has been stored internally: [pool %s xon %s xoff %s size %s]",
                                profileName.c_str(),
