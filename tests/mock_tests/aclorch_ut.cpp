@@ -22,6 +22,8 @@ extern sai_bridge_api_t *sai_bridge_api;
 extern sai_route_api_t *sai_route_api;
 extern sai_next_hop_group_api_t* sai_next_hop_group_api;
 
+using namespace saimeta;
+
 namespace aclorch_test
 {
     using namespace std;
