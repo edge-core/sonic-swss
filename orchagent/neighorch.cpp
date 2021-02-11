@@ -597,7 +597,7 @@ bool NeighOrch::addNeighbor(const NeighborEntry &neighborEntry, const MacAddress
     MuxOrch* mux_orch = gDirectory.get<MuxOrch*>();
     bool hw_config = isHwConfigured(neighborEntry);
 
-    if (!hw_config && mux_orch->isNeighborActive(ip_address, alias))
+    if (!hw_config && mux_orch->isNeighborActive(ip_address, macAddress, alias))
     {
         status = sai_neighbor_api->create_neighbor_entry(&neighbor_entry,
                                    (uint32_t)neighbor_attrs.size(), neighbor_attrs.data());
@@ -688,7 +688,7 @@ bool NeighOrch::removeNeighbor(const NeighborEntry &neighborEntry, bool disable)
         return true;
     }
 
-    if (m_syncdNextHops[nexthop].ref_count > 0)
+    if (m_syncdNextHops.find(nexthop) != m_syncdNextHops.end() && m_syncdNextHops[nexthop].ref_count > 0)
     {
         SWSS_LOG_INFO("Failed to remove still referenced neighbor %s on %s",
                       m_syncdNeighbors[neighborEntry].mac.to_string().c_str(), alias.c_str());
