@@ -304,7 +304,7 @@ task_process_status PfcWdSwOrch<DropHandler, ForwardHandler>::createEntry(const 
             }
             else if (field == BIG_RED_SWITCH_FIELD)
             {
-                SWSS_LOG_NOTICE("Recieve brs mode set, %s", value.c_str());
+                SWSS_LOG_NOTICE("Receive brs mode set, %s", value.c_str());
                 setBigRedSwitchMode(value);
             }
         }
@@ -344,7 +344,7 @@ void PfcWdSwOrch<DropHandler, ForwardHandler>::disableBigRedSwitchMode()
     SWSS_LOG_ENTER();
 
     m_bigRedSwitchFlag = false;
-    // Disable pfcwdaction hanlder on each queue if exists.
+    // Disable pfcwdaction handler on each queue if exists.
     for (auto &entry : m_brsEntryMap)
     {
 
@@ -421,7 +421,7 @@ void PfcWdSwOrch<DropHandler, ForwardHandler>::enableBigRedSwitchMode()
         }
     }
 
-    // Create pfcwdaction hanlder on all the ports.
+    // Create pfcwdaction handler on all the ports.
     for (auto & it: allPorts)
     {
         Port port = it.second;
@@ -906,7 +906,7 @@ bool PfcWdSwOrch<DropHandler, ForwardHandler>::startWdActionOnQueue(const string
 
     if (m_bigRedSwitchFlag)
     {
-        SWSS_LOG_NOTICE("Big_RED_SWITCH mode is on, ingore syncd pfc watchdog notification");
+        SWSS_LOG_NOTICE("Big_RED_SWITCH mode is on, ignore syncd pfc watchdog notification");
     }
     else if (event == "storm")
     {

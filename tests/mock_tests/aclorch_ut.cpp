@@ -830,13 +830,13 @@ namespace aclorch_test
                 }
                 else
                 {
-                    // unkonw attr_value
+                    // unknown attr_value
                     return false;
                 }
             }
             else
             {
-                // unknow attr_name
+                // unknown attr_name
                 return false;
             }
 
@@ -893,7 +893,7 @@ namespace aclorch_test
             }
             else
             {
-                // unknow attr_name
+                // unknown attr_name
                 return false;
             }
 
@@ -923,7 +923,7 @@ namespace aclorch_test
                 }
                 else
                 {
-                    // unknow attr_name
+                    // unknown attr_name
                     return false;
                 }
             }
@@ -996,7 +996,7 @@ namespace aclorch_test
     // When received ACL rule DEL_COMMAND, orchagent can delete corresponding ACL rule.
     //
     // Verify ACL table type = { L3 }, stage = { INGRESS, ENGRESS }
-    // Input by matchs = { SIP, DIP ...}, pkg:actions = { FORWARD, DROP ... }
+    // Input by matches = { SIP, DIP ...}, pkg:actions = { FORWARD, DROP ... }
     //
     TEST_F(AclOrchTest, L3Acl_Matches_Actions)
     {
@@ -1086,7 +1086,7 @@ namespace aclorch_test
     // When received ACL rule DEL_COMMAND, orchagent can delete corresponding ACL rule.
     //
     // Verify ACL table type = { L3V6 }, stage = { INGRESS, ENGRESS }
-    // Input by matchs = { SIP, DIP ...}, pkg:actions = { FORWARD, DROP ... }
+    // Input by matches = { SIP, DIP ...}, pkg:actions = { FORWARD, DROP ... }
     //
     TEST_F(AclOrchTest, L3V6Acl_Matches_Actions)
     {
