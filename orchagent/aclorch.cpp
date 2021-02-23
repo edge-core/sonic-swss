@@ -113,7 +113,8 @@ static acl_table_type_lookup_t aclTableTypeLookUp =
     { TABLE_TYPE_CTRLPLANE,             ACL_TABLE_CTRLPLANE },
     { TABLE_TYPE_DTEL_FLOW_WATCHLIST,   ACL_TABLE_DTEL_FLOW_WATCHLIST },
     { TABLE_TYPE_DTEL_DROP_WATCHLIST,   ACL_TABLE_DTEL_DROP_WATCHLIST },
-    { TABLE_TYPE_MCLAG,                 ACL_TABLE_MCLAG }
+    { TABLE_TYPE_MCLAG,                 ACL_TABLE_MCLAG },
+    { TABLE_TYPE_DROP,                  ACL_TABLE_DROP }
 };
 
 static acl_stage_type_lookup_t aclStageLookUp =
@@ -635,6 +636,23 @@ bool AclRule::remove()
     return res;
 }
 
+void AclRule::updateInPorts()
+{
+    SWSS_LOG_ENTER();
+    sai_attribute_t attr;
+    sai_status_t status;
+
+    attr.id = SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS;
+    attr.value = m_matches[SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS];
+    attr.value.aclfield.enable = true;
+    
+    status = sai_acl_api->set_acl_entry_attribute(m_ruleOid, &attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to update ACL rule %s, rv:%d", m_id.c_str(), status);
+    }
+}
+
 AclRuleCounters AclRule::getCounters()
 {
     SWSS_LOG_ENTER();
@@ -690,7 +708,8 @@ shared_ptr<AclRule> AclRule::makeShared(acl_table_type_t type, AclOrch *acl, Mir
         type != ACL_TABLE_MIRROR_DSCP &&
         type != ACL_TABLE_DTEL_FLOW_WATCHLIST &&
         type != ACL_TABLE_DTEL_DROP_WATCHLIST &&
-        type != ACL_TABLE_MCLAG)
+        type != ACL_TABLE_MCLAG &&
+        type != ACL_TABLE_DROP)
     {
         throw runtime_error("Unknown table type");
     }
@@ -737,6 +756,10 @@ shared_ptr<AclRule> AclRule::makeShared(acl_table_type_t type, AclOrch *acl, Mir
     else if (type == ACL_TABLE_MCLAG)
     {
         return make_shared<AclRuleMclag>(acl, rule, table, type);
+    }
+    else if (type == ACL_TABLE_DROP)
+    {
+        return make_shared<AclRulePfcwd>(acl, rule, table, type);
     }
 
     throw runtime_error("Wrong combination of table type and action in rule " + rule);
@@ -1013,7 +1036,6 @@ void AclRuleL3::update(SubjectType, void *)
     // Do nothing
 }
 
-
 AclRulePfcwd::AclRulePfcwd(AclOrch *aclOrch, string rule, string table, acl_table_type_t type, bool createCounter) :
         AclRuleL3(aclOrch, rule, table, type, createCounter)
 {
@@ -1021,12 +1043,6 @@ AclRulePfcwd::AclRulePfcwd(AclOrch *aclOrch, string rule, string table, acl_tabl
 
 bool AclRulePfcwd::validateAddMatch(string attr_name, string attr_value)
 {
-    if (attr_name != MATCH_TC)
-    {
-        SWSS_LOG_ERROR("%s is not supported for the tables of type Pfcwd", attr_name.c_str());
-        return false;
-    }
-
     return AclRule::validateAddMatch(attr_name, attr_value);
 }
 
@@ -1341,7 +1357,7 @@ bool AclTable::create()
     vector<int32_t> bpoint_list;
 
     // PFC watch dog ACLs are only applied to port
-    if (type == ACL_TABLE_PFCWD)
+    if ((type == ACL_TABLE_PFCWD) || (type == ACL_TABLE_DROP))
     {
         bpoint_list = { SAI_ACL_BIND_POINT_TYPE_PORT };
     }
@@ -1355,7 +1371,7 @@ bool AclTable::create()
     attr.value.s32list.list = bpoint_list.data();
     table_attrs.push_back(attr);
 
-    if (type == ACL_TABLE_PFCWD)
+    if ((type == ACL_TABLE_PFCWD) || (type == ACL_TABLE_DROP))
     {
         attr.id = SAI_ACL_TABLE_ATTR_FIELD_TC;
         attr.value.booldata = true;
@@ -1364,7 +1380,14 @@ bool AclTable::create()
         attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
         attr.value.s32 = (stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
         table_attrs.push_back(attr);
-
+        
+        if (stage == ACL_STAGE_INGRESS)
+        {
+            attr.id = SAI_ACL_TABLE_ATTR_FIELD_IN_PORTS;
+            attr.value.booldata = true;
+            table_attrs.push_back(attr);
+        }
+        
         sai_status_t status = sai_acl_api->create_acl_table(&m_oid, gSwitchId, (uint32_t)table_attrs.size(), table_attrs.data());
 
         if (status == SAI_STATUS_SUCCESS)
@@ -2936,6 +2959,64 @@ bool AclOrch::removeAclRule(string table_id, string rule_id)
     }
 
     return m_AclTables[table_oid].remove(rule_id);
+}
+
+bool AclOrch::updateAclRule(shared_ptr<AclRule> rule, string table_id, string attr_name, void *data, bool oper)
+{
+    SWSS_LOG_ENTER();
+    
+    sai_object_id_t table_oid = getTableById(table_id);
+    string attr_value;
+
+    if (table_oid == SAI_NULL_OBJECT_ID) 
+    {
+        SWSS_LOG_ERROR("Failed to update ACL rule in ACL table %s. Table doesn't exist", table_id.c_str());
+        return false;
+    }
+
+    switch (aclMatchLookup[attr_name]) 
+    {
+        case SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS:
+        {
+            sai_object_id_t port_oid = *(sai_object_id_t *)data;
+            vector<sai_object_id_t> in_ports = rule->getInPorts();
+
+            if (oper == RULE_OPER_ADD) 
+            {
+                in_ports.push_back(port_oid);
+            } 
+            else 
+            {
+                for (auto port_iter = in_ports.begin(); port_iter != in_ports.end(); port_iter++)
+                {
+                    if (*port_iter == port_oid) 
+                    {
+                        in_ports.erase(port_iter);
+                        break;
+                    }
+                }
+            }
+            
+            for (const auto& port_iter: in_ports)
+            {
+                Port p;
+                gPortsOrch->getPort(port_iter, p);
+                attr_value += p.m_alias;
+                attr_value += ',';
+            }
+            attr_value.pop_back();
+
+            rule->validateAddMatch(MATCH_IN_PORTS, attr_value);  
+            m_AclTables[table_oid].rules[rule->getId()]->updateInPorts();
+        }
+        break;
+
+        default:
+            SWSS_LOG_ERROR("Acl rule update not supported for attr name %s", attr_name.c_str());
+        break;
+    }
+
+    return true;
 }
 
 bool AclOrch::isCombinedMirrorV6Table()
