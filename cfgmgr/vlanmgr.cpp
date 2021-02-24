@@ -36,6 +36,7 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
         replayDone(false)
 {
     SWSS_LOG_ENTER();
+    int ret;
 
     if (WarmStart::isWarmStart())
     {
@@ -64,7 +65,7 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
           + IP_CMD + " link show " + DOT1Q_BRIDGE_NAME + " 2>/dev/null";
 
         std::string res;
-        int ret = swss::exec(cmds, res);
+        ret = swss::exec(cmds, res);
         if (ret == 0)
         {
             // Don't reset vlan aware bridge upon swss docker warm restart.
@@ -99,14 +100,18 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
       + IP_CMD + " link set dummy master " + DOT1Q_BRIDGE_NAME + "\"";
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds, res);
+    ret = swss::exec(cmds, res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.c_str(), ret);
+    }
 
     // The generated command is:
     // /bin/echo 1 > /sys/class/net/Bridge/bridge/vlan_filtering
     const std::string echo_cmd = std::string("")
       + ECHO_CMD + " 1 > /sys/class/net/" + DOT1Q_BRIDGE_NAME + "/bridge/vlan_filtering";
 
-    int ret = swss::exec(echo_cmd, res);
+    ret = swss::exec(echo_cmd, res);
     /* echo will fail in virtual switch since /sys directory is read-only.
      * need to use ip command to setup the vlan_filtering which is not available in debian 8.
      * Once we move sonic to debian 9, we can use IP command by default
@@ -117,7 +122,11 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
         const std::string echo_cmd_backup = std::string("")
           + IP_CMD + " link set " + DOT1Q_BRIDGE_NAME + " type bridge vlan_filtering 1";
 
-        EXEC_WITH_ERROR_THROW(echo_cmd_backup, res);
+        int ret_2 = swss::exec(echo_cmd_backup, res);
+        if (ret_2)
+        {
+            SWSS_LOG_ERROR("Command '%s' failed with rc %d", echo_cmd_backup.c_str(), ret_2);
+        }
     }
 
     // not learn from link-local frames
@@ -148,7 +157,11 @@ bool VlanMgr::addHostVlan(int vlan_id)
                + " type vlan id " + std::to_string(vlan_id) + "\"";
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds, res);
+    int ret = swss::exec(cmds, res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.c_str(), ret);
+    }
 
     res.clear();
     const std::string echo_cmd = std::string("")
@@ -171,7 +184,11 @@ bool VlanMgr::removeHostVlan(int vlan_id)
       + BRIDGE_CMD + " vlan del vid " + std::to_string(vlan_id) + " dev " + DOT1Q_BRIDGE_NAME + " self\"";
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds, res);
+    int ret = swss::exec(cmds, res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.c_str(), ret);
+    }
 
     return true;
 }
@@ -186,8 +203,11 @@ bool VlanMgr::setHostVlanAdminState(int vlan_id, const string &admin_status)
     cmds << IP_CMD " link set " VLAN_PREFIX + std::to_string(vlan_id) + " " << shellquote(admin_status);
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds.str(), res);
-
+    int ret = swss::exec(cmds.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.str().c_str(), ret);
+    }
     return true;
 }
 
@@ -222,7 +242,11 @@ bool VlanMgr::setHostVlanMac(int vlan_id, const string &mac)
             IP_CMD " link set " DOT1Q_BRIDGE_NAME " address " << shellquote(mac);
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds.str(), res);
+    int ret = swss::exec(cmds.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.str().c_str(), ret);
+    }
 
     return true;
 }
@@ -257,7 +281,11 @@ bool VlanMgr::addHostVlanMember(int vlan_id, const string &port_alias, const str
     cmds << BASH_CMD " -c " << shellquote(inner.str());
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds.str(), res);
+    int ret = swss::exec(cmds.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.str().c_str(), ret);
+    }
 
     return true;
 }
@@ -293,7 +321,11 @@ bool VlanMgr::removeHostVlanMember(int vlan_id, const string &port_alias)
     cmds << BASH_CMD " -c " << shellquote(inner.str());
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds.str(), res);
+    int ret = swss::exec(cmds.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.str().c_str(), ret);
+    }
 
     return true;
 }
