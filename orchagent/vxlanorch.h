@@ -274,6 +274,11 @@ public:
         return vxlan_tunnel_table_.at(tunnelName).get();
     }
 
+    auto getVxlanTunnelSize()
+    {
+        return vxlan_tunnel_table_.size();
+    }
+
     bool addTunnel(const std::string tunnel_name,VxlanTunnel* tnlptr)
     {
        vxlan_tunnel_table_[tunnel_name] = (VxlanTunnel_T)tnlptr;
@@ -344,6 +349,11 @@ public:
         {
             return 0;
         }
+    }
+
+    auto getVniVlanMapTableSize()
+    {
+        return vxlan_vni_vlan_map_table_.size();
     }
 
     void addVlanMappedToVni(uint32_t vni, uint16_t vlan_id)
@@ -541,6 +551,11 @@ public:
     VxlanTunnel* getEVPNVtep() 
     { 
         return source_vtep_ptr;
+    }
+
+    void delEVPNVtep()
+    {
+        source_vtep_ptr = NULL;
     }
 
 private:
