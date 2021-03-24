@@ -1431,10 +1431,21 @@ bool FdbOrch::addFdbEntry(const FdbEntry& entry, const string& port_name,
     /* Retry until port is created */
     if (!m_portsOrch->getPort(port_name, port) || (port.m_bridge_port_id == SAI_NULL_OBJECT_ID))
     {
-        SWSS_LOG_INFO("Saving a fdb entry until port %s becomes active", port_name.c_str());
-        saved_fdb_entries[port_name].push_back({entry.mac,
-                vlan.m_vlan_info.vlan_id, fdbData});
-        return true;
+        SWSS_LOG_NOTICE("wait until port %s becomes active", port_name.c_str());
+        return false;
+    }
+
+    if (port.m_type == Port::TUNNEL)
+    {
+        sai_port_oper_status_t opr_status;
+        VxlanTunnelOrch* tunnel_orch = gDirectory.get<VxlanTunnelOrch*>();
+
+        tunnel_orch->getDbTunnelOperStatus(port.m_alias, opr_status);
+        if (opr_status == SAI_PORT_OPER_STATUS_DOWN)
+        {
+            SWSS_LOG_NOTICE("wait for tunnel %s up", port_name.c_str());
+            return false;
+        }
     }
 
     /* Assign end point IP only in SIP tunnel scenario since Port + IP address
