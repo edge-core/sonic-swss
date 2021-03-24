@@ -1798,6 +1798,35 @@ void VxlanTunnelOrch::updateDbTunnelOperStatus(string tunnel_portname,
     m_stateVxlanTable.set(tunnel_name, fvVector);
 }
 
+void VxlanTunnelOrch::getDbTunnelOperStatus(string tunnel_portname,
+                                               sai_port_oper_status_t& status)
+{
+    vector<FieldValueTuple> tuples;
+    std::string tunnel_name;
+
+    getTunnelNameFromPort(tunnel_portname, tunnel_name);
+    bool exist = m_stateVxlanTable.get(tunnel_name, tuples);
+    string operStatus;
+    if (exist)
+    {
+        for (auto i : tuples)
+        {
+            if (fvField(i) == "operstatus")
+            {
+                operStatus = fvValue(i);
+            }
+        }
+    }
+    if (operStatus == "up")
+    {
+        status = SAI_PORT_OPER_STATUS_UP;
+    }
+    else
+    {
+        status = SAI_PORT_OPER_STATUS_DOWN;
+    }
+}
+
 void VxlanTunnelOrch::addRemoveStateTableEntry(string tunnel_name, 
                                            IpAddress& sip, IpAddress& dip, 
                                            tunnel_creation_src_t src, bool add)

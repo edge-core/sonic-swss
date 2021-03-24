@@ -329,6 +329,7 @@ public:
     void getTunnelDIPFromPort(Port& tunnelPort, string& remote_vtep);
     void updateDbTunnelOperStatus(string tunnel_portname,
                                                sai_port_oper_status_t status);
+    void getDbTunnelOperStatus(string tunnel_portname, sai_port_oper_status_t& status);
     uint16_t getVlanMappedToVni(const uint32_t vni)
     {
         if (vxlan_vni_vlan_map_table_.find(vni) != std::end(vxlan_vni_vlan_map_table_))
