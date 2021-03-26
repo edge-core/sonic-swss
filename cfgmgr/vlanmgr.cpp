@@ -20,23 +20,37 @@ using namespace swss;
 #define DEFAULT_VLAN_ID     "1"
 #define DEFAULT_MTU_STR     "9100"
 #define VLAN_HLEN            4
+#define NFT_ARP_CHAIN       "ARP_LIST"
+#define NFT_ND_CHAIN        "ND_LIST"
+#define NFT_VLAN_ARP_CHAIN  "VLAN_ARP_LIST"
 
 extern MacAddress gMacAddress;
 
-VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, const vector<string> &tableNames) :
-        Orch(cfgDb, tableNames),
+VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, const vector<TableConnector> &tables) :
+        Orch(tables),
         m_cfgVlanTable(cfgDb, CFG_VLAN_TABLE_NAME),
         m_cfgVlanMemberTable(cfgDb, CFG_VLAN_MEMBER_TABLE_NAME),
+        m_cfgNeighSuppressVlanTable(cfgDb, CFG_NEIGH_SUPPRESS_VLAN_TABLE_NAME),
         m_statePortTable(stateDb, STATE_PORT_TABLE_NAME),
         m_stateLagTable(stateDb, STATE_LAG_TABLE_NAME),
         m_stateVlanTable(stateDb, STATE_VLAN_TABLE_NAME),
         m_stateVlanMemberTable(stateDb, STATE_VLAN_MEMBER_TABLE_NAME),
+        m_stateNeighSuppressVlanTable(stateDb, STATE_NEIGH_SUPPRESS_VLAN_TABLE_NAME),
         m_appVlanTableProducer(appDb, APP_VLAN_TABLE_NAME),
         m_appVlanMemberTableProducer(appDb, APP_VLAN_MEMBER_TABLE_NAME),
         m_cfgSubInterfaceTable(cfgDb, CFG_VLAN_SUB_INTF_TABLE_NAME),
+        m_appNeighSuppressVlanTableProducer(appDb, APP_NEIGH_SUPPRESS_VLAN_TABLE_NAME),
         replayDone(false)
 {
     SWSS_LOG_ENTER();
+
+    std::string nftables_cmd, res;
+    nftables_cmd = std::string("") + "nft flush chain bridge filter " + NFT_ARP_CHAIN;
+    swss::exec(nftables_cmd.c_str(), res);
+    nftables_cmd = std::string("") + "nft flush chain bridge filter " + NFT_ND_CHAIN;
+    swss::exec(nftables_cmd.c_str(), res);
+    nftables_cmd = std::string("") + "nft flush chain bridge filter " + NFT_VLAN_ARP_CHAIN;
+    swss::exec(nftables_cmd.c_str(), res);
     int ret;
 
     if (WarmStart::isWarmStart())
@@ -100,7 +114,6 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
       + IP_CMD + " link add dummy type dummy && "
       + IP_CMD + " link set dummy master " + DOT1Q_BRIDGE_NAME + "\"";
 
-    std::string res;
     ret = swss::exec(cmds, res);
     if (ret)
     {
@@ -298,6 +311,13 @@ bool VlanMgr::addHostVlanMember(int vlan_id, const string &port_alias, const str
         SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.str().c_str(), ret);
     }
 
+    vector<FieldValueTuple> values;
+    if (isVlanNeighborSuppressed(vlan_id)
+        && m_stateNeighSuppressVlanTable.get(string("Vlan") + to_string(vlan_id), values))
+    {
+        updateVlanMemberNftRule(vlan_id, port_alias, true);
+    }
+
     return true;
 }
 
@@ -337,7 +357,7 @@ bool VlanMgr::removeHostVlanMember(int vlan_id, const string &port_alias)
     {
         SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.str().c_str(), ret);
     }
-
+    updateVlanMemberNftRule(vlan_id, port_alias, false);
     return true;
 }
 
@@ -362,6 +382,239 @@ bool VlanMgr::isSubportConfigVlan(const int vlan_id)
         }
     }
     return false;
+}
+
+bool VlanMgr::isVlanNeighborSuppressed(int vlan_id)
+{
+    string key = VLAN_PREFIX + to_string(vlan_id);
+    string neighbor_suppress_str;
+
+    m_cfgNeighSuppressVlanTable.hget(key.c_str(), "suppress", neighbor_suppress_str);
+    return (neighbor_suppress_str == "on") ? true : false;
+}
+
+bool VlanMgr::setNftRule(const std::string &chain_name, const std::string port_alias, bool is_add, int vlan_id)
+{
+    std::string nftables_cmd, res;
+    std::string key = chain_name;
+    key = key + "_" + to_string(vlan_id);
+
+    if (is_add)
+    {
+        if (m_nftNdSpRuleHandles.find(key) != m_nftNdSpRuleHandles.end())
+            if (m_nftNdSpRuleHandles[key].find(port_alias) != m_nftNdSpRuleHandles[key].end())
+                return true;
+        if (port_alias.find("vtep") != std::string::npos)
+            nftables_cmd = "nft --echo --handle add rule bridge filter " + chain_name + " oifname " + port_alias +
+                           " counter packets 0 bytes 0 accept | grep handle | awk '{print $NF}'";
+        else if (m_nftVlanMbrSetMap[vlan_id] != "")
+            nftables_cmd = "nft --echo --handle add rule bridge filter " + chain_name + " iifname " + port_alias +
+                           " oifname == @" + m_nftVlanMbrSetMap[vlan_id] + " counter packets 0 bytes 0 accept | grep handle | awk '{print $NF}'";
+        else
+            return false;
+    }
+    else
+    {
+        auto it = m_nftNdSpRuleHandles.find(key);
+
+        if (it != m_nftNdSpRuleHandles.end())
+            nftables_cmd = "nft --echo --handle delete rule bridge filter "  + chain_name + " handle " + (it->second)[port_alias];
+        else
+            return false;
+    }
+
+    swss::exec(nftables_cmd.c_str(), res);
+
+    if (is_add)
+    {
+        SWSS_LOG_INFO("Success to add nftables rule, key = [%s], handle = [%s]", key.c_str(), res.c_str());
+        m_nftNdSpRuleHandles[key].insert(std::make_pair(port_alias, res));
+    }
+    else
+        m_nftNdSpRuleHandles[key].erase(port_alias);
+
+    return true;
+}
+
+void VlanMgr::updateNftVlanMbrSet(int vlan_id, bool is_set)
+{
+    string res, nft_set_cmd, set_name = "vlan" + to_string(vlan_id) + "_mbr";;
+
+    if (is_set)
+    {
+        nft_set_cmd = "nft add set bridge filter " + set_name + " { type ifname\\; }";
+        swss::exec(nft_set_cmd.c_str(), res);
+        m_nftVlanMbrSetMap[vlan_id] = set_name;
+    }
+    else
+    {
+        nft_set_cmd = "nft delete set bridge filter " + m_nftVlanMbrSetMap[vlan_id];
+        swss::exec(nft_set_cmd.c_str(), res);
+        m_nftVlanMbrSetMap.erase(vlan_id);
+    }
+}
+
+void VlanMgr::updateNftVlanMbrSetElement(int vlan_id, const std::string port_alias, std::string op)
+{
+    string res, element = "'{ " + port_alias + " }'";
+    string nft_set_element_cmd = "nft " + op +" element bridge filter " + m_nftVlanMbrSetMap[vlan_id] + element;
+
+    if (op == "add")
+    {
+        if (m_nftVlanMbrSetElement[vlan_id].find(port_alias) == m_nftVlanMbrSetElement[vlan_id].end())
+        {
+            m_nftVlanMbrSetElement[vlan_id].insert(port_alias);
+            swss::exec(nft_set_element_cmd.c_str(), res);
+        }
+    }
+    else
+    {
+        m_nftVlanMbrSetElement[vlan_id].erase(port_alias);
+        swss::exec(nft_set_element_cmd.c_str(), res);
+    }
+}
+
+void VlanMgr::updateVlanMemberNftRule(int vlan_id, const std::string port_alias, bool is_add)
+{
+    SWSS_LOG_INFO("Update nftables rule for port %s, vlan %d, is_add %d", port_alias.c_str(), vlan_id, is_add);
+
+    if (is_add)
+    {
+        updateNftVlanMbrSet(vlan_id, true);
+
+        // add ebtable rules
+        if (setNftRule(NFT_ARP_CHAIN, port_alias, true, vlan_id)
+            && setNftRule(NFT_VLAN_ARP_CHAIN, port_alias, true, vlan_id)
+            && setNftRule(NFT_ND_CHAIN, port_alias, true, vlan_id))
+        {
+            SWSS_LOG_INFO("ADD nftables rule for port %s, vlan %d, is_add %d", port_alias.c_str(), vlan_id, is_add);
+
+            updateNftVlanMbrSetElement(vlan_id, port_alias, "add");
+        }
+        else
+        {
+            SWSS_LOG_INFO("failed to add nftable rules");
+        }
+    }
+    else
+    {
+        // only remove ebtable rules when the port is not member of any VLAN
+        if (m_nftVlanMbrSetElement[vlan_id].size())
+        {
+            // remove nftables rules
+            if (setNftRule(NFT_ARP_CHAIN, port_alias, false, vlan_id)
+                && setNftRule(NFT_VLAN_ARP_CHAIN, port_alias, false, vlan_id)
+                && setNftRule(NFT_ND_CHAIN, port_alias, false, vlan_id))
+            {
+                updateNftVlanMbrSetElement(vlan_id, port_alias, "delete");
+            }
+            else
+            {
+                SWSS_LOG_INFO("failed to delete nftable rules");
+            }
+        }
+
+        if (m_nftVlanMbrSetElement[vlan_id].size() == 0)
+        {
+            m_neighborSuppressMap.erase(port_alias);
+            updateNftVlanMbrSet(vlan_id, false);
+        }
+    }
+}
+
+void VlanMgr::updateVlanMemberNftRule(int vlan_id, bool is_add)
+{
+    SWSS_LOG_INFO("Update nftables rule for all members of vlan %d, is_add %d", vlan_id, is_add);
+
+    vector<string> vlanMemberKeys;
+    string vlan_alias = VLAN_PREFIX + to_string(vlan_id);
+
+    m_cfgVlanMemberTable.getKeys(vlanMemberKeys);
+    for (auto key: vlanMemberKeys)
+    {
+        size_t delimeter = key.find(CONFIGDB_KEY_SEPARATOR);
+        if (delimeter != string::npos)
+        {
+            string vlan_str = key.substr(0, delimeter);
+            if (!vlan_str.compare(vlan_alias))
+            {
+                string port_alias = key.substr(delimeter+1);
+                int vlan_id;
+                try
+                {
+                    vlan_id = stoi(key.substr(4));
+                }
+                catch (...)
+                {
+                    SWSS_LOG_ERROR("Invalid key format. Not a number after 'Vlan' prefix: %s", key.c_str());
+                    continue;
+                }
+
+                if (is_add)
+                {
+                    if (m_neighborSuppressMap.find(port_alias) == m_neighborSuppressMap.end())
+                    {
+                        m_neighborSuppressMap[port_alias] = std::set<int>();
+                    }
+
+                    // add ebtable rules
+                    if (setNftRule(NFT_ARP_CHAIN, port_alias, true)
+                        && setNftRule(NFT_VLAN_ARP_CHAIN, port_alias, true)
+                        && setNftRule(NFT_ND_CHAIN, port_alias, true))
+                    {
+                        SWSS_LOG_NOTICE("ADD nftables rule for port %s, vlan %d, is_add %d", port_alias.c_str(), vlan_id, is_add);
+                        m_neighborSuppressMap[port_alias].insert(vlan_id);
+                    }
+                    else
+                    {
+                        SWSS_LOG_INFO("failed to add ebtable rules");
+                    }
+                }
+                else
+                {
+                    auto it = m_neighborSuppressMap.find(port_alias);
+                    if (it != m_neighborSuppressMap.end())
+                    {
+                        auto &vlanSet = it->second;
+
+                        // only remove ebtable rules when the port is not member of any VLAN
+                        if (vlanSet.size() == 1 && vlanSet.count(vlan_id))
+                        {
+                            // remove nftables rules
+                            if (setNftRule(NFT_ARP_CHAIN, port_alias, false)
+                                && setNftRule(NFT_VLAN_ARP_CHAIN, port_alias, false)
+                                && setNftRule(NFT_ND_CHAIN, port_alias, false))
+                            {
+                                SWSS_LOG_NOTICE("ERASE nftables rule for port %s, vlan %d, is_add %d", port_alias.c_str(), vlan_id, is_add);
+                                vlanSet.erase(vlan_id);
+                                m_neighborSuppressMap.erase(port_alias);
+                            }
+                            else
+                            {
+                                SWSS_LOG_INFO("failed to add ebtable rules");
+                            }
+                        }
+                        else if (vlanSet.size() == 0)
+                        {
+                            SWSS_LOG_ERROR("Vlan set is empty for port %s", port_alias.c_str());
+                            // remove nftables rules
+                            if (setNftRule(NFT_ARP_CHAIN, port_alias, false)
+                                && setNftRule(NFT_VLAN_ARP_CHAIN, port_alias, false)
+                                && setNftRule(NFT_ND_CHAIN, port_alias, false))
+                            {
+                                SWSS_LOG_NOTICE("ERASE nftables rule for port %s, vlan %d, is_add %d", port_alias.c_str(), vlan_id, is_add);
+                                m_neighborSuppressMap.erase(port_alias);
+                            }
+                        }
+                        else
+                        {
+                            vlanSet.erase(vlan_id);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 void VlanMgr::doVlanTask(Consumer &consumer)
@@ -772,7 +1025,304 @@ void VlanMgr::doVlanMemberTask(Consumer &consumer)
 
     }
 }
+bool VlanMgr::setNetdevNeighSuppress(const string &netdev, const string &suppress_mode)
+{
+    SWSS_LOG_ENTER();
 
+    // The command should be generated as:
+    // /bin/bash -c "echo {"0"| "1"} > /sys/devices/virtual/net/vtep-1000/brport/neigh_suppress"
+    if (suppress_mode == "on")
+    {
+        ostringstream cmds, inner;
+        inner << ECHO_CMD << " " << shellquote("1") << " >> /sys/devices/virtual/net/" + netdev + "/brport/neigh_suppress";
+        cmds << BASH_CMD " -c " << shellquote(inner.str());
+
+        std::string res;
+        int ret = swss::exec(cmds.str(), res);
+        if (ret)
+        {
+            SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.str().c_str(), ret);
+        }
+
+        if (!setNftRule(NFT_ARP_CHAIN, netdev, true)
+            || !setNftRule(NFT_VLAN_ARP_CHAIN, netdev, true)
+            || !setNftRule(NFT_ND_CHAIN, netdev, true))
+        {
+            SWSS_LOG_ERROR("failed to set nftables rules");
+            return false;
+        }
+    }
+    else
+    {
+        ostringstream cmds, inner;
+
+        // check the vtep netdev folder  is existed or not
+        if (access(("/sys/devices/virtual/net/" + netdev).c_str(), F_OK) == 0)
+        {
+            inner << ECHO_CMD << " " << shellquote("0") << " >> /sys/devices/virtual/net/" + netdev + "/brport/neigh_suppress";
+            cmds << BASH_CMD " -c " << shellquote(inner.str());
+
+            std::string res;
+            int ret = swss::exec(cmds.str(), res);
+            if (ret)
+            {
+                SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.str().c_str(), ret);
+            }
+        }
+        else
+        {
+            SWSS_LOG_INFO("netdev %s is not existed, ignore to set neigh_suppress", netdev.c_str());
+        }
+
+        if (!setNftRule(NFT_ARP_CHAIN, netdev, false)
+            || !setNftRule(NFT_VLAN_ARP_CHAIN, netdev, false)
+            || !setNftRule(NFT_ND_CHAIN, netdev, false))
+        {
+            SWSS_LOG_ERROR("failed to set nftables rules");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void VlanMgr::doNeighSuppressTask(Consumer &consumer)
+{
+    auto it = consumer.m_toSync.begin();
+    while (it != consumer.m_toSync.end())
+    {
+        auto &t = it->second;
+
+        string key = kfvKey(t);
+        string vlan_alias;
+        string netdev;
+        /* Ensure the key starts with "Vlan" otherwise ignore */
+        if (strncmp(key.c_str(), VLAN_PREFIX, 4))
+        {
+            SWSS_LOG_ERROR("Invalid key format. No 'Vlan' prefix: %s", key.c_str());
+            it = consumer.m_toSync.erase(it);
+            continue;
+        }
+        vlan_alias = key;
+        vector<FieldValueTuple> values;
+        string op = kfvOp(t);
+
+        if (m_stateNeighSuppressVlanTable.get(vlan_alias, values))
+        {
+            SWSS_LOG_INFO("m_stateNeighSuppressVlanTable.get ok");
+            auto isNetDevField = [](FieldValueTuple fv) { return fvField(fv) == "netdev"; };
+            auto valueIt = std::find_if(values.begin(), values.end(), isNetDevField);
+
+            if (valueIt != values.end())
+            {
+                netdev = fvValue(*valueIt);
+            }
+            else
+            {
+                it = consumer.m_toSync.erase(it);
+                continue;
+            }
+        }
+        else
+        {
+            SWSS_LOG_INFO("Failed to get entry in m_stateNeighSuppressVlanTable for vlan %s", vlan_alias.c_str());
+            ++it;
+            continue;
+        }
+
+        string suppress_mode = "off"; //default value for "suppress" field
+
+        if (op == SET_COMMAND)
+        {
+            for (auto i : kfvFieldsValues(t))
+            {
+                if (fvField(i) == "suppress")
+                {
+                    suppress_mode = fvValue(i);
+                    break;
+                }
+            }
+        }
+        else if (op == DEL_COMMAND)
+        {
+            suppress_mode = "off";
+        }
+        else
+        {
+            SWSS_LOG_ERROR("Unknown operation type %s", op.c_str());
+            it = consumer.m_toSync.erase(it);
+            continue;
+        }
+
+        if (suppress_mode != "on" &&
+            suppress_mode != "off")
+        {
+            SWSS_LOG_ERROR("Wrong suppress_mode '%s' for key: %s", suppress_mode.c_str(), kfvKey(t).c_str());
+            it = consumer.m_toSync.erase(it);
+            continue;
+        }
+
+        try
+        {
+            if (setNetdevNeighSuppress(netdev, suppress_mode))
+            {
+                SWSS_LOG_INFO("setNetdevNeighSuppress %s mode: %s ok", netdev.c_str(), suppress_mode.c_str());
+                key = vlan_alias;
+
+                // Update Vlan member in ARP/ND nftables rules
+                vector<string> vlanMemberKeys;
+                m_cfgVlanMemberTable.getKeys(vlanMemberKeys);
+                for (auto key: vlanMemberKeys)
+                {
+                    size_t delimeter = key.find(CONFIGDB_KEY_SEPARATOR);
+                    if (delimeter != string::npos)
+                    {
+                        string vlan_str = key.substr(0, delimeter);
+                        if (!vlan_str.compare(vlan_alias))
+                        {
+                            string port_str = key.substr(delimeter+1);
+                            int vlan_id;
+                            try
+                            {
+                                vlan_id = stoi(key.substr(4));
+                            }
+                            catch (...)
+                            {
+                                SWSS_LOG_ERROR("Invalid key format. Not a number after 'Vlan' prefix: %s", key.c_str());
+                                continue;
+                            }
+
+                            if (op == SET_COMMAND)
+                            {
+                                updateVlanMemberNftRule(vlan_id, port_str, true);
+                            }
+                            else if (op == DEL_COMMAND)
+                            {
+                                updateVlanMemberNftRule(vlan_id, port_str, false);
+                            }
+                        }
+                    }
+                }
+
+                if (op == SET_COMMAND)
+                {
+                    m_appNeighSuppressVlanTableProducer.set(key, kfvFieldsValues(t));
+                }
+                else if (op == DEL_COMMAND)
+                {
+                    m_appNeighSuppressVlanTableProducer.del(key);
+                }
+            }
+            else
+            {
+                SWSS_LOG_ERROR("setNetdevNeighSuppress %s mode %s fail", netdev.c_str(), suppress_mode.c_str());
+                ++it;
+                continue;
+            }
+        }
+        catch (const std::exception &e)
+        {
+            SWSS_LOG_ERROR("setNetdevNeighSuppress %s mode %s fail. msg: %s", netdev.c_str(), suppress_mode.c_str(), e.what());
+            ++it;
+            continue;
+        }
+
+        it = consumer.m_toSync.erase(it);
+    }
+}
+void VlanMgr::doNeighSuppressVlanTask(Consumer &consumer)
+{
+    auto it = consumer.m_toSync.begin();
+    while (it != consumer.m_toSync.end())
+    {
+        auto &t = it->second;
+
+        string key = kfvKey(t);
+        string vlan_alias;
+        string netdev;
+        int vlan_id;
+        /* Ensure the key starts with "Vlan" otherwise ignore */
+        if (strncmp(key.c_str(), VLAN_PREFIX, 4))
+        {
+            SWSS_LOG_ERROR("Invalid key format. No 'Vlan' prefix: %s", key.c_str());
+            it = consumer.m_toSync.erase(it);
+            continue;
+        }
+        vlan_alias = key;
+        vlan_id = stoi(key.substr(4));
+        string op = kfvOp(t);
+
+        for (auto i : kfvFieldsValues(t))
+        {
+            if (fvField(i) == "netdev")
+            {
+                netdev = fvValue(i);
+                break;
+            }
+        }
+
+        if (op == SET_COMMAND)
+        {
+            string mode;
+            vector<FieldValueTuple> values;
+            m_cfgNeighSuppressVlanTable.get(vlan_alias, values);
+            auto isSuppressField = [](FieldValueTuple fv) { return fvField(fv) == "suppress"; };
+            auto valueIt = std::find_if(values.begin(), values.end(), isSuppressField);
+            if (valueIt != values.end())
+            {
+                mode = fvValue(*valueIt);
+                SWSS_LOG_INFO("suppress is %s", mode.c_str());
+            }
+
+            if (mode == "on" && netdev !="")
+            {
+                try
+                {
+                    if (setNetdevNeighSuppress(netdev, "on"))
+                    {
+                        SWSS_LOG_INFO("setNetdevNeighSuppress %s mode: %s ok", netdev.c_str(), mode.c_str());
+                        key = vlan_alias;
+                        vector<FieldValueTuple> fvVector;
+                        FieldValueTuple suppress("suppress", "on");
+                        fvVector.push_back(suppress);
+                        m_appNeighSuppressVlanTableProducer.set(key, fvVector);
+                        updateVlanMemberNftRule(vlan_id, true);
+                        m_vlanVtepMap[vlan_id] = netdev;
+                        it = consumer.m_toSync.erase(it);
+                        continue;
+                    }
+                }
+                catch (const std::exception &e)
+                {
+                    SWSS_LOG_ERROR("setNetdevNeighSuppress %s mode %s fail. msg: %s", netdev.c_str(), mode.c_str(), e.what());
+                }
+            }
+            else
+            {
+                removeVlanNeighborSuppression(vlan_id);
+                m_appNeighSuppressVlanTableProducer.del(key);
+                m_vlanVtepMap.erase(vlan_id);
+                it = consumer.m_toSync.erase(it);
+                continue;
+            }
+        }
+        else if (op == DEL_COMMAND)
+        {
+            removeVlanNeighborSuppression(vlan_id);
+            m_appNeighSuppressVlanTableProducer.del(key);
+            m_vlanVtepMap.erase(vlan_id);
+            it = consumer.m_toSync.erase(it);
+            continue;
+        }
+        else
+        {
+            SWSS_LOG_ERROR("Unknown operation type %s", op.c_str());
+            it = consumer.m_toSync.erase(it);
+            continue;
+        }
+
+    }
+}
 void VlanMgr::doTask(Consumer &consumer)
 {
     SWSS_LOG_ENTER();
@@ -787,9 +1337,40 @@ void VlanMgr::doTask(Consumer &consumer)
     {
         doVlanMemberTask(consumer);
     }
+    else if (table_name == CFG_NEIGH_SUPPRESS_VLAN_TABLE_NAME)
+    {
+        SWSS_LOG_DEBUG("Table:CFG_NEIGH_SUPPRESS_VLAN_TABLE_NAME");
+        doNeighSuppressTask(consumer);
+    }
+    else if (table_name == STATE_NEIGH_SUPPRESS_VLAN_TABLE_NAME)
+    {
+        SWSS_LOG_DEBUG("Table:STATE_NEIGH_SUPPRESS_VLAN_TABLE_NAME");
+        doNeighSuppressVlanTask(consumer);
+    }
     else
     {
         SWSS_LOG_ERROR("Unknown config table %s ", table_name.c_str());
         throw runtime_error("VlanMgr doTask failure.");
     }
 }
+
+void VlanMgr::removeVlanNeighborSuppression(int vlan_id)
+{
+    SWSS_LOG_ENTER();
+
+    if (m_vlanVtepMap.find(vlan_id) != m_vlanVtepMap.end())
+    {
+        auto vtep_name = m_vlanVtepMap[vlan_id];
+        setNetdevNeighSuppress(vtep_name, "off");
+        m_vlanVtepMap.erase(vlan_id);
+    }
+    else
+    {
+        SWSS_LOG_INFO("vlan_id %d not exist in m_vlanVtepMap, ingore to off neigh_suppress", vlan_id);
+    }
+
+    SWSS_LOG_INFO("remove nftables rules for vlan %d", vlan_id);
+    updateVlanMemberNftRule(vlan_id, false);
+}
+
+

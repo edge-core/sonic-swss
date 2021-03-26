@@ -318,7 +318,8 @@ namespace portsorch_test
                 { APP_VLAN_TABLE_NAME, portsorch_base_pri + 2 },
                 { APP_VLAN_MEMBER_TABLE_NAME, portsorch_base_pri },
                 { APP_LAG_TABLE_NAME, portsorch_base_pri + 4 },
-                { APP_LAG_MEMBER_TABLE_NAME, portsorch_base_pri }
+                { APP_LAG_MEMBER_TABLE_NAME, portsorch_base_pri },
+                { APP_NEIGH_SUPPRESS_VLAN_TABLE_NAME, portsorch_base_pri}
             };
 
             ASSERT_EQ(gPortsOrch, nullptr);
@@ -2118,7 +2119,8 @@ namespace portsorch_test
                 APP_LAG_TABLE_NAME,
                 APP_LAG_MEMBER_TABLE_NAME,
                 APP_VLAN_TABLE_NAME,
-                APP_VLAN_MEMBER_TABLE_NAME})
+                APP_VLAN_MEMBER_TABLE_NAME,
+                APP_NEIGH_SUPPRESS_VLAN_TABLE_NAME})
         {
             auto exec = gPortsOrch->getExecutor(tableName);
             auto consumer = static_cast<Consumer*>(exec);

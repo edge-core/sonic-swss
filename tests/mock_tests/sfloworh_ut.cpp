@@ -182,7 +182,8 @@ namespace sflow_test
                 { APP_VLAN_TABLE_NAME,        portsorchBasePri + 2 },
                 { APP_VLAN_MEMBER_TABLE_NAME, portsorchBasePri     },
                 { APP_LAG_TABLE_NAME,         portsorchBasePri + 4 },
-                { APP_LAG_MEMBER_TABLE_NAME,  portsorchBasePri     }
+                { APP_LAG_MEMBER_TABLE_NAME,  portsorchBasePri     },
+                { APP_NEIGH_SUPPRESS_VLAN_TABLE_NAME, portsorchBasePri}
             };
 
             gPortsOrch = new PortsOrch(this->appDb.get(), this->stateDb.get(), portTableList, this->chassisAppDb.get());

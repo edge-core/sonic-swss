@@ -3357,6 +3357,7 @@ bool PortsOrch::bake()
     addExistingData(APP_LAG_MEMBER_TABLE_NAME);
     addExistingData(APP_VLAN_TABLE_NAME);
     addExistingData(APP_VLAN_MEMBER_TABLE_NAME);
+    addExistingData(APP_NEIGH_SUPPRESS_VLAN_TABLE_NAME);
 
     return true;
 }
@@ -5112,6 +5113,83 @@ void PortsOrch::doLagMemberTask(Consumer &consumer)
     }
 }
 
+bool PortsOrch::setVlanNeighSuppress(const string &vlan_alias, bool do_enable)
+{
+    Port p;
+    sai_status_t status;
+
+    SWSS_LOG_INFO("setVlanNeighSuppress vlan_alias: %s, do_enable: %d", vlan_alias.c_str(), do_enable);
+
+    if (!getPort(vlan_alias, p))
+    {
+        SWSS_LOG_ERROR("setVlanNeighSuppress: Failed to get vlan info. vlan_alias: %s, do_enable: %d", vlan_alias.c_str(), do_enable);
+        return false;
+    }
+    auto vlan_oid = p.m_vlan_info.vlan_oid;
+
+    sai_attribute_t vlan_attr;
+    vlan_attr.id = SAI_VLAN_ATTR_NEIGHBOR_SUPPRESSION_ENABLE;
+    vlan_attr.value.booldata = do_enable;
+
+    status = sai_vlan_api->set_vlan_attribute(vlan_oid, &vlan_attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to set VLAN %s suppress mode %d, rv:%d",
+                vlan_alias.c_str(), do_enable, status);
+        return false;
+    }
+
+    return true;
+}
+void PortsOrch::doNeighSuppressTask(Consumer &consumer)
+{
+    string platform = getenv("platform") ? getenv("platform") : "";
+
+    SWSS_LOG_ENTER();
+    auto it = consumer.m_toSync.begin();
+    while (it != consumer.m_toSync.end())
+    {
+        /* Check platform */
+        if (platform != BRCM_PLATFORM_SUBSTRING)
+        {
+            SWSS_LOG_NOTICE("This platform %s does not support NeighSuppress.", platform.c_str());
+            it = consumer.m_toSync.erase(it);
+            continue;
+        }
+
+        auto &t = it->second;
+
+        string key = kfvKey(t);
+        SWSS_LOG_INFO("doNeighSuppressTask: key:%s", key.c_str());
+
+        string vlan_alias = key;
+
+        string op = kfvOp(t);
+
+        if (op == SET_COMMAND)
+        {
+            string status;
+            for (auto i : kfvFieldsValues(t))
+            {
+                if (fvField(i) == "suppress")
+                    status = fvValue(i);
+            }
+
+            setVlanNeighSuppress(vlan_alias, status == "on" ? true : false);
+            it = consumer.m_toSync.erase(it);
+        }
+        else if (op == DEL_COMMAND)
+        {
+            setVlanNeighSuppress(vlan_alias, false);
+            it = consumer.m_toSync.erase(it);
+        }
+        else
+        {
+            SWSS_LOG_ERROR("Unknown operation type %s", op.c_str());
+            it = consumer.m_toSync.erase(it);
+        }
+    }
+}
 void PortsOrch::doTask()
 {
     auto tableOrder = {
@@ -5119,7 +5197,8 @@ void PortsOrch::doTask()
         APP_LAG_TABLE_NAME,
         APP_LAG_MEMBER_TABLE_NAME,
         APP_VLAN_TABLE_NAME,
-        APP_VLAN_MEMBER_TABLE_NAME
+        APP_VLAN_MEMBER_TABLE_NAME,
+        APP_NEIGH_SUPPRESS_VLAN_TABLE_NAME
     };
 
     for (auto tableName: tableOrder)
@@ -5181,6 +5260,11 @@ void PortsOrch::doTask(Consumer &consumer)
         else if (table_name == APP_LAG_MEMBER_TABLE_NAME || table_name == CHASSIS_APP_LAG_MEMBER_TABLE_NAME)
         {
             doLagMemberTask(consumer);
+        }
+        else if (table_name == APP_NEIGH_SUPPRESS_VLAN_TABLE_NAME)
+        {
+            SWSS_LOG_INFO("PortsOrch::doTask APP_NEIGH_SUPPRESS_VLAN_TABLE_NAME");
+            doNeighSuppressTask(consumer);
         }
     }
 }
