@@ -347,6 +347,7 @@ private:
     void doLagTask(Consumer &consumer);
     void doLagMemberTask(Consumer &consumer);
     void doTransceiverPresenceCheck(Consumer &consumer);
+    void doNeighSuppressTask(Consumer &consumer);
 
     void doTask(NotificationConsumer &consumer);
     void doTask(swss::SelectableTimer &timer);
@@ -476,6 +477,7 @@ private:
 
 
     void removePortSerdesAttribute(sai_object_id_t port_id);
+    bool setVlanNeighSuppress(const string &vlan_alias, bool do_enable);
 
     bool getSaiAclBindPointType(Port::Type                type,
                                 sai_acl_bind_point_type_t &sai_acl_bind_type);

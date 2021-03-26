@@ -32,11 +32,6 @@ int main(int argc, char **argv)
 
     try
     {
-        vector<string> cfg_vlan_tables = {
-            CFG_VLAN_TABLE_NAME,
-            CFG_VLAN_MEMBER_TABLE_NAME,
-        };
-
         DBConnector cfgDb("CONFIG_DB", 0);
         DBConnector appDb("APPL_DB", 0);
         DBConnector stateDb("STATE_DB", 0);
@@ -58,7 +53,20 @@ int main(int argc, char **argv)
         }
         gMacAddress = MacAddress(it->second);
 
-        VlanMgr vlanmgr(&cfgDb, &appDb, &stateDb, cfg_vlan_tables);
+
+        TableConnector conf_vlan_table(&cfgDb, CFG_VLAN_TABLE_NAME);
+        TableConnector conf_vlan_member_table(&cfgDb, CFG_VLAN_MEMBER_TABLE_NAME);
+        TableConnector conf_neigh_suppress_vlan_table(&cfgDb, CFG_NEIGH_SUPPRESS_VLAN_TABLE_NAME);
+        TableConnector state_neigh_suppress_vlan_table(&stateDb, STATE_NEIGH_SUPPRESS_VLAN_TABLE_NAME);
+
+        vector<TableConnector> tables = {
+            conf_vlan_table,
+            conf_vlan_member_table,
+            conf_neigh_suppress_vlan_table,
+            state_neigh_suppress_vlan_table
+        };
+
+        VlanMgr vlanmgr(&cfgDb, &appDb, &stateDb, tables);
 
         std::vector<Orch *> cfgOrchList = {&vlanmgr};
 
