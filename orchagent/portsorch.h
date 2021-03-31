@@ -12,6 +12,7 @@
 #include "flex_counter_manager.h"
 #include "gearboxutils.h"
 #include "saihelper.h"
+#include "lagid.h"
 
 
 #define FCS_LEN 4
@@ -73,7 +74,7 @@ struct VlanMemberUpdate
 class PortsOrch : public Orch, public Subject
 {
 public:
-    PortsOrch(DBConnector *db, vector<table_name_with_pri_t> &tableNames);
+    PortsOrch(DBConnector *db, vector<table_name_with_pri_t> &tableNames, DBConnector *chassisAppDb);
 
     bool allPortsReady();
     bool isInitDone();
@@ -240,7 +241,7 @@ private:
     bool addVlan(string vlan);
     bool removeVlan(Port vlan);
 
-    bool addLag(string lag);
+    bool addLag(string lag, uint32_t spa_id, int32_t switch_id);
     bool removeLag(Port lag);
     bool addLagMember(Port &lag, Port &port, bool enableForwarding);
     bool removeLagMember(Port &lag, Port &port);
@@ -303,7 +304,14 @@ private:
     sai_uint32_t m_systemPortCount;
     bool getSystemPorts();
     bool addSystemPorts();
-    
+    unique_ptr<Table> m_tableVoqSystemLagTable;
+    unique_ptr<Table> m_tableVoqSystemLagMemberTable;
+    void voqSyncAddLag(Port &lag);
+    void voqSyncDelLag(Port &lag);
+    void voqSyncAddLagMember(Port &lag, Port &port);
+    void voqSyncDelLagMember(Port &lag, Port &port);
+    unique_ptr<LagIdAllocator> m_lagIdAllocator;
+
 };
 #endif /* SWSS_PORTSORCH_H */
 
