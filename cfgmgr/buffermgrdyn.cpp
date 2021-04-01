@@ -1001,7 +1001,10 @@ void BufferMgrDynamic::refreshSharedHeadroomPool(bool enable_state_updated_by_ra
             updateBufferPoolToDb(INGRESS_LOSSLESS_PG_POOL_NAME, ingressLosslessPool);
     }
 
-    checkSharedBufferPoolSize();
+    if (m_portInitDone)
+    {
+        checkSharedBufferPoolSize();
+    }
 }
 
 // Main flows
