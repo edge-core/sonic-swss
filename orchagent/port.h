@@ -32,6 +32,7 @@ struct VlanInfo
 {
     sai_object_id_t     vlan_oid = 0;
     sai_vlan_id_t       vlan_id = 0;
+    sai_object_id_t     host_intf_id = SAI_NULL_OBJECT_ID;
 };
 
 class Port

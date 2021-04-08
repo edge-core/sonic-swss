@@ -81,6 +81,9 @@ public:
     bool createBindAclTableGroup(sai_object_id_t id, sai_object_id_t &group_oid, acl_stage_type_t acl_stage = ACL_STAGE_EGRESS);
     bool bindAclTable(sai_object_id_t id, sai_object_id_t table_oid, sai_object_id_t &group_member_oid, acl_stage_type_t acl_stage = ACL_STAGE_INGRESS);
 
+    bool createVlanHostIntf(Port& vl, string hostif_name);
+    bool removeVlanHostIntf(Port vl);
+
     bool getPortPfc(sai_object_id_t portId, uint8_t *pfc_bitmask);
     bool setPortPfc(sai_object_id_t portId, uint8_t pfc_bitmask);
 

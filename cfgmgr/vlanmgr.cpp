@@ -264,6 +264,7 @@ void VlanMgr::doVlanTask(Consumer &consumer)
         {
             string admin_status;
             string mtu = DEFAULT_MTU_STR;
+            string hostif_name = "";
             vector<FieldValueTuple> fvVector;
             string members;
 
@@ -313,6 +314,10 @@ void VlanMgr::doVlanTask(Consumer &consumer)
                 else if (fvField(i) == "members@") {
                     members = fvValue(i);
                 }
+                else if (fvField(i) == "hostif_name")
+                {
+                    hostif_name = fvValue(i);
+                }
             }
             /* fvVector should not be empty */
             if (fvVector.empty())
@@ -323,6 +328,9 @@ void VlanMgr::doVlanTask(Consumer &consumer)
 
             FieldValueTuple m("mtu", mtu);
             fvVector.push_back(m);
+
+            FieldValueTuple hostif_name_fvt("hostif_name", hostif_name);
+            fvVector.push_back(hostif_name_fvt);
 
             m_appVlanTableProducer.set(key, fvVector);
             m_vlans.insert(key);
