@@ -2,7 +2,6 @@ import pytest
 from swsscommon import swsscommon
 from dvslib.dvs_database import DVSDatabase
 import ast
-import time
 
 class TestVirtualChassis(object):
 
@@ -321,17 +320,9 @@ class TestVirtualChassis(object):
                     fvs = swsscommon.FieldValuePairs([("admin", "up"), ("mtu", "9100")])
                     psTbl_lag.set(f"{test_lag1_name}", fvs)
                     
-                    time.sleep(1)
-
-                    # Add port channel member
-                    fvs = swsscommon.FieldValuePairs([("status", "enabled")])
-                    psTbl_lagMember.set(f"{test_lag1_name}:{test_lag1_member}", fvs)
-                    
-                    time.sleep(1)
-                    
                     # Verify creation of the PorChannel with voq system port aggregator id in asic db
                     asic_db = dvs.get_asic_db()
-                    lagkeys = asic_db.get_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG")
+                    lagkeys = asic_db.wait_for_n_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG", 1)
                     assert len(lagkeys) == 1, "The LAG entry for configured PortChannel is not available in asic db"
                     
                     # Check for the presence of voq system port aggregate id attribute
@@ -339,8 +330,12 @@ class TestVirtualChassis(object):
                     spa_id = lag_entry.get("SAI_LAG_ATTR_SYSTEM_PORT_AGGREGATE_ID")
                     assert spa_id != "", "VOQ System port aggregate id not present for the LAG"
                     
+                    # Add port channel member
+                    fvs = swsscommon.FieldValuePairs([("status", "enabled")])
+                    psTbl_lagMember.set(f"{test_lag1_name}:{test_lag1_member}", fvs)
+                    
                     # Check for presence of lag member added
-                    lagmemberkeys = asic_db.get_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG_MEMBER")
+                    lagmemberkeys = asic_db.wait_for_n_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG_MEMBER", 1)
                     assert len(lagmemberkeys) == 1, "The LAG member for configured PortChannel is not available in asic db"
                     
                     break
@@ -350,7 +345,7 @@ class TestVirtualChassis(object):
             if name.startswith("supervisor"):
                 dvs = dvss[name]
                 chassis_app_db = DVSDatabase(swsscommon.CHASSIS_APP_DB, dvs.redis_chassis_sock)
-                syslagkeys = chassis_app_db.get_keys("SYSTEM_LAG_TABLE")
+                syslagkeys = chassis_app_db.wait_for_n_keys("SYSTEM_LAG_TABLE", 1)
                 assert len(syslagkeys) == 1, "System lag entry is not available in chassis app db"
                
                 # system lag alias (key) should be unique across chassis. To ensure such uniqueness,
@@ -365,7 +360,7 @@ class TestVirtualChassis(object):
                 # This id must be same as the id allocated in owner linecard.
                 assert remote_lag_id == spa_id, "System lag id in chassis app db is not same as allocated lag id"
                     
-                syslagmemberkeys = chassis_app_db.get_keys("SYSTEM_LAG_MEMBER_TABLE")
+                syslagmemberkeys = chassis_app_db.wait_for_n_keys("SYSTEM_LAG_MEMBER_TABLE", 1)
                 assert len(syslagmemberkeys) == 1, "No system lag member entries in chassis app db"
                 
                 break
@@ -387,7 +382,7 @@ class TestVirtualChassis(object):
                 if lc_switch_id != "0":
                     # Linecard other than linecard 1 (owner line card)
                     asic_db = dvs.get_asic_db()
-                    remotesyslagkeys = asic_db.get_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG")
+                    remotesyslagkeys = asic_db.wait_for_n_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG", 1)
                     assert len(remotesyslagkeys) == 1, "No remote system lag entries in ASIC_DB"
                     
                     remotesyslag_entry = asic_db.get_entry("ASIC_STATE:SAI_OBJECT_TYPE_LAG", remotesyslagkeys[0])
@@ -396,7 +391,7 @@ class TestVirtualChassis(object):
                     assert remote_lag_id == spa_id, "Remote system lag programmed with wrong lag id"
                     
                     # Verify remote system lag has system port as member
-                    lagmemberkeys = asic_db.get_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG_MEMBER")
+                    lagmemberkeys = asic_db.wait_for_n_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG_MEMBER", 1)
                     assert len(lagmemberkeys) == 1, "The LAG member for remote system lag is not available in asic db"
                     
                     remotelagmember_entry = asic_db.get_entry("ASIC_STATE:SAI_OBJECT_TYPE_LAG_MEMBER", lagmemberkeys[0])
@@ -453,11 +448,9 @@ class TestVirtualChassis(object):
                     fvs = swsscommon.FieldValuePairs([("admin", "up"), ("mtu", "9100")])
                     psTbl_lag.set(f"{test_lag2_name}", fvs)
                     
-                    time.sleep(1)
-
                     # Verify creation of the PorChannels with voq system port aggregator id in asic db
                     asic_db = dvs.get_asic_db()
-                    lagkeys = asic_db.get_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG")
+                    lagkeys = asic_db.wait_for_n_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG", 2)
                     assert len(lagkeys) == 2, "Two configured LAG entries are not available in asic db"
                     
                     # Check for the presence of voq system port aggregate id attribute for 2 LAGs
@@ -539,19 +532,29 @@ class TestVirtualChassis(object):
                     psTbl_lag = swsscommon.ProducerStateTable(app_db, "LAG_TABLE")
                     psTbl_lagMember = swsscommon.ProducerStateTable(app_db, "LAG_MEMBER_TABLE")
 
+                    # Make sure presence of 2 port channels before deleting
+                    asic_db = dvs.get_asic_db()
+                    lagkeys = asic_db.wait_for_n_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG", 2)
+                    assert len(lagkeys) == 2, "Expected 2 PortChannels are not available"
+
+                    # Make sure presence of total of 1 lag member added in test_lag1_name
+                    # No lag member added in test_lag2_name
+                    lagmemberkeys = asic_db.wait_for_n_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG_MEMBER", 1)
+                    assert len(lagmemberkeys) == 1, "Expected 1 LAG members are not available"
+
                     # Delete port channel member of PortChannel test_lag1_name
                     psTbl_lagMember.delete(f"{test_lag1_name}:{test_lag1_member}")
 
-                    time.sleep(1)
+                    # Verify the lag member is removed from asic db
+                    lagmemberkeys = asic_db.wait_for_n_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG_MEMBER", 0)
+                    assert len(lagmemberkeys) == 0, "Deleted LAG member is not removed from asic db"
 
                     # Delete PortChannel test_lag1_name
                     psTbl_lag.delete(f"{test_lag1_name}")
                     
-                    time.sleep(1)
-
                     # Verify deletion of the PorChannel
                     asic_db = dvs.get_asic_db()
-                    lagkeys = asic_db.get_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG")
+                    lagkeys = asic_db.wait_for_n_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG", 1)
                     assert len(lagkeys) == 1, "Two LAG entries in asic db even after deleting a PortChannel"
 
                     # Create PortChannel test_lag3_name. This should be addedd successfully since deleting 
@@ -559,12 +562,10 @@ class TestVirtualChassis(object):
                     fvs = swsscommon.FieldValuePairs([("admin", "up"), ("mtu", "9100")])
                     psTbl_lag.set(f"{test_lag3_name}", fvs)
 
-                    time.sleep(1)
-
                     # Verify creation of the additional PortChannel after making space for more 
                     # PortChannels by deleting some PortChannels
                     asic_db = dvs.get_asic_db()
-                    lagkeys = asic_db.get_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG")
+                    lagkeys = asic_db.wait_for_n_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG", 2)
                     assert len(lagkeys) == 2, "Two configured LAG entries are not available in asic db"
                     
                     # Check for the presence of voq system port aggregate id attribute for 2 LAGs
@@ -582,11 +583,9 @@ class TestVirtualChassis(object):
                     
                     psTbl_lag.delete(f"{test_lag3_name}")
 
-                    time.sleep(1)
-
                     # Verify deletion of all PortChannels
                     asic_db = dvs.get_asic_db()
-                    lagkeys = asic_db.get_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG")
+                    lagkeys = asic_db.wait_for_n_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG", 0)
                     assert len(lagkeys) == 0, "LAG entries in asic db even after deleting all PortChannels"
                     
                     break
@@ -596,10 +595,10 @@ class TestVirtualChassis(object):
             if name.startswith("supervisor"):
                 dvs = dvss[name]
                 chassis_app_db = DVSDatabase(swsscommon.CHASSIS_APP_DB, dvs.redis_chassis_sock)
-                syslagkeys = chassis_app_db.get_keys("SYSTEM_LAG_TABLE")
+                syslagkeys = chassis_app_db.wait_for_n_keys("SYSTEM_LAG_TABLE", 0)
                 assert len(syslagkeys) == 0, "Stale system lag entries in chassis app db"
                     
-                syslagmemberkeys = chassis_app_db.get_keys("SYSTEM_LAG_MEMBER_TABLE")
+                syslagmemberkeys = chassis_app_db.wait_for_n_keys("SYSTEM_LAG_MEMBER_TABLE", 0)
                 assert len(syslagmemberkeys) == 0, "Stale system lag member entries in chassis app db"
                 
                 break
@@ -621,11 +620,11 @@ class TestVirtualChassis(object):
                 if lc_switch_id != "0":
                     # Linecard other than linecard 1 (owner line card)
                     asic_db = dvs.get_asic_db()
-                    remotesyslagkeys = asic_db.get_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG")
+                    remotesyslagkeys = asic_db.wait_for_n_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG", 0)
                     assert len(remotesyslagkeys) == 0, "Stale remote system lag entries in asic db"
                     
                     # Verify cleaning of system lag members
-                    lagmemberkeys = asic_db.get_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG_MEMBER")
+                    lagmemberkeys = asic_db.wait_for_n_keys("ASIC_STATE:SAI_OBJECT_TYPE_LAG_MEMBER", 0)
                     assert len(lagmemberkeys) == 0, "Stale system lag member entries in asic db"
                     
                     break
