@@ -1379,8 +1379,11 @@ void FdbOrch::updateVlanMember(const VlanMemberUpdate& update)
     {
         swss::Port vlan = update.vlan;
         swss::Port port = update.member;
-        flushFDBEntries(port.m_bridge_port_id, vlan.m_vlan_info.vlan_oid);
-        notifyObserversFDBFlush(port, vlan.m_vlan_info.vlan_oid);
+        if(port.m_type != Port::TUNNEL)
+        {
+            flushFDBEntries(port.m_bridge_port_id, vlan.m_vlan_info.vlan_oid);
+            notifyObserversFDBFlush(port, vlan.m_vlan_info.vlan_oid);
+        }
         return;
     }
 
