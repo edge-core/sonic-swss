@@ -2283,7 +2283,7 @@ void PortsOrch::doVlanTask(Consumer &consumer)
                 {
                     mtu = (uint32_t)stoul(fvValue(i));
                 }
-                if (fvField(i) == "hostif_name")
+                if (fvField(i) == "host_ifname")
                 {
                     hostif_name = fvValue(i);
                 }

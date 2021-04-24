@@ -314,7 +314,7 @@ void VlanMgr::doVlanTask(Consumer &consumer)
                 else if (fvField(i) == "members@") {
                     members = fvValue(i);
                 }
-                else if (fvField(i) == "hostif_name")
+                else if (fvField(i) == "host_ifname")
                 {
                     hostif_name = fvValue(i);
                 }
@@ -329,7 +329,7 @@ void VlanMgr::doVlanTask(Consumer &consumer)
             FieldValueTuple m("mtu", mtu);
             fvVector.push_back(m);
 
-            FieldValueTuple hostif_name_fvt("hostif_name", hostif_name);
+            FieldValueTuple hostif_name_fvt("host_ifname", hostif_name);
             fvVector.push_back(hostif_name_fvt);
 
             m_appVlanTableProducer.set(key, fvVector);
