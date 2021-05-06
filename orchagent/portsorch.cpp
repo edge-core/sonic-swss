@@ -6802,6 +6802,8 @@ bool PortsOrch::addTunnel(string tunnel_alias, sai_object_id_t tunnel_id, bool h
     {
         tunnel.m_learn_mode = SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE;
     }
+
+    tunnel.m_oper_status = SAI_PORT_OPER_STATUS_DOWN;
     m_portList[tunnel_alias] = tunnel;
     saiOidToAlias[tunnel_id] = tunnel_alias;
 
