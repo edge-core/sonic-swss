@@ -2246,7 +2246,7 @@ bool PortsOrch::setPortPvid(Port &port, sai_uint32_t pvid)
 
     if(port.m_type == Port::TUNNEL)
     {
-        SWSS_LOG_ERROR("pvid setting for tunnel %s is not allowed", port.m_alias.c_str());
+        SWSS_LOG_INFO("pvid setting for tunnel %s is not allowed", port.m_alias.c_str());
         return true;
     }
 
@@ -6480,7 +6480,7 @@ bool PortsOrch::removeLag(Port lag)
 
     if (m_port_ref_count[lag.m_alias] > 0)
     {
-        SWSS_LOG_ERROR("Failed to remove ref count %d LAG %s",
+        SWSS_LOG_NOTICE("Failed to remove ref count %d LAG %s",
                         m_port_ref_count[lag.m_alias],
                         lag.m_alias.c_str());
         return false;
