@@ -727,6 +727,8 @@ bool PortsOrch::getPortByBridgePortId(sai_object_id_t bridge_port_id, Port &port
 
 bool PortsOrch::addSubPort(Port &port, const string &alias, const bool &adminUp, const uint32_t &mtu)
 {
+    SWSS_LOG_ENTER();
+
     size_t found = alias.find(VLAN_SUB_INTERFACE_SEPARATOR);
     if (found == string::npos)
     {
@@ -804,15 +806,19 @@ bool PortsOrch::addSubPort(Port &port, const string &alias, const bool &adminUp,
         }
     }
 
-    parentPort.m_child_ports.insert(p.m_alias);
+    parentPort.m_child_ports.insert(alias);
+    increasePortRefCount(parentPort.m_alias);
 
     m_portList[alias] = p;
+    m_port_ref_count[alias] = 0;
     port = p;
     return true;
 }
 
 bool PortsOrch::removeSubPort(const string &alias)
 {
+    SWSS_LOG_ENTER();
+
     auto it = m_portList.find(alias);
     if (it == m_portList.end())
     {
@@ -827,6 +833,12 @@ bool PortsOrch::removeSubPort(const string &alias)
         return false;
     }
 
+    if (m_port_ref_count[alias] > 0)
+    {
+        SWSS_LOG_ERROR("Unable to remove sub interface %s: ref count %u", alias.c_str(), m_port_ref_count[alias]);
+        return false;
+    }
+
     Port parentPort;
     if (!getPort(port.m_parent_port_id, parentPort))
     {
@@ -836,6 +848,10 @@ bool PortsOrch::removeSubPort(const string &alias)
     if (!parentPort.m_child_ports.erase(alias))
     {
         SWSS_LOG_WARN("Sub interface %s not associated to parent port %s", alias.c_str(), parentPort.m_alias.c_str());
+    }
+    else
+    {
+        decreasePortRefCount(parentPort.m_alias);
     }
     m_portList[parentPort.m_alias] = parentPort;
 
@@ -3104,6 +3120,13 @@ void PortsOrch::doPortTask(Consumer &consumer)
         }
         else if (op == DEL_COMMAND)
         {
+            if (m_port_ref_count[alias] > 0)
+            {
+                SWSS_LOG_WARN("Unable to remove port %s: ref count %u", alias.c_str(), m_port_ref_count[alias]);
+                it++;
+                continue;
+            }
+
             SWSS_LOG_NOTICE("Deleting Port %s", alias.c_str());
             auto port_id = m_portList[alias].m_port_id;
             auto hif_id = m_portList[alias].m_hif_id;
@@ -4258,6 +4281,7 @@ bool PortsOrch::addVlan(string vlan_alias)
 bool PortsOrch::removeVlan(Port vlan)
 {
     SWSS_LOG_ENTER();
+
     if (m_port_ref_count[vlan.m_alias] > 0)
     {
         SWSS_LOG_ERROR("Failed to remove ref count %d VLAN %s",
