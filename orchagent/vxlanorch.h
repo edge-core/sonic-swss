@@ -19,12 +19,23 @@ enum class MAP_T
     VNI_TO_BRIDGE
 };
 
+typedef enum
+{
+    TUNNEL_MAP_T_VLAN,
+    TUNNEL_MAP_T_BRIDGE,
+    TUNNEL_MAP_T_VIRTUAL_ROUTER,
+} tunnel_map_type_t;
+
 struct tunnel_ids_t
 {
-    sai_object_id_t tunnel_encap_id;
-    sai_object_id_t tunnel_decap_id;
-    sai_object_id_t tunnel_id;
-    sai_object_id_t tunnel_term_id;
+    sai_object_id_t tunnel_vlan_to_vni_encap_id = SAI_NULL_OBJECT_ID;
+    sai_object_id_t tunnel_vni_to_vlan_decap_id = SAI_NULL_OBJECT_ID;
+    sai_object_id_t tunnel_vrid_to_vni_encap_id = SAI_NULL_OBJECT_ID;
+    sai_object_id_t tunnel_vni_to_vrid_decap_id = SAI_NULL_OBJECT_ID;
+    sai_object_id_t tunnel_bridge_to_vni_encap_id = SAI_NULL_OBJECT_ID;
+    sai_object_id_t tunnel_vni_to_bridge_decap_id = SAI_NULL_OBJECT_ID;
+    sai_object_id_t tunnel_id = SAI_NULL_OBJECT_ID;
+    sai_object_id_t tunnel_term_id = SAI_NULL_OBJECT_ID;
 };
 
 struct nh_key_t
@@ -82,9 +93,9 @@ public:
         return active_;
     }
 
-    bool createTunnel(MAP_T encap, MAP_T decap, uint8_t encap_ttl=0);
-    sai_object_id_t addEncapMapperEntry(sai_object_id_t obj, uint32_t vni);
-    sai_object_id_t addDecapMapperEntry(sai_object_id_t obj, uint32_t vni);
+    bool createTunnel(vector<MAP_T> encap, vector<MAP_T> decap, uint8_t encap_ttl=0);
+    sai_object_id_t addEncapMapperEntry(tunnel_map_type_t map, sai_object_id_t obj, uint32_t vni);
+    sai_object_id_t addDecapMapperEntry(tunnel_map_type_t map, sai_object_id_t obj, uint32_t vni);
 
     void insertMapperEntry(sai_object_id_t encap, sai_object_id_t decap, uint32_t vni);
     std::pair<sai_object_id_t, sai_object_id_t> getMapperEntry(uint32_t vni);
@@ -94,14 +105,44 @@ public:
         return ids_.tunnel_id;
     }
 
-    sai_object_id_t getDecapMapId() const
+    sai_object_id_t getDecapMapId(tunnel_map_type_t mapType) const
     {
-        return ids_.tunnel_decap_id;
+        if (mapType == TUNNEL_MAP_T_VLAN)
+        {
+            return ids_.tunnel_vni_to_vlan_decap_id;
+        }
+        else if (mapType == TUNNEL_MAP_T_VIRTUAL_ROUTER)
+        {
+            return ids_.tunnel_vni_to_vrid_decap_id;
+        }
+        else if (mapType == TUNNEL_MAP_T_BRIDGE)
+        {
+            return ids_.tunnel_vni_to_bridge_decap_id;
+        }
+        else
+        {
+            return SAI_NULL_OBJECT_ID;
+        }
     }
 
-    sai_object_id_t getEncapMapId() const
+    sai_object_id_t getEncapMapId(tunnel_map_type_t mapType) const
     {
-        return ids_.tunnel_encap_id;
+        if (mapType == TUNNEL_MAP_T_VLAN)
+        {
+            return ids_.tunnel_vlan_to_vni_encap_id;
+        }
+        else if (mapType == TUNNEL_MAP_T_VIRTUAL_ROUTER)
+        {
+            return ids_.tunnel_vrid_to_vni_encap_id;
+        }
+        else if (mapType == TUNNEL_MAP_T_BRIDGE)
+        {
+            return ids_.tunnel_bridge_to_vni_encap_id;
+        }
+        else
+        {
+            return SAI_NULL_OBJECT_ID;
+        }
     }
 
     sai_object_id_t getTunnelTermId() const
@@ -121,7 +162,7 @@ private:
     string tunnel_name_;
     bool active_ = false;
 
-    tunnel_ids_t ids_ = {0, 0, 0, 0};
+    tunnel_ids_t ids_;
     std::pair<MAP_T, MAP_T> tunnel_map_ = { MAP_T::MAP_TO_INVALID, MAP_T::MAP_TO_INVALID };
 
     TunnelMapEntries tunnel_map_entries_;
@@ -148,13 +189,6 @@ public:
 
 typedef std::unique_ptr<VxlanTunnel> VxlanTunnel_T;
 typedef std::map<std::string, VxlanTunnel_T> VxlanTunnelTable;
-
-typedef enum
-{
-    TUNNEL_MAP_T_VLAN,
-    TUNNEL_MAP_T_BRIDGE,
-    TUNNEL_MAP_T_VIRTUAL_ROUTER,
-} tunnel_map_type_t;
 
 class VxlanTunnelOrch : public Orch2
 {
