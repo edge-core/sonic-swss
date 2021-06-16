@@ -1,7 +1,6 @@
 import time
 import re
 import json
-import pytest
 import itertools
 
 from swsscommon import swsscommon
@@ -214,7 +213,6 @@ class TestPortchannel(object):
         assert len(intf_entries) == 1
         assert intf_entries[0] == "40.0.0.6/31"
 
-
         # set oper_status for PortChannels
         ps = swsscommon.ProducerStateTable(self.pdb, "LAG_TABLE")
         fvs = swsscommon.FieldValuePairs([("admin_status", "up"),("mtu", "9100"),("oper_status", "up")])
@@ -234,8 +232,8 @@ class TestPortchannel(object):
         time.sleep(1)
 
         ps = swsscommon.ProducerStateTable(self.pdb, "ROUTE_TABLE")
-        fvs = swsscommon.FieldValuePairs([("nexthop","40.0.0.1,40.0.0.3,40.0.0.5,40.0.0.7"), ("ifname", "PortChannel001,PortChannel002,PortChannel003,PortChannel004")])
-
+        fvs = swsscommon.FieldValuePairs([("nexthop","40.0.0.1,40.0.0.3,40.0.0.5,40.0.0.7"),
+                                          ("ifname", "PortChannel001,PortChannel002,PortChannel003,PortChannel004")])
         ps.set("2.2.2.0/24", fvs)
         time.sleep(1)
 
@@ -284,6 +282,11 @@ class TestPortchannel(object):
         keys = nhg_member_tbl.getKeys()
         assert len(keys) == 3
 
+        # remove route entry
+        ps = swsscommon.ProducerStateTable(self.pdb, "ROUTE_TABLE")
+        ps._del("2.2.2.0/24")
+        time.sleep(1)
+
         # remove IP address
         tbl = swsscommon.Table(self.cdb, "PORTCHANNEL_INTERFACE")
         tbl._del("PortChannel001|40.0.0.0/31")
@@ -309,6 +312,19 @@ class TestPortchannel(object):
         intf_entries = tbl.getKeys()
         assert len(intf_entries) == 0
 
+        # remove router interfaces
+        tbl = swsscommon.Table(self.cdb, "PORTCHANNEL_INTERFACE")
+        tbl._del("PortChannel001")
+        tbl._del("PortChannel002")
+        tbl._del("PortChannel003")
+        tbl._del("PortChannel004")
+        time.sleep(1)
+
+        # check application database
+        tbl = swsscommon.Table(self.pdb, "INTF_TABLE")
+        intf_entries = tbl.getKeys()
+        assert len(intf_entries) == 0
+
         # remove PortChannel members
         tbl = swsscommon.Table(self.cdb, "PORTCHANNEL_MEMBER")
         tbl._del("PortChannel001|Ethernet0")
@@ -329,7 +345,6 @@ class TestPortchannel(object):
         dvs.servers[0].runcmd("ip link set up dev eth0")
         time.sleep(1)
 
-    @pytest.mark.skip(reason="This test is not stable enough")
     def test_Portchannel_tpid(self, dvs, testlog):
         adb = swsscommon.DBConnector(1, dvs.redis_sock, 0)
         cdb = swsscommon.DBConnector(4, dvs.redis_sock, 0)
