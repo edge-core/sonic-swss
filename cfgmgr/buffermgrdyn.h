@@ -79,12 +79,12 @@ typedef struct {
 } buffer_pg_t;
 
 typedef enum {
+    // Port is admin down. All PGs programmed to APPL_DB should be removed from the port
+    PORT_ADMIN_DOWN,
     // Port is under initializing, which means its info hasn't been comprehensive for calculating headroom
     PORT_INITIALIZING,
     // All necessary information for calculating headroom is ready
-    PORT_READY,
-    // Port is admin down. All PGs programmed to APPL_DB should be removed from the port
-    PORT_ADMIN_DOWN
+    PORT_READY
 } port_state_t;
 
 typedef struct {
