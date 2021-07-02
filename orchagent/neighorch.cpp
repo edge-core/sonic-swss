@@ -1277,6 +1277,42 @@ void NeighOrch::doVoqSystemNeighTask(Consumer &consumer)
                     if(ibif.m_type != Port::VLAN)
                     {
                         mac_address = gMacAddress;
+
+                        // For VS platforms, the mac of the static neigh should not be same as asic's own mac.
+                        // This is because host originated packets will have same mac for both src and dst which
+                        // will result in host NOT sending packet out. To address this problem which is specific
+                        // to port type inband interfaces, set the mac to the neighbor's owner asic's mac. Since
+                        // the owner asic's mac is not readily avaiable here, the owner asic mac is derived from
+                        // the switch id and lower 5 bytes of asic mac which is assumed to be same for all asics
+                        // in the VS system.
+                        // Therefore to make VOQ chassis systems work in VS platform based setups like the setups 
+                        // using KVMs, it is required that all asics have same base mac in the format given below
+                        // <lower 5 bytes of mac same for all asics>:<6th byte = switch_id>
+
+                        string platform = getenv("ASIC_VENDOR") ? getenv("ASIC_VENDOR") : "";
+
+                        if (platform == VS_PLATFORM_SUBSTRING)
+                        {
+                            int8_t sw_id = -1;
+                            uint8_t egress_asic_mac[ETHER_ADDR_LEN];
+
+                            gMacAddress.getMac(egress_asic_mac);
+
+                            if (p.m_type == Port::LAG)
+                            {
+                                sw_id = (int8_t) p.m_system_lag_info.switch_id;
+                            }
+                            else if (p.m_type == Port::PHY || p.m_type == Port::SYSTEM)
+                            {
+                                sw_id = (int8_t) p.m_system_port_info.switch_id;
+                            }
+
+                            if(sw_id != -1)
+                            {
+                                egress_asic_mac[5] = sw_id;
+                                mac_address = MacAddress(egress_asic_mac);
+                            }
+                        }
                     }
                     vector<FieldValueTuple> fvVector;
                     FieldValueTuple mac("neigh", mac_address.to_string());
