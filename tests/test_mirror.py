@@ -103,6 +103,9 @@ class TestMirror(object):
         assert len(fvs) > 0
         return { fv[0]: fv[1] for fv in fvs }
 
+    def check_syslog(self, dvs, marker, log, expected_cnt):
+        (ec, out) = dvs.runcmd(['sh', '-c', "awk \'/%s/,ENDFILE {print;}\' /var/log/syslog | grep \'%s\' | wc -l" % (marker, log)])
+        assert out.strip() == str(expected_cnt)
 
     def test_MirrorAddRemove(self, dvs, testlog):
         """
@@ -120,9 +123,11 @@ class TestMirror(object):
 
         session = "TEST_SESSION"
 
+        marker = dvs.add_log_marker()
         # create mirror session
         self.create_mirror_session(session, "1.1.1.1", "2.2.2.2", "0x6558", "8", "100", "0")
         assert self.get_mirror_session_state(session)["status"] == "inactive"
+        self.check_syslog(dvs, marker, "Attached next hop observer .* for destination IP 2.2.2.2", 1)
 
         # bring up Ethernet16
         self.set_interface_status(dvs, "Ethernet16", "up")
@@ -193,8 +198,10 @@ class TestMirror(object):
         self.set_interface_status(dvs, "Ethernet16", "down")
         assert self.get_mirror_session_state(session)["status"] == "inactive"
 
+        marker = dvs.add_log_marker()
         # remove mirror session
         self.remove_mirror_session(session)
+        self.check_syslog(dvs, marker, "Detached next hop observer for destination IP 2.2.2.2", 1)
 
     def create_vlan(self, dvs, vlan):
         #dvs.runcmd("ip link del Bridge")
@@ -251,9 +258,11 @@ class TestMirror(object):
 
         session = "TEST_SESSION"
 
+        marker = dvs.add_log_marker()
         # create mirror session
         self.create_mirror_session(session, "5.5.5.5", "6.6.6.6", "0x6558", "8", "100", "0")
         assert self.get_mirror_session_state(session)["status"] == "inactive"
+        self.check_syslog(dvs, marker, "Attached next hop observer .* for destination IP 6.6.6.6", 1)
 
         # create vlan; create vlan member
         self.create_vlan(dvs, "6")
@@ -339,8 +348,10 @@ class TestMirror(object):
         self.remove_vlan_member("6", "Ethernet4")
         self.remove_vlan("6")
 
+        marker = dvs.add_log_marker()
         # remove mirror session
         self.remove_mirror_session(session)
+        self.check_syslog(dvs, marker, "Detached next hop observer for destination IP 6.6.6.6", 1)
 
     def create_port_channel(self, dvs, channel):
         tbl = swsscommon.ProducerStateTable(self.pdb, "LAG_TABLE")
@@ -388,9 +399,11 @@ class TestMirror(object):
 
         session = "TEST_SESSION"
 
+        marker = dvs.add_log_marker()
         # create mirror session
         self.create_mirror_session(session, "10.10.10.10", "11.11.11.11", "0x6558", "8", "100", "0")
         assert self.get_mirror_session_state(session)["status"] == "inactive"
+        self.check_syslog(dvs, marker, "Attached next hop observer .* for destination IP 11.11.11.11", 1)
 
         # create port channel; create port channel member
         self.create_port_channel(dvs, "008")
@@ -436,8 +449,10 @@ class TestMirror(object):
         self.remove_port_channel_member("008", "Ethernet88")
         self.remove_port_channel(dvs, "008")
 
+        marker = dvs.add_log_marker()
         # remove mirror session
         self.remove_mirror_session(session)
+        self.check_syslog(dvs, marker, "Detached next hop observer for destination IP 11.11.11.11", 1)
 
 
     # Ignore testcase in Debian Jessie
