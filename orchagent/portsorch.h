@@ -217,6 +217,7 @@ public:
     bool isInbandPort(const string &alias);
     bool setVoqInbandIntf(string &alias, string &type);
     bool getPortVlanMembers(Port &port, vlan_members_t &vlan_members);
+    bool isPortVlanMembersEmpty(Port &port);
 
     bool getRecircPort(Port &p, Port::Role role);
 

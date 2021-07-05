@@ -1160,6 +1160,18 @@ bool IntfsOrch::addRouterIntfs(sai_object_id_t vrf_id, Port &port, string loopba
         return true;
     }
 
+    if (port.m_lag_member_id)
+    {
+        SWSS_LOG_WARN("It's portchannel member %s", port.m_alias.c_str());
+        return false;
+    }
+
+    if (!gPortsOrch->isPortVlanMembersEmpty(port))
+    {
+        SWSS_LOG_WARN("It's vlan member %s", port.m_alias.c_str());
+        return false;
+    }
+
     if ((port.m_type == Port::PHY || port.m_type == Port::LAG)
         && port.m_bridge_port_id != SAI_NULL_OBJECT_ID)
     {
