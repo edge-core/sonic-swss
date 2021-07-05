@@ -6025,6 +6025,11 @@ bool PortsOrch::getPortVlanMembers(Port &port, vlan_members_t &vlan_members)
     return true;
 }
 
+bool PortsOrch::isPortVlanMembersEmpty(Port &port)
+{
+    return m_portVlanMember[port.m_alias].empty();
+}
+
 bool PortsOrch::addVlanFloodGroups(Port &vlan, Port &port, string end_point_ip)
 {
     SWSS_LOG_ENTER();
