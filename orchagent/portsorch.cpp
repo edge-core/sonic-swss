@@ -209,6 +209,12 @@ static char* hostif_vlan_tag[] = {
     [SAI_HOSTIF_VLAN_TAG_KEEP]      = "SAI_HOSTIF_VLAN_TAG_KEEP",
     [SAI_HOSTIF_VLAN_TAG_ORIGINAL]  = "SAI_HOSTIF_VLAN_TAG_ORIGINAL"
 };
+
+static bool isValidPortTypeForLagMember(const Port& port)
+{
+    return port.m_type == Port::Type::PHY;
+}
+
 /*
  * Initialize PortsOrch
  * 0) If Gearbox is enabled, then initialize the external PHYs as defined in
@@ -1938,7 +1944,7 @@ sai_status_t PortsOrch::removePort(sai_object_id_t port_id)
 
     Port port;
 
-    /* 
+    /*
      * Make sure to bring down admin state.
      * SET would have replaced with DEL
      */
@@ -3189,6 +3195,15 @@ void PortsOrch::doLagMemberTask(Consumer &consumer)
             continue;
         }
 
+        /* Fail if a port type is not a valid type for being a LAG member port.
+         * Erase invalid entry, no need to retry in this case. */
+        if (!isValidPortTypeForLagMember(port))
+        {
+            SWSS_LOG_ERROR("LAG member port has to be of type PHY or SYSTEM");
+            it = consumer.m_toSync.erase(it);
+            continue;
+        }
+
         /* Update a LAG member */
         if (op == SET_COMMAND)
         {
@@ -3201,8 +3216,12 @@ void PortsOrch::doLagMemberTask(Consumer &consumer)
 
             if (lag.m_members.find(port_alias) == lag.m_members.end())
             {
-                /* Assert the port doesn't belong to any LAG already */
-                assert(!port.m_lag_id && !port.m_lag_member_id);
+                if (port.m_lag_member_id != SAI_NULL_OBJECT_ID)
+                {
+                    SWSS_LOG_INFO("Port %s is already a LAG member", port.m_alias.c_str());
+                    it++;
+                    continue;
+                }
 
                 if (!addLagMember(lag, port, (status == "enabled")))
                 {
