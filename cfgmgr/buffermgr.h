@@ -33,6 +33,8 @@ public:
     using Orch::doTask;
 
 private:
+    std::string m_platform;
+
     Table m_cfgPortTable;
     Table m_cfgCableLenTable;
     Table m_cfgBufferProfileTable;
@@ -45,7 +47,7 @@ private:
     std::string getPgPoolMode();
     void readPgProfileLookupFile(std::string);
     task_process_status doCableTask(std::string port, std::string cable_length);
-    task_process_status doSpeedUpdateTask(std::string port, std::string speed);
+    task_process_status doPortTableUpdateTask(std::string port, std::string speed, bool admin_up);
 
     void doTask(Consumer &consumer);
 };
