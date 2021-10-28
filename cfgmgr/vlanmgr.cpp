@@ -7,6 +7,7 @@
 #include "tokenize.h"
 #include "shellcmd.h"
 #include "warm_restart.h"
+#include <swss/redisutility.h>
 
 using namespace std;
 using namespace swss;
@@ -452,6 +453,11 @@ bool VlanMgr::isMemberStateOk(const string &alias)
     }
     else if (m_statePortTable.get(alias, temp))
     {
+        auto state_opt = swss::fvsGetValue(temp, "state", true);
+        if (!state_opt)
+        {
+            return false;
+        }
         SWSS_LOG_DEBUG("%s is ready", alias.c_str());
         return true;
     }
