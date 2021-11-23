@@ -3,7 +3,7 @@
 #include "pbhrule.h"
 
 AclRulePbh::AclRulePbh(AclOrch *pAclOrch, string rule, string table, bool createCounter) :
-    AclRule(pAclOrch, rule, table, ACL_TABLE_PBH, createCounter)
+    AclRule(pAclOrch, rule, table, createCounter)
 {
 }
 
