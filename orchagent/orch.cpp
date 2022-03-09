@@ -882,7 +882,7 @@ task_process_status Orch::handleSaiCreateStatus(sai_api_t api, sai_status_t stat
                 default:
                     SWSS_LOG_ERROR("Encountered failure in create operation, exiting orchagent, SAI API: %s, status: %s",
                                 sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
-                    exit(EXIT_FAILURE);
+                    abort();
             }
             break;
         case SAI_API_HOSTIF:
@@ -900,7 +900,7 @@ task_process_status Orch::handleSaiCreateStatus(sai_api_t api, sai_status_t stat
                 default:
                     SWSS_LOG_ERROR("Encountered failure in create operation, exiting orchagent, SAI API: %s, status: %s",
                                 sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
-                    exit(EXIT_FAILURE);
+                    abort();
             }
         default:
             switch (status)
@@ -911,7 +911,7 @@ task_process_status Orch::handleSaiCreateStatus(sai_api_t api, sai_status_t stat
                 default:
                     SWSS_LOG_ERROR("Encountered failure in create operation, exiting orchagent, SAI API: %s, status: %s",
                                 sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
-                    exit(EXIT_FAILURE);
+                    abort();
             }
     }
     return task_need_retry;
@@ -952,12 +952,12 @@ task_process_status Orch::handleSaiSetStatus(sai_api_t api, sai_status_t status,
                 default:
                     SWSS_LOG_ERROR("Encountered failure in set operation, exiting orchagent, SAI API: %s, status: %s",
                             sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
-                    exit(EXIT_FAILURE);
+                    abort();
             }
         default:
             SWSS_LOG_ERROR("Encountered failure in set operation, exiting orchagent, SAI API: %s, status: %s",
                         sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
-            exit(EXIT_FAILURE);
+            abort();
     }
 
     return task_need_retry;
@@ -985,7 +985,7 @@ task_process_status Orch::handleSaiRemoveStatus(sai_api_t api, sai_status_t stat
         default:
             SWSS_LOG_ERROR("Encountered failure in remove operation, exiting orchagent, SAI API: %s, status: %s",
                         sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
-            exit(EXIT_FAILURE);
+            abort();
     }
     return task_need_retry;
 }
