@@ -20,6 +20,9 @@
 using namespace std;
 using namespace swss;
 
+#define VLAN_SUB_INTERFACE_SEPARATOR   "."
+#define RESERVED_IPV4_LL    "169.254.0.1"
+
 NeighSync::NeighSync(RedisPipeline *pipelineAppDB, DBConnector *stateDb, DBConnector *cfgDb) :
     m_neighTable(pipelineAppDB, APP_NEIGH_TABLE_NAME),
     m_stateNeighRestoreTable(stateDb, STATE_NEIGH_RESTORE_TABLE_NAME),
@@ -88,7 +91,6 @@ bool NeighSync::isRouterInterface(const std::string &intfName)
 {
     vector<FieldValueTuple> values;
     Table *intfTable_p = nullptr;
-
     intfTable_p = getInterfaceTable(intfName);
     if ((intfTable_p != nullptr) && intfTable_p->get(intfName, values))
     {
@@ -102,6 +104,7 @@ void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
     char ipStr[MAX_ADDR_SIZE + 1] = {0};
     char macStr[MAX_ADDR_SIZE + 1] = {0};
     struct rtnl_neigh *neigh = (struct rtnl_neigh *)obj;
+    struct nl_addr *lladdr = NULL;
     string key;
     string family;
     string intfName;
@@ -175,8 +178,14 @@ void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
 	    delete_key = true;
     }
 
-    /* Ignore neighbor entries on non-router-interface */
-    if (!delete_key && !isRouterInterface(intfName))
+    /* Ignore the following neighbor entries
+     * - learned on non-router interface
+     * - learned on SAG disabled interface
+     * For reserved IPv4 link-local address (169.254.0.1) used as next hop for BGP unnumber,
+     * this entry shouldn't be ignored even if it satisfy the above condition
+     * */
+    //if (!delete_key && !isRouterInterface(intfName) && !isSagEnabled(intfName) && strcmp(ipStr, RESERVED_IPV4_LL)) ///FIXME, isSagEnabled
+    if (!delete_key && !isRouterInterface(intfName) && strcmp(ipStr, RESERVED_IPV4_LL))
     {
         SWSS_LOG_INFO("Ignore neighbor %s on non-router-interface %s", ipStr, intfName.c_str());
         return;
@@ -189,7 +198,14 @@ void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
     }
     else
     {
-        nl_addr2str(rtnl_neigh_get_lladdr(neigh), macStr, MAX_ADDR_SIZE);
+        /* Get the link-layer address */
+        lladdr = rtnl_neigh_get_lladdr(neigh);
+
+        /* Check if the link-layer address is NULL */
+        if (lladdr != NULL)
+        {
+            nl_addr2str(lladdr, macStr, MAX_ADDR_SIZE);
+        }
     }
 
     if (!delete_key && !strncmp(macStr, "none", MAX_ADDR_SIZE))
@@ -198,10 +214,12 @@ void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
         return;
     }
 
-    /* Ignore neighbor entries with Broadcast Mac - Trigger for directed broadcast */
-    if (!delete_key && (MacAddress(macStr) == MacAddress("ff:ff:ff:ff:ff:ff")))
+    /* Ignore neighbor entries with Broadcast/Null Mac */
+    if (!delete_key
+        && ((lladdr == NULL)
+            || (MacAddress(macStr) == MacAddress("ff:ff:ff:ff:ff:ff"))))
     {
-        SWSS_LOG_INFO("Broadcast Mac received, ignoring for %s", ipStr);
+        SWSS_LOG_INFO("Broadcast/Null Mac received, ignoring for %s", ipStr);
         return;
     }
 
