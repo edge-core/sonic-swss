@@ -900,6 +900,25 @@ void IntfsOrch::doTask(Consumer &consumer)
             }
             vrf_id = m_vrfOrch->getVRFid(vrf_name);
         }
+        else
+        {
+            std::vector<FieldValueTuple> temp;
+
+            if (m_appIntfTable.get(kfvKey(t), temp))
+            {
+                for (auto entry : temp)
+                {
+                    if (entry.first == "vrf_name" && entry.second != "")
+                    {
+                        if (m_vrfOrch->isVRFexists(entry.second))
+                        {
+                            vrf_id = m_vrfOrch->getVRFid(entry.second);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
 
         string op = kfvOp(t);
         if (op == SET_COMMAND)
