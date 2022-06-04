@@ -11,6 +11,7 @@
 #include "exec.h"
 #include "shellcmd.h"
 #include "warm_restart.h"
+#include "converter.h"
 
 using namespace std;
 using namespace swss;
@@ -133,11 +134,11 @@ Create/update two tables: profile (in m_cfgBufferProfileTable) and port buffer (
         }
     }
 */
-task_process_status BufferMgr::doSpeedUpdateTask(string port, bool admin_up)
+task_process_status BufferMgr::doSpeedUpdateTask(string port)
 {
-    vector<FieldValueTuple> fvVectorPg, fvVectorProfile;
     string cable;
     string speed;
+    string pfc_enable;
 
     if (m_cableLenLookup.count(port) == 0)
     {
@@ -152,9 +153,24 @@ task_process_status BufferMgr::doSpeedUpdateTask(string port, bool admin_up)
         return task_process_status::task_success;
     }
 
-    speed = m_speedLookup[port];
+    if (m_portStatusLookup.count(port) == 0)
+    {
+        // admin_status is not available yet. This can happen when notification of `PORT_QOS_MAP` table
+        // comes first. 
+        SWSS_LOG_INFO("pfc_enable status is not available for port %s", port.c_str());
+        return task_process_status::task_need_retry;
+    }
 
-    string buffer_pg_key = port + m_cfgBufferPgTable.getTableNameSeparator() + LOSSLESS_PGS;
+    if (m_portPfcStatus.count(port) == 0)
+    {
+        // PORT_QOS_MAP is not ready yet. The notification is cleared, and buffer pg
+        // will be handled when `pfc_enable` in `PORT_QOS_MAP` table is available
+        SWSS_LOG_INFO("pfc_enable status is not available for port %s", port.c_str());
+        return task_process_status::task_success;
+    }
+    pfc_enable = m_portPfcStatus[port];
+    speed = m_speedLookup[port];
+    
     // key format is pg_lossless_<speed>_<cable>_profile
     string buffer_profile_key = "pg_lossless_" + speed + "_" + cable + "_profile";
     string profile_ref = string("[") +
@@ -163,25 +179,50 @@ task_process_status BufferMgr::doSpeedUpdateTask(string port, bool admin_up)
                          buffer_profile_key +
                          "]";
 
-    m_cfgBufferPgTable.get(buffer_pg_key, fvVectorPg);
-
-    if (!admin_up && m_platform == "mellanox")
+    
+    vector<string> lossless_pgs = tokenize(pfc_enable, ',');
+    // Convert to bitmap
+    unsigned long lossless_pg_id = 0;
+    for (auto pg : lossless_pgs)
     {
-        // Remove the entry in BUFFER_PG table if any
-        if (!fvVectorPg.empty())
+        try
         {
-            for (auto &prop : fvVectorPg)
+            uint8_t cur_pg = to_uint<uint8_t>(pg);
+            lossless_pg_id |= (1<<cur_pg);
+        }
+        catch (const std::invalid_argument &e)
+        {
+            // Ignore invalid value
+            continue;
+        }
+    }
+    // Although we have up to 8 PGs for now, the range to check is expanded to 32 support more PGs
+    set<string> lossless_pg_combinations = generateIdListFromMap(lossless_pg_id, sizeof(lossless_pg_id));
+
+    if (m_portStatusLookup[port] == "down" && m_platform == "mellanox")
+    {
+        for (auto lossless_pg : lossless_pg_combinations)
+        {
+            // Remove the entry in BUFFER_PG table if any
+            vector<FieldValueTuple> fvVectorPg;
+            string buffer_pg_key = port + m_cfgBufferPgTable.getTableNameSeparator() + lossless_pg;
+
+            m_cfgBufferPgTable.get(buffer_pg_key, fvVectorPg);
+            if (!fvVectorPg.empty())
             {
-                if (fvField(prop) == "profile")
+                for (auto &prop : fvVectorPg)
                 {
-                    if (fvValue(prop) == profile_ref)
+                    if (fvField(prop) == "profile")
                     {
-                        SWSS_LOG_NOTICE("Removing PG %s from port %s which is administrative down", buffer_pg_key.c_str(), port.c_str());
-                        m_cfgBufferPgTable.del(buffer_pg_key);
-                    }
-                    else
-                    {
-                        SWSS_LOG_NOTICE("Not default profile %s is configured on PG %s, won't reclaim buffer", fvValue(prop).c_str(), buffer_pg_key.c_str());
+                        if (fvValue(prop) == profile_ref)
+                        {
+                            SWSS_LOG_NOTICE("Removing PG %s from port %s which is administrative down", buffer_pg_key.c_str(), port.c_str());
+                            m_cfgBufferPgTable.del(buffer_pg_key);
+                        }
+                        else
+                        {
+                            SWSS_LOG_NOTICE("Not default profile %s is configured on PG %s, won't reclaim buffer", fvValue(prop).c_str(), buffer_pg_key.c_str());
+                        }
                     }
                 }
             }
@@ -189,14 +230,15 @@ task_process_status BufferMgr::doSpeedUpdateTask(string port, bool admin_up)
 
         return task_process_status::task_success;
     }
-
+    
     if (m_pgProfileLookup.count(speed) == 0 || m_pgProfileLookup[speed].count(cable) == 0)
     {
-        SWSS_LOG_ERROR("Unable to create/update PG profile for port %s. No PG profile configured for speed %s and cable length %s",
-                       port.c_str(), speed.c_str(), cable.c_str());
-        return task_process_status::task_invalid_entry;
+            SWSS_LOG_ERROR("Unable to create/update PG profile for port %s. No PG profile configured for speed %s and cable length %s",
+                        port.c_str(), speed.c_str(), cable.c_str());
+            return task_process_status::task_invalid_entry;
     }
 
+    vector<FieldValueTuple> fvVectorProfile;
     // check if profile already exists - if yes - skip creation
     m_cfgBufferProfileTable.get(buffer_profile_key, fvVectorProfile);
     // Create record in BUFFER_PROFILE table
@@ -233,22 +275,34 @@ task_process_status BufferMgr::doSpeedUpdateTask(string port, bool admin_up)
     {
         SWSS_LOG_NOTICE("Reusing existing profile '%s'", buffer_profile_key.c_str());
     }
-
-    /* Check if PG Mapping is already then log message and return. */
-    for (auto& prop : fvVectorPg)
+    
+    for (auto lossless_pg : lossless_pg_combinations)
     {
-        if ((fvField(prop) == "profile") && (profile_ref == fvValue(prop)))
+        vector<FieldValueTuple> fvVectorPg;
+        string buffer_pg_key = port + m_cfgBufferPgTable.getTableNameSeparator() + lossless_pg;
+
+        m_cfgBufferPgTable.get(buffer_pg_key, fvVectorPg);
+        bool profile_existing = false;
+        /* Check if PG Mapping is already then log message and return. */
+        for (auto& prop : fvVectorPg)
         {
-            SWSS_LOG_NOTICE("PG to Buffer Profile Mapping %s already present", buffer_pg_key.c_str());
-            return task_process_status::task_success;
+            if ((fvField(prop) == "profile") && (profile_ref == fvValue(prop)))
+            {
+                SWSS_LOG_NOTICE("PG to Buffer Profile Mapping %s already present", buffer_pg_key.c_str());
+                profile_existing = true;
+                break;
+            }
         }
+        if (profile_existing)
+        {
+            continue;
+        }
+        fvVectorPg.clear();
+
+        fvVectorPg.push_back(make_pair("profile", profile_ref));
+        m_cfgBufferPgTable.set(buffer_pg_key, fvVectorPg);
+        SWSS_LOG_INFO("Setting buffer profile to PG %s", buffer_pg_key.c_str());
     }
-
-    fvVectorPg.clear();
-
-    fvVectorPg.push_back(make_pair("profile", profile_ref));
-    SWSS_LOG_INFO("Setting buffer profile to PG %s", buffer_pg_key.c_str());
-    m_cfgBufferPgTable.set(buffer_pg_key, fvVectorPg);
     return task_process_status::task_success;
 }
 
@@ -388,6 +442,47 @@ void BufferMgr::doBufferMetaTask(Consumer &consumer)
     }
 }
 
+/*
+Parse PORT_QOS_MAP to retrieve on which queue PFC is enable, and
+cached in a map
+*/
+void BufferMgr::doPortQosTableTask(Consumer &consumer)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = consumer.m_toSync.begin();
+    while (it != consumer.m_toSync.end())
+    {
+        KeyOpFieldsValuesTuple tuple = it->second;
+        string port_name = kfvKey(tuple);
+        string op = kfvOp(tuple);
+        if (op == SET_COMMAND)
+        {
+            bool update_pfc_enable = false;
+            for (auto itp : kfvFieldsValues(tuple))
+            {
+                if (fvField(itp) == "pfc_enable")
+                {
+                    if (m_portPfcStatus.count(port_name) == 0 || m_portPfcStatus[port_name] != fvValue(itp))
+                    {
+                        m_portPfcStatus[port_name] = fvValue(itp);
+                        update_pfc_enable = true;
+                    }
+                    SWSS_LOG_INFO("Got pfc enable status for port %s status %s", port_name.c_str(), fvValue(itp).c_str());
+                    break;
+                }
+            }
+            if (update_pfc_enable)
+            {
+                // The return status is ignored
+                doSpeedUpdateTask(port_name);
+            }
+        }
+        it = consumer.m_toSync.erase(it);
+    }
+
+}
+
 void BufferMgr::doTask(Consumer &consumer)
 {
     SWSS_LOG_ENTER();
@@ -441,6 +536,12 @@ void BufferMgr::doTask(Consumer &consumer)
         return;
     }
 
+    if (table_name == CFG_PORT_QOS_MAP_TABLE_NAME)
+    {
+        doPortQosTableTask(consumer);
+        return;
+    }
+
     auto it = consumer.m_toSync.begin();
     while (it != consumer.m_toSync.end())
     {
@@ -464,7 +565,6 @@ void BufferMgr::doTask(Consumer &consumer)
             }
             else if (m_pgfile_processed && table_name == CFG_PORT_TABLE_NAME)
             {
-                bool admin_up = false;
                 for (auto i : kfvFieldsValues(t))
                 {
                     if (fvField(i) == "speed")
@@ -473,37 +573,37 @@ void BufferMgr::doTask(Consumer &consumer)
                     }
                     if (fvField(i) == "admin_status")
                     {
-                        admin_up = ("up" == fvValue(i));
+                        m_portStatusLookup[port] = fvValue(i);
                     }
                 }
 
                 if (m_speedLookup.count(port) != 0)
                 {
                     // create/update profile for port
-                    SWSS_LOG_DEBUG("Port %s Speed %s admin status %d", port.c_str(), m_speedLookup[port].c_str(), admin_up);
-                    task_status = doSpeedUpdateTask(port, admin_up);
+                    SWSS_LOG_DEBUG("Port %s Speed %s admin status %s", port.c_str(), m_speedLookup[port].c_str(), m_portStatusLookup[port].c_str());
+                    task_status = doSpeedUpdateTask(port);
                     SWSS_LOG_DEBUG("Return code for doSpeedUpdateTask %d", task_status);
                 }
 
             }
-        }
 
-        switch (task_status)
-        {
-            case task_process_status::task_failed:
-                SWSS_LOG_ERROR("Failed to process table update");
-                return;
-            case task_process_status::task_need_retry:
-                SWSS_LOG_INFO("Unable to process table update. Will retry...");
-                ++it;
-                break;
-            case task_process_status::task_invalid_entry:
-                SWSS_LOG_ERROR("Failed to process invalid entry, drop it");
-                it = consumer.m_toSync.erase(it);
-                break;
-            default:
-                it = consumer.m_toSync.erase(it);
-                break;
+            switch (task_status)
+            {
+                case task_process_status::task_failed:
+                    SWSS_LOG_ERROR("Failed to process table update");
+                    return;
+                case task_process_status::task_need_retry:
+                    SWSS_LOG_INFO("Unable to process table update. Will retry...");
+                    ++it;
+                    break;
+                case task_process_status::task_invalid_entry:
+                    SWSS_LOG_ERROR("Failed to process invalid entry, drop it");
+                    it = consumer.m_toSync.erase(it);
+                    break;
+                default:
+                    it = consumer.m_toSync.erase(it);
+                    break;
+            }
         }
     }
 }
