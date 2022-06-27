@@ -151,7 +151,6 @@ public:
     sai_port_interface_type_t m_interface_type;
     std::vector<uint32_t> m_adv_interface_types;
     bool      m_mpls = false;
-
     /*
      * Following bit vector is used to lock
      * the queue from being changed in BufferOrch.
