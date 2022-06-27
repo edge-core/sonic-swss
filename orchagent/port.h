@@ -115,15 +115,13 @@ public:
     uint32_t  m_maximum_headroom = 0;
 
     /*
-     * Following two bit vectors are used to lock
-     * the PG/queue from being changed in BufferOrch.
+     * Following bit vector is used to lock
+     * the queue from being changed in BufferOrch.
      * The use case scenario is when PfcWdZeroBufferHandler
-     * sets zero buffer profile it should protect PG/queue
+     * sets zero buffer profile it should protect queue
      * from being overwritten in BufferOrch.
      */
     std::vector<bool> m_queue_lock;
-    std::vector<bool> m_priority_group_lock;
-    std::vector<sai_object_id_t> m_priority_group_pending_profile;
 
     std::unordered_set<sai_object_id_t> m_ingress_acl_tables_uset;
     std::unordered_set<sai_object_id_t> m_egress_acl_tables_uset;
