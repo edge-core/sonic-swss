@@ -1857,8 +1857,8 @@ bool VxlanTunnelOrch::getTunnelPort(const std::string& vtep,Port& tunnelPort, bo
 bool VxlanTunnel::isTunnelReferenced()
 {
     VxlanTunnelOrch* tunnel_orch = gDirectory.get<VxlanTunnelOrch*>();
-    auto src_vtep = getSrcIP().to_string();
-    auto port_tunnel_name = tunnel_orch->getTunnelPortName(src_vtep, true);
+    auto src_vtep = getdstIP().isZero() ? getSrcIP().to_string(): getdstIP().to_string();
+    auto port_tunnel_name = tunnel_orch->getTunnelPortName(src_vtep, getdstIP().isZero() ? true: false);
     bool ret;
     Port tunnelPort;
     bool dip_tunnels_used = tunnel_orch->isDipTunnelsSupported();
@@ -1958,10 +1958,10 @@ bool VxlanTunnelMapOrch::addOperation(const Request& request)
         if (!tunnel_orch->isDipTunnelsSupported())
         {
             Port tunPort;
-            auto src_vtep = tunnel_obj->getSrcIP().to_string();
-            if (!tunnel_orch->getTunnelPort(src_vtep, tunPort, true))
+            auto src_vtep = tunnel_obj->getdstIP().isZero() ? tunnel_obj->getSrcIP().to_string(): tunnel_obj->getdstIP().to_string();
+            if (!tunnel_orch->getTunnelPort(src_vtep, tunPort, tunnel_obj->getdstIP().isZero() ? true: false))
             {
-                auto port_tunnel_name = tunnel_orch->getTunnelPortName(src_vtep, true);
+                auto port_tunnel_name = tunnel_orch->getTunnelPortName(src_vtep, tunnel_obj->getdstIP().isZero() ? true: false);
                 gPortsOrch->addTunnel(port_tunnel_name, tunnel_obj->getTunnelId(), false);
                 gPortsOrch->getPort(port_tunnel_name,tunPort);
                 gPortsOrch->addBridgePort(tunPort);
@@ -2063,8 +2063,8 @@ bool VxlanTunnelMapOrch::delOperation(const Request& request)
     if (tunnel_obj->vlan_vrf_vni_count == 0)
     {
       Port tunnelPort;
-      auto src_vtep = tunnel_obj->getSrcIP().to_string();
-      auto port_tunnel_name = tunnel_orch->getTunnelPortName(src_vtep, true);
+      auto src_vtep = tunnel_obj->getdstIP().isZero() ? tunnel_obj->getSrcIP().to_string(): tunnel_obj->getdstIP().to_string();
+      auto port_tunnel_name = tunnel_orch->getTunnelPortName(src_vtep, tunnel_obj->getdstIP().isZero() ? true : false);
       bool ret;
 
       // If there are Dynamic DIP Tunnels referring to this SIP Tunnel 
@@ -2387,11 +2387,25 @@ bool EvpnRemoteVnip2pOrch::addOperation(const Request& request)
     {
         SWSS_LOG_INFO("Vxlan tunnelPort exists: %s", remote_vtep.c_str());
 
+        EvpnNvoOrch* evpn_orch = gDirectory.get<EvpnNvoOrch*>();
+        auto vtep_ptr = evpn_orch->getEVPNVtep();
         if (gPortsOrch->isVlanMember(vlanPort, tunnelPort))
         {
-            SWSS_LOG_WARN("tunnelPort %s already member of vid %d", 
-                          remote_vtep.c_str(),vlan_id);
+            if (!vtep_ptr)
+            {
+                SWSS_LOG_WARN("Remote VNI add: VTEP not found. remote=%s vid=%d",
+                              remote_vtep.c_str(),vlan_id);
+                return true;
+            }
+            SWSS_LOG_WARN("tunnelPort %s already member of vid %d",
+                            remote_vtep.c_str(),vlan_id);
             vtep_ptr->increment_spurious_imr_add(remote_vtep);
+            return true;
+        }
+        else if (!vtep_ptr)
+        {
+            SWSS_LOG_WARN("Remote VNI add: Tunnel port is not vlan member and VTEP not found. remote=%s vid=%d",
+                              remote_vtep.c_str(),vlan_id);
             return true;
         }
     }
