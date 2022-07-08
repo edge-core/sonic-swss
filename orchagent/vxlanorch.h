@@ -186,6 +186,10 @@ public:
     {
         return src_ip_;
     }
+    const IpAddress getdstIP()
+    {
+        return dst_ip_;
+    }
 
     void updateNextHop(IpAddress& ipAddr, MacAddress macAddress, uint32_t vni, sai_object_id_t nhId);
     bool removeNextHop(IpAddress& ipAddr, MacAddress macAddress, uint32_t vni);
