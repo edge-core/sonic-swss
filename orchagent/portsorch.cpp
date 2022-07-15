@@ -4832,7 +4832,11 @@ bool PortsOrch::addVlanFloodGroups(Port &vlan, Port &port, string end_point_ip)
         {
             SWSS_LOG_ERROR("Failed to set l2mc flood type combined "
                            " to vlan %hu for unknown unicast flooding", vlan.m_vlan_info.vlan_id);
-            return false;
+            task_process_status handle_status = handleSaiSetStatus(SAI_API_VLAN, status);
+            if (handle_status != task_success)
+            {
+                return parseHandleSaiStatusFailure(handle_status);
+            }
         }
         vlan.m_vlan_info.uuc_flood_type = SAI_VLAN_FLOOD_CONTROL_TYPE_COMBINED;
     }
@@ -4847,7 +4851,12 @@ bool PortsOrch::addVlanFloodGroups(Port &vlan, Port &port, string end_point_ip)
         {
             SWSS_LOG_ERROR("Failed to set l2mc flood type combined "
                            " to vlan %hu for broadcast flooding", vlan.m_vlan_info.vlan_id);
-            return false;
+            task_process_status handle_status = handleSaiSetStatus(SAI_API_VLAN, status);
+            if (handle_status != task_success)
+            {
+                m_portList[vlan.m_alias] = vlan;
+                return parseHandleSaiStatusFailure(handle_status);
+            }
         }
         vlan.m_vlan_info.bc_flood_type = SAI_VLAN_FLOOD_CONTROL_TYPE_COMBINED;
     }
@@ -4858,7 +4867,12 @@ bool PortsOrch::addVlanFloodGroups(Port &vlan, Port &port, string end_point_ip)
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to create l2mc flood group");
-            return false;
+            task_process_status handle_status = handleSaiCreateStatus(SAI_API_L2MC_GROUP, status);
+            if (handle_status != task_success)
+            {
+                m_portList[vlan.m_alias] = vlan;
+                return parseHandleSaiStatusFailure(handle_status);
+            }
         }
 
         if (vlan.m_vlan_info.uuc_flood_type == SAI_VLAN_FLOOD_CONTROL_TYPE_COMBINED)
@@ -4872,7 +4886,12 @@ bool PortsOrch::addVlanFloodGroups(Port &vlan, Port &port, string end_point_ip)
                 SWSS_LOG_ERROR("Failed to set l2mc group %" PRIx64
                                " to vlan %hu for unknown unicast flooding",
                                l2mc_group_id, vlan.m_vlan_info.vlan_id);
-                return false;
+                task_process_status handle_status = handleSaiSetStatus(SAI_API_VLAN, status);
+                if (handle_status != task_success)
+                {
+                    m_portList[vlan.m_alias] = vlan;
+                    return parseHandleSaiStatusFailure(handle_status);
+                }
             }
         }
         if (vlan.m_vlan_info.bc_flood_type == SAI_VLAN_FLOOD_CONTROL_TYPE_COMBINED)
@@ -4886,7 +4905,12 @@ bool PortsOrch::addVlanFloodGroups(Port &vlan, Port &port, string end_point_ip)
                 SWSS_LOG_ERROR("Failed to set l2mc group %" PRIx64
                                " to vlan %hu for broadcast flooding",
                                l2mc_group_id, vlan.m_vlan_info.vlan_id);
-                return false;
+                task_process_status handle_status = handleSaiSetStatus(SAI_API_VLAN, status);
+                if (handle_status != task_success)
+                {
+                    m_portList[vlan.m_alias] = vlan;
+                    return parseHandleSaiStatusFailure(handle_status);
+                }
             }
         }
         vlan.m_vlan_info.l2mc_group_id = l2mc_group_id;
@@ -4926,7 +4950,12 @@ bool PortsOrch::addVlanFloodGroups(Port &vlan, Port &port, string end_point_ip)
     {
         SWSS_LOG_ERROR("Failed to create l2mc group member for adding tunnel %s to vlan %hu",
                        end_point_ip.c_str(), vlan.m_vlan_info.vlan_id);
-        return false;
+        task_process_status handle_status = handleSaiCreateStatus(SAI_API_L2MC_GROUP, status);
+        if (handle_status != task_success)
+        {
+            m_portList[vlan.m_alias] = vlan;
+            return parseHandleSaiStatusFailure(handle_status);
+        }
     }
     vlan.m_vlan_info.l2mc_members[end_point_ip] = l2mc_group_member;
     m_portList[vlan.m_alias] = vlan;
@@ -4953,7 +4982,11 @@ bool PortsOrch::removeVlanEndPointIp(Port &vlan, Port &port, string end_point_ip
     {
         SWSS_LOG_ERROR("Failed to remove end point ip %s from vlan %hu",
                        end_point_ip.c_str(), vlan.m_vlan_info.vlan_id);
-        return false;
+        task_process_status handle_status = handleSaiRemoveStatus(SAI_API_L2MC_GROUP, status);
+        if (handle_status != task_success)
+        {
+            return parseHandleSaiStatusFailure(handle_status);
+        }
     }
     decreaseBridgePortRefCount(port);
     vlan.m_vlan_info.l2mc_members.erase(end_point_ip);
@@ -4973,7 +5006,12 @@ bool PortsOrch::removeVlanEndPointIp(Port &vlan, Port &port, string end_point_ip
                 SWSS_LOG_ERROR("Failed to set null l2mc group "
                                " to vlan %hu for unknown unicast flooding",
                                vlan.m_vlan_info.vlan_id);
-                return false;
+                task_process_status handle_status = handleSaiSetStatus(SAI_API_VLAN, status);
+                if (handle_status != task_success)
+                {
+                    m_portList[vlan.m_alias] = vlan;
+                    return parseHandleSaiStatusFailure(handle_status);
+                }
             }
             attr.id = SAI_VLAN_ATTR_UNKNOWN_UNICAST_FLOOD_CONTROL_TYPE;
             attr.value.s32 = SAI_VLAN_FLOOD_CONTROL_TYPE_ALL;
@@ -4983,7 +5021,12 @@ bool PortsOrch::removeVlanEndPointIp(Port &vlan, Port &port, string end_point_ip
                 SWSS_LOG_ERROR("Failed to set flood control type all"
                                " to vlan %hu for unknown unicast flooding",
                                vlan.m_vlan_info.vlan_id);
-                return false;
+                task_process_status handle_status = handleSaiSetStatus(SAI_API_VLAN, status);
+                if (handle_status != task_success)
+                {
+                    m_portList[vlan.m_alias] = vlan;
+                    return parseHandleSaiStatusFailure(handle_status);
+                }
             }
             vlan.m_vlan_info.uuc_flood_type = SAI_VLAN_FLOOD_CONTROL_TYPE_ALL;
         }
@@ -4998,7 +5041,12 @@ bool PortsOrch::removeVlanEndPointIp(Port &vlan, Port &port, string end_point_ip
                 SWSS_LOG_ERROR("Failed to set null l2mc group "
                                " to vlan %hu for broadcast flooding",
                                vlan.m_vlan_info.vlan_id);
-                return false;
+                task_process_status handle_status = handleSaiSetStatus(SAI_API_VLAN, status);
+                if (handle_status != task_success)
+                {
+                    m_portList[vlan.m_alias] = vlan;
+                    return parseHandleSaiStatusFailure(handle_status);
+                }
             }
             attr.id = SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE;
             attr.value.s32 = SAI_VLAN_FLOOD_CONTROL_TYPE_ALL;
@@ -5008,7 +5056,12 @@ bool PortsOrch::removeVlanEndPointIp(Port &vlan, Port &port, string end_point_ip
                 SWSS_LOG_ERROR("Failed to set flood control type all"
                                " to vlan %hu for broadcast flooding",
                                vlan.m_vlan_info.vlan_id);
-                return false;
+                task_process_status handle_status = handleSaiSetStatus(SAI_API_VLAN, status);
+                if (handle_status != task_success)
+                {
+                    m_portList[vlan.m_alias] = vlan;
+                    return parseHandleSaiStatusFailure(handle_status);
+                }
             }
             vlan.m_vlan_info.bc_flood_type = SAI_VLAN_FLOOD_CONTROL_TYPE_ALL;
         }
@@ -5016,10 +5069,16 @@ bool PortsOrch::removeVlanEndPointIp(Port &vlan, Port &port, string end_point_ip
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to remove l2mc group %" PRIx64, l2mc_group_id);
-            return false;
+            task_process_status handle_status = handleSaiRemoveStatus(SAI_API_L2MC_GROUP, status);
+            if (handle_status != task_success)
+            {
+                m_portList[vlan.m_alias] = vlan;
+                return parseHandleSaiStatusFailure(handle_status);
+            }
         }
         vlan.m_vlan_info.l2mc_group_id = SAI_NULL_OBJECT_ID;
     }
+    m_portList[vlan.m_alias] = vlan;
     return true;
 }
 
