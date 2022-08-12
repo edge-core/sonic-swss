@@ -648,10 +648,15 @@ void FdbOrch::update(sai_fdb_event_t        type,
             SWSS_LOG_ERROR("FdbOrch MOVE notification: Failed to get port by bridge port ID 0x%" PRIx64, existing_entry->second.bridge_port_id);
             return;
         }
-	else if (existing_entry->second.origin == FDB_ORIGIN_MCLAG_ADVERTIZED &&
+        else if (existing_entry->second.origin == FDB_ORIGIN_MCLAG_ADVERTIZED &&
                  existing_entry->second.type == "static")
         {
             SWSS_LOG_NOTICE("Ignore MOVE event, MCLAG fdb entry, type is static");
+            return;
+        }
+        else if (update.port.m_alias == port_old.m_alias)
+        {
+            SWSS_LOG_NOTICE("Received MOVE event, new and old port is the same: %s", port_old.m_alias.c_str());
             return;
         }
 
@@ -1391,14 +1396,20 @@ void FdbOrch::updateVlanMember(const VlanMemberUpdate& update)
     {
         for (const auto& fdb: fdb_list)
         {
-            // try to insert an FDB entry. If the FDB entry is not ready to be inserted yet,
-            // it would be added back to the saved_fdb_entries structure by addFDBEntry()
             if(fdb.vlanId == update.vlan.m_vlan_info.vlan_id)
             {
                 FdbEntry entry;
                 entry.mac = fdb.mac;
                 entry.bv_id = update.vlan.m_vlan_info.vlan_oid;
-                (void)addFdbEntry(entry, port_name, fdb.fdbData);
+                 if (!addFdbEntry(entry, port_name, fdb.fdbData))
+                 {
+                    //Since the source of updateVlanMember comes from saved_db and not from another producer,
+                    // if the addFdbEntry function returns false indicating the need for retry,
+                    //it is necessary to save the source saved_db again to ensure that the false entry can be retried.
+                    saved_fdb_entries[port_name].push_back(fdb);
+                    SWSS_LOG_NOTICE("Failed to addFdbEntry: push back saved fdb, MAC: %s vlan %s",
+                                    entry.mac.to_string().c_str(), update.vlan.m_alias.c_str());
+                 }
             }
             else
             {
