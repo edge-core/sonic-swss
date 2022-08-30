@@ -17,6 +17,7 @@ extern sai_buffer_api_t *sai_buffer_api;
 
 extern PortsOrch *gPortsOrch;
 extern sai_object_id_t gSwitchId;
+extern string gMySwitchType;
 
 #define BUFFER_POOL_WATERMARK_FLEX_STAT_COUNTER_POLL_MSECS  "60000"
 
@@ -124,23 +125,47 @@ void BufferOrch::initBufferReadyList(Table& table, bool isConfigDb)
     for (const auto& key: keys)
     {
         auto &&tokens = tokenize(key, dbKeyDelimiter);
-        if (tokens.size() != 2)
+        if (gMySwitchType == "voq")
+        {
+            if (tokens.size() != 4)
+            {
+                SWSS_LOG_ERROR("Wrong format of a table '%s' key '%s'. Skip it", table.getTableName().c_str(), key.c_str());
+                continue;
+            }
+        }
+        else if (tokens.size() != 2)
         {
             SWSS_LOG_ERROR("Wrong format of a table '%s' key '%s'. Skip it", table.getTableName().c_str(), key.c_str());
             continue;
         }
 
-        // We need transform the key from config db format to appl db format
-        auto appldb_key = tokens[0] + delimiter + tokens[1];
-        m_ready_list[appldb_key] = false;
-
-        auto &&port_names = tokenize(tokens[0], list_item_delimiter);
-
-        for(const auto& port_name: port_names)
+        if (gMySwitchType == "voq") 
         {
-            SWSS_LOG_INFO("Item %s has been inserted into ready list", appldb_key.c_str());
-            m_port_ready_list_ref[port_name].push_back(appldb_key);
+            // We need transform the key from config db format to appl db format
+            auto appldb_key = tokens[0] + delimiter + tokens[1] + delimiter + tokens[2] + delimiter + tokens[3];
+            m_ready_list[appldb_key] = false;
+
+            auto &&port_names = tokenize(tokens[0] + delimiter + tokens[1] + delimiter + tokens[2], list_item_delimiter);
+            for(const auto& port_name: port_names)
+            {
+                SWSS_LOG_INFO("Item %s has been inserted into ready list", appldb_key.c_str());
+                m_port_ready_list_ref[port_name].push_back(appldb_key);
+            }
         }
+        else
+        {
+            // We need transform the key from config db format to appl db format
+            auto appldb_key = tokens[0] + delimiter + tokens[1];
+            m_ready_list[appldb_key] = false;
+
+            auto &&port_names = tokenize(tokens[0], list_item_delimiter);
+            for(const auto& port_name: port_names)
+            {
+                SWSS_LOG_INFO("Item %s has been inserted into ready list", appldb_key.c_str());
+                m_port_ready_list_ref[port_name].push_back(appldb_key);
+            }
+        }
+
     }
 }
 
@@ -707,7 +732,8 @@ task_process_status BufferOrch::processBufferProfile(KeyOpFieldsValuesTuple &tup
 }
 
 /*
-Input sample "BUFFER_QUEUE|Ethernet4,Ethernet45|10-15"
+   Input sample "BUFFER_QUEUE|Ethernet4,Ethernet45|10-15" or
+                "BUFFER_QUEUE|STG01-0101-0400-01T2-LC6|ASIC0|Ethernet4|10-15"
 */
 task_process_status BufferOrch::processQueue(KeyOpFieldsValuesTuple &tuple)
 {
@@ -722,15 +748,32 @@ task_process_status BufferOrch::processQueue(KeyOpFieldsValuesTuple &tuple)
 
     SWSS_LOG_DEBUG("Processing:%s", key.c_str());
     tokens = tokenize(key, delimiter);
-    if (tokens.size() != 2)
+
+    vector<string> port_names;
+    if (gMySwitchType == "voq") 
+    {
+        if (tokens.size() != 4)
+        {
+            SWSS_LOG_ERROR("malformed key:%s. Must contain 4 tokens", key.c_str());
+            return task_process_status::task_invalid_entry;
+        }
+
+        port_names = tokenize(tokens[0] + delimiter + tokens[1] + delimiter + tokens[2], list_item_delimiter);
+        if (!parseIndexRange(tokens[3], range_low, range_high))
+        {
+            return task_process_status::task_invalid_entry;
+        }
+    }
+    else if (tokens.size() != 2)
     {
         SWSS_LOG_ERROR("malformed key:%s. Must contain 2 tokens", key.c_str());
         return task_process_status::task_invalid_entry;
-    }
-    vector<string> port_names = tokenize(tokens[0], list_item_delimiter);
-    if (!parseIndexRange(tokens[1], range_low, range_high))
-    {
-        return task_process_status::task_invalid_entry;
+
+        port_names = tokenize(tokens[0], list_item_delimiter);
+        if (!parseIndexRange(tokens[1], range_low, range_high))
+        {
+            return task_process_status::task_invalid_entry;
+        }
     }
 
     if (op == SET_COMMAND)
@@ -856,16 +899,34 @@ task_process_status BufferOrch::processPriorityGroup(KeyOpFieldsValuesTuple &tup
 
     SWSS_LOG_DEBUG("processing:%s", key.c_str());
     tokens = tokenize(key, delimiter);
-    if (tokens.size() != 2)
+
+    vector<string> port_names;
+    if (gMySwitchType == "voq") 
+    {
+        if (tokens.size() != 4)
+        {
+            SWSS_LOG_ERROR("malformed key:%s. Must contain 4 tokens", key.c_str());
+            return task_process_status::task_invalid_entry;
+        }
+
+        port_names = tokenize(tokens[0] + delimiter + tokens[1] + delimiter + tokens[2], list_item_delimiter);
+        if (!parseIndexRange(tokens[3], range_low, range_high))
+        {
+            SWSS_LOG_ERROR("Failed to obtain pg range values");
+            return task_process_status::task_invalid_entry;
+        }
+    }
+    else if (tokens.size() != 2)
     {
         SWSS_LOG_ERROR("malformed key:%s. Must contain 2 tokens", key.c_str());
         return task_process_status::task_invalid_entry;
-    }
-    vector<string> port_names = tokenize(tokens[0], list_item_delimiter);
-    if (!parseIndexRange(tokens[1], range_low, range_high))
-    {
-        SWSS_LOG_ERROR("Failed to obtain pg range values");
-        return task_process_status::task_invalid_entry;
+
+        port_names = tokenize(tokens[0], list_item_delimiter);
+        if (!parseIndexRange(tokens[1], range_low, range_high))
+        {
+            SWSS_LOG_ERROR("Failed to obtain pg range values");
+            return task_process_status::task_invalid_entry;
+        }
     }
 
     if (op == SET_COMMAND)
@@ -1155,7 +1216,15 @@ void BufferOrch::doTask(Consumer &consumer)
 {
     SWSS_LOG_ENTER();
 
-    if (!gPortsOrch->isConfigDone())
+    if (gMySwitchType == "voq")
+    {
+        if(!gPortsOrch->isInitDone()) 
+        {
+            SWSS_LOG_INFO("Buffer task for %s can't be executed ahead of port config done", consumer.getTableName().c_str());
+            return;
+        }
+    }
+    else if (!gPortsOrch->isConfigDone())
     {
         SWSS_LOG_INFO("Buffer task for %s can't be executed ahead of port config done", consumer.getTableName().c_str());
         return;
