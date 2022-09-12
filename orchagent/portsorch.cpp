@@ -2615,6 +2615,15 @@ bool PortsOrch::addPort(const set<int> &lane_set, uint32_t speed, int an, string
 {
     SWSS_LOG_ENTER();
 
+    if (!speed || lane_set.empty())
+    {
+        /*
+        speed and lane list are mandatory attributes for the initial create_port call
+        This check is required because the incoming notifs may not be atomic
+        */
+        return true;
+    }
+
     vector<uint32_t> lanes(lane_set.begin(), lane_set.end());
 
     sai_attribute_t attr;
