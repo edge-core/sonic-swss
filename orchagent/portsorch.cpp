@@ -7260,6 +7260,7 @@ bool PortsOrch::addSystemPorts()
             port.m_oper_status = SAI_PORT_OPER_STATUS_UP;
             port.m_speed = attrs[1].value.sysportconfig.speed;
             port.m_mtu = DEFAULT_SYSTEM_PORT_MTU;
+            SWSS_LOG_NOTICE("Vineet -  for alias %s m_alias %s", alias.c_str(), port.m_alias.c_str());
             if (attrs[0].value.s32 == SAI_SYSTEM_PORT_TYPE_LOCAL)
             {
                 //Get the local port oid
@@ -7303,7 +7304,7 @@ bool PortsOrch::addSystemPorts()
                 m_port_ref_count[port.m_alias] = 0;
             }
 
-            SWSS_LOG_NOTICE("Added system port %" PRIx64 " for %s", system_port_oid, alias.c_str());
+            SWSS_LOG_NOTICE("Added system port %" PRIx64 " for %s m_alias %s system port alias %s", system_port_oid, alias.c_str(), port.m_alias.c_str(), port.m_system_port_info.alias.c_str());
         }
         else
         {
