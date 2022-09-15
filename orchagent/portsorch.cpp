@@ -55,6 +55,7 @@ extern string gMySwitchType;
 extern int32_t gVoqMySwitchId;
 extern string gMyHostName;
 extern string gMyAsicName;
+extern event_handle_t g_events_handle;
 
 #define DEFAULT_SYSTEM_PORT_MTU 9100
 #define VLAN_PREFIX         "Vlan"
@@ -2537,6 +2538,8 @@ bool PortsOrch::setHostIntfsOperStatus(const Port& port, bool isUp) const
     SWSS_LOG_NOTICE("Set operation status %s to host interface %s",
             isUp ? "UP" : "DOWN", port.m_alias.c_str());
 
+    event_params_t params = {{"ifname",port.m_alias},{"status",isUp ? "up" : "down"}};
+    event_publish(g_events_handle, "if-state", &params);
     return true;
 }
 

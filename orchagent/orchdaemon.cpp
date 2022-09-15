@@ -57,6 +57,7 @@ FlowCounterRouteOrch *gFlowCounterRouteOrch;
 DebugCounterOrch *gDebugCounterOrch;
 
 bool gIsNatSupported = false;
+event_handle_t g_events_handle;
 
 #define DEFAULT_MAX_BULK_SIZE 1000
 size_t gMaxBulkSize = DEFAULT_MAX_BULK_SIZE;
@@ -89,6 +90,8 @@ OrchDaemon::~OrchDaemon()
         delete(*it);
     }
     delete m_select;
+
+    events_deinit_publisher(g_events_handle);
 }
 
 bool OrchDaemon::init()
@@ -96,6 +99,8 @@ bool OrchDaemon::init()
     SWSS_LOG_ENTER();
 
     string platform = getenv("platform") ? getenv("platform") : "";
+
+    g_events_handle = events_init_publisher("sonic-events-swss");
 
     gCrmOrch = new CrmOrch(m_configDb, CFG_CRM_TABLE_NAME);
 
