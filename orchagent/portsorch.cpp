@@ -7394,8 +7394,9 @@ bool PortsOrch::addSystemPorts()
             port.m_system_port_info.speed = attrs[1].value.sysportconfig.speed;
             port.m_system_port_info.num_voq = attrs[1].value.sysportconfig.num_voq;
 
-            initializeVoqs( port );
+            initializeVoqs(port);
             setPort(port.m_alias, port);
+
             /* Add system port name map to counter table */
             FieldValueTuple tuple(port.m_system_port_info.alias,
                                   sai_serialize_object_id(system_port_oid));

@@ -830,32 +830,59 @@ task_process_status BufferOrch::processQueue(KeyOpFieldsValuesTuple &tuple)
         for (size_t ind = range_low; ind <= range_high; ind++)
         {
             SWSS_LOG_DEBUG("processing queue:%zd", ind);
-            if (port.m_queue_ids.size() <= ind)
+            if (gMySwitchType == "voq") 
             {
-                SWSS_LOG_ERROR("Invalid queue index specified:%zd", ind);
-                return task_process_status::task_invalid_entry;
-            }
-            if (port.m_queue_lock[ind])
-            {
-                SWSS_LOG_WARN("Queue %zd on port %s is locked, will retry", ind, port_name.c_str());
-                return task_process_status::task_need_retry;
-            }
-            if (need_update_sai)
-            {
-                sai_object_id_t queue_id;
-                queue_id = port.m_queue_ids[ind];
-                SWSS_LOG_DEBUG("Applying buffer profile:0x%" PRIx64 " to queue index:%zd, queue sai_id:0x%" PRIx64, sai_buffer_profile, ind, queue_id);
-                sai_status_t sai_status = sai_queue_api->set_queue_attribute(queue_id, &attr);
-                if (sai_status != SAI_STATUS_SUCCESS)
+                if (port.m_system_port_info.m_voq_ids.size() <= ind)
                 {
-                    SWSS_LOG_ERROR("Failed to set queue's buffer profile attribute, status:%d", sai_status);
-                    task_process_status handle_status = handleSaiSetStatus(SAI_API_QUEUE, sai_status);
-                    if (handle_status != task_process_status::task_success)
+                    SWSS_LOG_ERROR("Invalid voq index specified:%zd", ind);
+                    return task_process_status::task_invalid_entry;
+                }
+                if (need_update_sai)
+                {
+                    sai_object_id_t queue_id;
+                    queue_id = port.m_system_port_info.m_voq_ids[ind];
+                    SWSS_LOG_DEBUG("Applying buffer profile:0x%" PRIx64 " to queue index:%zd, queue sai_id:0x%" PRIx64, sai_buffer_profile, ind, queue_id);
+                    sai_status_t sai_status = sai_queue_api->set_queue_attribute(queue_id, &attr);
+                    if (sai_status != SAI_STATUS_SUCCESS)
                     {
-                        return handle_status;
+                        SWSS_LOG_ERROR("Failed to set queue's buffer profile attribute, status:%d", sai_status);
+                        task_process_status handle_status = handleSaiSetStatus(SAI_API_QUEUE, sai_status);
+                        if (handle_status != task_process_status::task_success)
+                        {
+                            return handle_status;
+                        }
                     }
                 }
-            }
+            } 
+            else
+            {
+                if (port.m_queue_ids.size() <= ind)
+                {
+                    SWSS_LOG_ERROR("Invalid queue index specified:%zd", ind);
+                    return task_process_status::task_invalid_entry;
+                }
+                if (port.m_queue_lock[ind])
+                {
+                    SWSS_LOG_WARN("Queue %zd on port %s is locked, will retry", ind, port_name.c_str());
+                    return task_process_status::task_need_retry;
+                }
+                if (need_update_sai)
+                {
+                    sai_object_id_t queue_id;
+                    queue_id = port.m_queue_ids[ind];
+                    SWSS_LOG_DEBUG("Applying buffer profile:0x%" PRIx64 " to queue index:%zd, queue sai_id:0x%" PRIx64, sai_buffer_profile, ind, queue_id);
+                    sai_status_t sai_status = sai_queue_api->set_queue_attribute(queue_id, &attr);
+                    if (sai_status != SAI_STATUS_SUCCESS)
+                    {
+                        SWSS_LOG_ERROR("Failed to set queue's buffer profile attribute, status:%d", sai_status);
+                        task_process_status handle_status = handleSaiSetStatus(SAI_API_QUEUE, sai_status);
+                        if (handle_status != task_process_status::task_success)
+                        {
+                            return handle_status;
+                        }
+                    }
+                }
+             }
         }
     }
 
@@ -895,13 +922,14 @@ task_process_status BufferOrch::processPriorityGroup(KeyOpFieldsValuesTuple &tup
     const string key = kfvKey(tuple);
     string op = kfvOp(tuple);
     vector<string> tokens;
-    sai_uint32_t range_low, range_high;
+    sai_uint32_t range_low = 0, range_high = 0;
     bool need_update_sai = true;
 
     SWSS_LOG_DEBUG("processing:%s", key.c_str());
     tokens = tokenize(key, delimiter);
 
     vector<string> port_names;
+#if 0
     if (gMySwitchType == "voq") 
     {
         if (tokens.size() != 4)
@@ -920,6 +948,19 @@ task_process_status BufferOrch::processPriorityGroup(KeyOpFieldsValuesTuple &tup
     else if (tokens.size() != 2)
     {
         SWSS_LOG_ERROR("Pizza Box : malformed key:%s. Must contain 2 tokens", key.c_str());
+        return task_process_status::task_invalid_entry;
+
+        port_names = tokenize(tokens[0], list_item_delimiter);
+        if (!parseIndexRange(tokens[1], range_low, range_high))
+        {
+            SWSS_LOG_ERROR("Failed to obtain pg range values");
+            return task_process_status::task_invalid_entry;
+        }
+    }
+#endif
+    if (tokens.size() != 2)
+    {
+        SWSS_LOG_ERROR("malformed key:%s. Must contain 2 tokens", key.c_str());
         return task_process_status::task_invalid_entry;
 
         port_names = tokenize(tokens[0], list_item_delimiter);

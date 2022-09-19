@@ -1627,6 +1627,8 @@ task_process_status QosOrch::handleQueueTable(Consumer& consumer, KeyOpFieldsVal
 
     ref_resolve_status  resolve_result;
     // sample "QUEUE: {STR2-7804-LC5-1|ASIC0|Ethernet4|0-1}"
+    tokens = tokenize(key, config_db_key_delimiter);
+
     if (gMySwitchType == "voq")
     {
         if (tokens.size() != 4)
