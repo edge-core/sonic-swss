@@ -7261,6 +7261,7 @@ bool PortsOrch::addSystemPorts()
             port.m_speed = attrs[1].value.sysportconfig.speed;
             port.m_mtu = DEFAULT_SYSTEM_PORT_MTU;
             SWSS_LOG_NOTICE("Vineet -  for alias %s m_alias %s", alias.c_str(), port.m_alias.c_str());
+
             if (attrs[0].value.s32 == SAI_SYSTEM_PORT_TYPE_LOCAL)
             {
                 //Get the local port oid
@@ -7278,13 +7279,14 @@ bool PortsOrch::addSystemPorts()
                 }
 
                 //System port for local port. Update the system port info in the existing physical port
-                if(!getPort(attr.value.oid, port))
+                Port local_port;
+                if(!getPort(attr.value.oid, local_port))
                 {
                     //This is system port for non-front panel local port (CPU or OLP or RCY (Inband)). Not an error
                     SWSS_LOG_NOTICE("Add port for non-front panel local system port 0x%" PRIx64 "; core: %d, core port: %d",
                             system_port_oid, core_index, core_port_index);
                 }
-                port.m_system_port_info.local_port_oid = attr.value.oid;
+                local_port.m_system_port_info.local_port_oid = attr.value.oid;
             }
 
             port.m_system_port_oid = system_port_oid;

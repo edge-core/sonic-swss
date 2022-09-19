@@ -758,7 +758,7 @@ task_process_status BufferOrch::processQueue(KeyOpFieldsValuesTuple &tuple)
             return task_process_status::task_invalid_entry;
         }
 
-        port_names = tokenize(tokens[0] + delimiter + tokens[1] + delimiter + tokens[2], list_item_delimiter);
+        port_names = tokenize(tokens[0] + config_db_key_delimiter + tokens[1] + config_db_key_delimiter + tokens[2], list_item_delimiter);
         if (!parseIndexRange(tokens[3], range_low, range_high))
         {
             return task_process_status::task_invalid_entry;

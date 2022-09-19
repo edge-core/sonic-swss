@@ -1628,6 +1628,7 @@ task_process_status QosOrch::handleQueueTable(Consumer& consumer, KeyOpFieldsVal
     ref_resolve_status  resolve_result;
     // sample "QUEUE: {STR2-7804-LC5-1|ASIC0|Ethernet4|0-1}"
     if (gMySwitchType == "voq")
+    {
         if (tokens.size() != 4)
         {
             SWSS_LOG_ERROR("Chassis : malformed key:'%s'. Must contain 4 tokens", key.c_str());
