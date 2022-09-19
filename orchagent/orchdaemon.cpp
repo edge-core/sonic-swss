@@ -24,6 +24,7 @@ using namespace swss;
 
 extern sai_switch_api_t*           sai_switch_api;
 extern sai_object_id_t             gSwitchId;
+extern string                      gMySwitchType;
 
 extern void syncd_apply_view();
 /*
