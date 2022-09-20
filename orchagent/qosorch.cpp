@@ -1628,41 +1628,20 @@ task_process_status QosOrch::handleQueueTable(Consumer& consumer, KeyOpFieldsVal
     vector<string> port_names;
 
     ref_resolve_status  resolve_result;
-    // sample "QUEUE: {STR2-7804-LC5-1|ASIC0|Ethernet4|0-1}"
+    // sample "QUEUE: {Ethernet4|0-1}"
     tokens = tokenize(key, config_db_key_delimiter);
 
-    if (gMySwitchType == "voq")
-    {
-        if (tokens.size() != 4)
-        {
-            SWSS_LOG_ERROR("Chassis : malformed key:'%s'. Must contain 4 tokens", key.c_str());
-            return task_process_status::task_invalid_entry;
-        }
-    }
-    // sample "QUEUE: {Ethernet4|0-1}"
-    else if (tokens.size() != 2)
+    if (tokens.size() != 2)
     {
         SWSS_LOG_ERROR("Pizza Box : malformed key:%s. Must contain 2 tokens", key.c_str());
         return task_process_status::task_invalid_entry;
     }
  
-    if (gMySwitchType == "voq") 
+    port_names = tokenize(tokens[0], list_item_delimiter);
+    if (!parseIndexRange(tokens[1], range_low, range_high))
     {
-        port_names = tokenize(tokens[0] + config_db_key_delimiter + tokens[1] + config_db_key_delimiter + tokens[2], list_item_delimiter);
-        if (!parseIndexRange(tokens[3], range_low, range_high))
-        {
-            SWSS_LOG_ERROR("Chassis : Failed to parse range:%s", tokens[3].c_str());
-            return task_process_status::task_invalid_entry;
-        }
-    }
-    else
-    {
-        port_names = tokenize(tokens[0], list_item_delimiter);
-        if (!parseIndexRange(tokens[1], range_low, range_high))
-        {
-            SWSS_LOG_ERROR("Pizza Box : Failed to parse range:%s", tokens[1].c_str());
-            return task_process_status::task_invalid_entry;
-        }
+        SWSS_LOG_ERROR("Pizza Box : Failed to parse range:%s", tokens[1].c_str());
+        return task_process_status::task_invalid_entry;
     }
 
     bool donotChangeScheduler = false;
