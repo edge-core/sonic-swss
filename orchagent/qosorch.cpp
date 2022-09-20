@@ -1544,6 +1544,7 @@ sai_object_id_t QosOrch::getSchedulerGroup(const Port &port, const sai_object_id
 bool QosOrch::applySchedulerToQueueSchedulerGroup(Port &port, size_t queue_ind, sai_object_id_t scheduler_profile_id)
 {
     SWSS_LOG_ENTER();
+    sai_object_id_t queue_id;
 
     if (port.m_queue_ids.size() <= queue_ind)
     {
@@ -1551,7 +1552,7 @@ bool QosOrch::applySchedulerToQueueSchedulerGroup(Port &port, size_t queue_ind, 
         return false;
     }
 
-    const sai_object_id_t queue_id = port.m_queue_ids[queue_ind];
+    queue_id = port.m_queue_ids[queue_ind];
 
     const sai_object_id_t group_id = getSchedulerGroup(port, queue_id);
     if(group_id == SAI_NULL_OBJECT_ID)
@@ -1595,6 +1596,7 @@ bool QosOrch::applyWredProfileToQueue(Port &port, size_t queue_ind, sai_object_i
         SWSS_LOG_ERROR("Invalid queue index specified:%zd", queue_ind);
         return false;
     }
+
     queue_id = port.m_queue_ids[queue_ind];
 
     attr.id = SAI_QUEUE_ATTR_WRED_PROFILE_ID;

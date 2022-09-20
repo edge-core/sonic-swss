@@ -99,16 +99,32 @@ void BufferOrch::initBufferReadyLists(DBConnector *applDb, DBConnector *confDb)
         Table pg_table(applDb, APP_BUFFER_PG_TABLE_NAME);
         initBufferReadyList(pg_table, false);
 
-        Table queue_table(applDb, APP_BUFFER_QUEUE_TABLE_NAME);
-        initBufferReadyList(queue_table, false);
+        if(gMySwitchType == "voq") 
+        {
+            Table queue_table(applDb, APP_BUFFER_QUEUE_TABLE_NAME);
+            initVoqBufferReadyList(queue_table, false);
+        }
+        else
+        {
+            Table queue_table(applDb, APP_BUFFER_QUEUE_TABLE_NAME);
+            initBufferReadyList(queue_table, false);
+        }
     }
     else
     {
         Table pg_table(confDb, CFG_BUFFER_PG_TABLE_NAME);
         initBufferReadyList(pg_table, true);
 
-        Table queue_table(confDb, CFG_BUFFER_QUEUE_TABLE_NAME);
-        initBufferReadyList(queue_table, true);
+        if(gMySwitchType == "voq") 
+        {
+            Table queue_table(confDb, CFG_BUFFER_QUEUE_TABLE_NAME);
+            initVoqBufferReadyList(queue_table, true);
+        }
+        else
+        {
+            Table queue_table(confDb, CFG_BUFFER_QUEUE_TABLE_NAME);
+            initBufferReadyList(queue_table, true);
+        }
     }
 }
 
@@ -125,47 +141,54 @@ void BufferOrch::initBufferReadyList(Table& table, bool isConfigDb)
     for (const auto& key: keys)
     {
         auto &&tokens = tokenize(key, dbKeyDelimiter);
-        if (gMySwitchType == "voq")
+        if (tokens.size() != 2)
         {
-            if (tokens.size() != 4)
-            {
-                SWSS_LOG_ERROR("Chassis : Wrong format of a table '%s' key '%s'. Skip it", table.getTableName().c_str(), key.c_str());
-                continue;
-            }
-        }
-        else if (tokens.size() != 2)
-        {
-            SWSS_LOG_ERROR("Pizza Box : Wrong format of a table '%s' key '%s'. Skip it", table.getTableName().c_str(), key.c_str());
+            SWSS_LOG_ERROR("Wrong format of a table '%s' key '%s'. Skip it", table.getTableName().c_str(), key.c_str());
             continue;
         }
 
-        if (gMySwitchType == "voq") 
+        // We need transform the key from config db format to appl db format
+        auto appldb_key = tokens[0] + delimiter + tokens[1];
+        m_ready_list[appldb_key] = false;
+
+        auto &&port_names = tokenize(tokens[0], list_item_delimiter);
+        for(const auto& port_name: port_names)
         {
-            // We need transform the key from config db format to appl db format
-            auto appldb_key = tokens[0] + config_db_key_delimiter + tokens[1] + config_db_key_delimiter + tokens[2] + delimiter + tokens[3];
-            m_ready_list[appldb_key] = false;
-
-            auto &&port_names = tokenize(tokens[0] + config_db_key_delimiter + tokens[1] + config_db_key_delimiter + tokens[2], list_item_delimiter);
-            for(const auto& port_name: port_names)
-            {
-                SWSS_LOG_INFO("Chassis : Item %s has been inserted into ready list", appldb_key.c_str());
-                m_port_ready_list_ref[port_name].push_back(appldb_key);
-            }
+            SWSS_LOG_INFO("Item %s has been inserted into ready list", appldb_key.c_str());
+            m_port_ready_list_ref[port_name].push_back(appldb_key);
         }
-        else
+    }
+}
+
+void BufferOrch::initVoqBufferReadyList(Table& table, bool isConfigDb)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<std::string> keys;
+    table.getKeys(keys);
+
+    const char dbKeyDelimiter = (isConfigDb ? config_db_key_delimiter : delimiter);
+
+    // populate the lists with buffer configuration information
+    for (const auto& key: keys)
+    {
+        auto &&tokens = tokenize(key, dbKeyDelimiter);
+        if (tokens.size() != 4)
         {
-            // We need transform the key from config db format to appl db format
-            auto appldb_key = tokens[0] + delimiter + tokens[1];
-            m_ready_list[appldb_key] = false;
-
-            auto &&port_names = tokenize(tokens[0], list_item_delimiter);
-            for(const auto& port_name: port_names)
-            {
-                SWSS_LOG_INFO("Pizza Box : Item %s has been inserted into ready list", appldb_key.c_str());
-                m_port_ready_list_ref[port_name].push_back(appldb_key);
-            }
+            SWSS_LOG_ERROR("Wrong format of a table '%s' key '%s'. Skip it", table.getTableName().c_str(), key.c_str());
+            continue;
         }
 
+        // We need transform the key from config db format to appl db format
+        auto appldb_key = tokens[0] + config_db_key_delimiter + tokens[1] + config_db_key_delimiter + tokens[2] + delimiter + tokens[3];
+        m_ready_list[appldb_key] = false;
+
+        auto &&port_names = tokenize(tokens[0] + config_db_key_delimiter + tokens[1] + config_db_key_delimiter + tokens[2], list_item_delimiter);
+        for(const auto& port_name: port_names)
+        {
+            SWSS_LOG_INFO("Item %s has been inserted into ready list", appldb_key.c_str());
+            m_port_ready_list_ref[port_name].push_back(appldb_key);
+        }
     }
 }
 
@@ -912,7 +935,6 @@ task_process_status BufferOrch::processQueue(KeyOpFieldsValuesTuple &tuple)
 
 /*
 Input sample "BUFFER_PG|Ethernet4,Ethernet45|10-15"
-             "BUFFER_PG|STR2-7804-LC7-1|ASIC0|Ethernet4|10-15"
 */
 task_process_status BufferOrch::processPriorityGroup(KeyOpFieldsValuesTuple &tuple)
 {
@@ -929,35 +951,7 @@ task_process_status BufferOrch::processPriorityGroup(KeyOpFieldsValuesTuple &tup
     tokens = tokenize(key, delimiter);
 
     vector<string> port_names;
-#if 0
-    if (gMySwitchType == "voq") 
-    {
-        if (tokens.size() != 4)
-        {
-            SWSS_LOG_ERROR("Chassis : malformed key:%s. Must contain 4 tokens", key.c_str());
-            return task_process_status::task_invalid_entry;
-        }
 
-        port_names = tokenize(tokens[0] + config_db_key_delimiter + tokens[1] + config_db_key_delimiter + tokens[2], list_item_delimiter);
-        if (!parseIndexRange(tokens[3], range_low, range_high))
-        {
-            SWSS_LOG_ERROR("Failed to obtain pg range values");
-            return task_process_status::task_invalid_entry;
-        }
-    }
-    else if (tokens.size() != 2)
-    {
-        SWSS_LOG_ERROR("Pizza Box : malformed key:%s. Must contain 2 tokens", key.c_str());
-        return task_process_status::task_invalid_entry;
-
-        port_names = tokenize(tokens[0], list_item_delimiter);
-        if (!parseIndexRange(tokens[1], range_low, range_high))
-        {
-            SWSS_LOG_ERROR("Failed to obtain pg range values");
-            return task_process_status::task_invalid_entry;
-        }
-    }
-#endif
     if (tokens.size() != 2)
     {
         SWSS_LOG_ERROR("malformed key:%s. Must contain 2 tokens", key.c_str());
