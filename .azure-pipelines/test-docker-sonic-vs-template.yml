@@ -80,7 +80,7 @@ jobs:
     inputs:
       testResultsFiles: '**/tr.xml'
       testRunTitle: vstest
-    condition: always()
+    condition: succeeded()
 
   - script: |
       cp -r tests/log $(Build.ArtifactStagingDirectory)/
