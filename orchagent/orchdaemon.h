@@ -33,8 +33,10 @@
 #include "natorch.h"
 #include "muxorch.h"
 #include "bfdorch.h"
+#include <sairedis.h>
 
 using namespace swss;
+extern bool gSaiRedisLogRotate;
 
 class OrchDaemon
 {
@@ -49,6 +51,7 @@ public:
     bool warmRestoreValidation();
 
     bool warmRestartCheck();
+    void logRotate();
 private:
     DBConnector *m_applDb;
     DBConnector *m_configDb;
