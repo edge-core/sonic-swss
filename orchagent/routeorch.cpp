@@ -1787,27 +1787,11 @@ bool RouteOrch::addRoute(RouteBulkContext& ctx, const NextHopGroupKey &nextHops)
                 return true;
             }
 
-            Port port;
-            /* Cannot locate interface */
-            if (!gPortsOrch->getPort(nexthop.alias, port))
-            {
-                SWSS_LOG_INFO("Failed to get interface %s",
-                        nexthop.alias.c_str());
-                return false;
-            }
-
             next_hop_id = m_intfsOrch->getRouterIntfsId(nexthop.alias);
             /* rif is not created yet */
             if (next_hop_id == SAI_NULL_OBJECT_ID || m_intfsOrch->isRouterIntfRemoving(nexthop.alias))
             {
                 SWSS_LOG_INFO("Failed to get next hop %s for %s",
-                        nextHops.to_string().c_str(), ipPrefix.to_string().c_str());
-                return false;
-            }
-
-            if (vrf_id != port.m_vr_id)
-            {
-                SWSS_LOG_INFO("Interface in Next hop %s for %s belongs to different vrf",
                         nextHops.to_string().c_str(), ipPrefix.to_string().c_str());
                 return false;
             }
