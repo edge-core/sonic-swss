@@ -824,7 +824,10 @@ bool PortsOrch::getPort(sai_object_id_t id, Port &port)
     }
     else
     {
-        getPort(itr->second, port);
+        if (!getPort(itr->second, port))
+        {
+            SWSS_LOG_THROW("Inconsistent saiOidToAlias map and m_portList map: oid=%" PRIx64, id);
+        }
         return true;
     }
 
@@ -1065,9 +1068,9 @@ void PortsOrch::getCpuPort(Port &port)
     port = m_cpuPort;
 }
 
-/* 
- * Create host_tx_ready field in PORT_TABLE of STATE-DB 
- * and set the field to false by default for the 
+/*
+ * Create host_tx_ready field in PORT_TABLE of STATE-DB
+ * and set the field to false by default for the
  * front<Ethernet> port.
  */
 void PortsOrch::initHostTxReadyState(Port &port)
@@ -1092,7 +1095,7 @@ void PortsOrch::initHostTxReadyState(Port &port)
     if (hostTxReady.empty())
     {
         m_portStateTable.hset(port.m_alias, "host_tx_ready", "false");
-        SWSS_LOG_INFO("initalize hostTxReady %s with status %s", 
+        SWSS_LOG_INFO("initalize hostTxReady %s with status %s",
                 port.m_alias.c_str(), hostTxReady.c_str());
     }
 }
@@ -1106,13 +1109,13 @@ bool PortsOrch::setPortAdminStatus(Port &port, bool state)
     attr.value.booldata = state;
 
     /* Update the host_tx_ready to false before setting admin_state, when admin state is false */
-    if (!state) 
+    if (!state)
     {
         m_portStateTable.hset(port.m_alias, "host_tx_ready", "false");
         SWSS_LOG_INFO("Set admin status DOWN host_tx_ready to false to port pid:%" PRIx64,
                 port.m_port_id);
     }
-    
+
     sai_status_t status = sai_port_api->set_port_attribute(port.m_port_id, &attr);
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -1131,14 +1134,14 @@ bool PortsOrch::setPortAdminStatus(Port &port, bool state)
     {
         m_portStateTable.hset(port.m_alias, "host_tx_ready", "false");
     }
-   
+
     /* Update the state table for host_tx_ready*/
     if (state && (gbstatus == true) && (status == SAI_STATUS_SUCCESS) )
     {
         m_portStateTable.hset(port.m_alias, "host_tx_ready", "true");
         SWSS_LOG_INFO("Set admin status UP host_tx_ready to true to port pid:%" PRIx64,
                 port.m_port_id);
-    } 
+    }
 
     return true;
 }
@@ -1372,9 +1375,9 @@ bool PortsOrch::setPortPfcWatchdogStatus(sai_object_id_t portId, uint8_t pfcwd_b
         SWSS_LOG_ERROR("Failed to get port object for port id 0x%" PRIx64, portId);
         return false;
     }
-    
+
     p.m_pfcwd_sw_bitmask = pfcwd_bitmask;
-   
+
     m_portList[p.m_alias] = p;
 
     SWSS_LOG_INFO("Set PFC watchdog port id=0x%" PRIx64 ", bitmast=0x%x", portId, pfcwd_bitmask);
@@ -1392,9 +1395,9 @@ bool PortsOrch::getPortPfcWatchdogStatus(sai_object_id_t portId, uint8_t *pfcwd_
         SWSS_LOG_ERROR("Failed to get port object for port id 0x%" PRIx64, portId);
         return false;
     }
-    
+
     *pfcwd_bitmask = p.m_pfcwd_sw_bitmask;
-    
+
     return true;
 }
 
@@ -3745,10 +3748,10 @@ void PortsOrch::doPortTask(Consumer &consumer)
                         continue;
                     }
                 }
-                
+
                 /* create host_tx_ready field in state-db */
                 initHostTxReadyState(p);
-                
+
                 /* Last step set port admin status */
                 if (!admin_status.empty() && (p.m_admin_state_up != (admin_status == "up")))
                 {
@@ -3826,6 +3829,7 @@ void PortsOrch::doPortTask(Consumer &consumer)
 
             /* Delete port from port list */
             m_portList.erase(alias);
+            saiOidToAlias.erase(port_id);
         }
         else
         {
@@ -6434,7 +6438,7 @@ void PortsOrch::doTask(NotificationConsumer &consumer)
 
             if (!getPort(id, port))
             {
-                SWSS_LOG_ERROR("Failed to get port object for port id 0x%" PRIx64, id);
+                SWSS_LOG_NOTICE("Got port state change for port id 0x%" PRIx64 " which does not exist, possibly outdated event", id);
                 continue;
             }
 
