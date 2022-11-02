@@ -459,6 +459,7 @@ class TestVlan(object):
 
         wait_for_result(arp_accept_disabled, PollingConfig(), "IPv4 arp_accept not disabled")
 
+        self.dvs_vlan.remove_vlan_interface(vlan)
         self.dvs_vlan.remove_vlan(vlan)
 
     def test_VlanProxyArp(self, dvs): 
@@ -486,6 +487,7 @@ class TestVlan(object):
 
         wait_for_result(proxy_arp_disabled, PollingConfig(), 'IPv4 proxy_arp or proxy_arp_pvlan not disabled')
 
+        self.dvs_vlan.remove_vlan_interface(vlan)
         self.dvs_vlan.remove_vlan(vlan)
 
 # Add Dummy always-pass test at end as workaroud
