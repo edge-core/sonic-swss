@@ -112,6 +112,7 @@ static acl_table_type_lookup_t aclTableTypeLookUp =
     { TABLE_TYPE_MIRROR,                ACL_TABLE_MIRROR },
     { TABLE_TYPE_MIRRORV6,              ACL_TABLE_MIRRORV6 },
     { TABLE_TYPE_MIRROR_DSCP,           ACL_TABLE_MIRROR_DSCP },
+    { TABLE_TYPE_PFCWD,                 ACL_TABLE_PFCWD },
     { TABLE_TYPE_CTRLPLANE,             ACL_TABLE_CTRLPLANE },
     { TABLE_TYPE_DTEL_FLOW_WATCHLIST,   ACL_TABLE_DTEL_FLOW_WATCHLIST },
     { TABLE_TYPE_DTEL_DROP_WATCHLIST,   ACL_TABLE_DTEL_DROP_WATCHLIST },
@@ -1358,6 +1359,7 @@ bool AclTable::create()
     sai_attribute_t attr;
     vector<sai_attribute_t> table_attrs;
     vector<int32_t> bpoint_list;
+    sai_acl_stage_t acl_stage = (stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
 
     // PFC watch dog ACLs are only applied to port
     if ((type == ACL_TABLE_PFCWD) || (type == ACL_TABLE_DROP))
@@ -1381,7 +1383,15 @@ bool AclTable::create()
         table_attrs.push_back(attr);
 
         attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
-        attr.value.s32 = (stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
+        attr.value.s32 = acl_stage;
+        table_attrs.push_back(attr);
+
+        // Only packet action is required for PFCWD and DROP
+        attr.id = SAI_ACL_TABLE_ATTR_ACL_ACTION_TYPE_LIST;
+        int32_t acl_action_list[1];
+        acl_action_list[0] = SAI_ACL_ACTION_TYPE_PACKET_ACTION;
+        attr.value.s32list.count = 1;
+        attr.value.s32list.list = acl_action_list;
         table_attrs.push_back(attr);
 
         if (stage == ACL_STAGE_INGRESS)
@@ -1395,7 +1405,7 @@ bool AclTable::create()
 
         if (status == SAI_STATUS_SUCCESS)
         {
-            gCrmOrch->incCrmAclUsedCounter(CrmResourceType::CRM_ACL_TABLE, (sai_acl_stage_t) attr.value.s32, SAI_ACL_BIND_POINT_TYPE_PORT);
+            gCrmOrch->incCrmAclUsedCounter(CrmResourceType::CRM_ACL_TABLE, acl_stage, SAI_ACL_BIND_POINT_TYPE_PORT);
         }
 
         return status == SAI_STATUS_SUCCESS;
@@ -1408,8 +1418,7 @@ bool AclTable::create()
         table_attrs.push_back(attr);
 
         attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
-        attr.value.s32 = (stage == ACL_STAGE_INGRESS) ?
-                         SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
+        attr.value.s32 = acl_stage;
         table_attrs.push_back(attr);
 
         sai_status_t status = sai_acl_api->create_acl_table(
@@ -1418,9 +1427,9 @@ bool AclTable::create()
         if (status == SAI_STATUS_SUCCESS)
         {
             gCrmOrch->incCrmAclUsedCounter(
-                    CrmResourceType::CRM_ACL_TABLE, (sai_acl_stage_t)attr.value.s32, SAI_ACL_BIND_POINT_TYPE_PORT);
+                    CrmResourceType::CRM_ACL_TABLE, acl_stage, SAI_ACL_BIND_POINT_TYPE_PORT);
             gCrmOrch->incCrmAclUsedCounter(
-                    CrmResourceType::CRM_ACL_TABLE, (sai_acl_stage_t)attr.value.s32, SAI_ACL_BIND_POINT_TYPE_LAG);
+                    CrmResourceType::CRM_ACL_TABLE, acl_stage, SAI_ACL_BIND_POINT_TYPE_LAG);
         }
 
         return status == SAI_STATUS_SUCCESS;
@@ -1584,9 +1593,7 @@ bool AclTable::create()
     attr.value.s32list.list = range_types_list;
     table_attrs.push_back(attr);
 
-    sai_acl_stage_t acl_stage;
     attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
-    acl_stage = (stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
     attr.value.s32 = acl_stage;
     table_attrs.push_back(attr);
 
@@ -2911,7 +2918,7 @@ bool AclOrch::removeAclTable(string table_id)
         sai_acl_stage_t sai_stage = (stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
         gCrmOrch->decCrmAclUsedCounter(CrmResourceType::CRM_ACL_TABLE, sai_stage, SAI_ACL_BIND_POINT_TYPE_PORT, table_oid);
 
-        if (type != ACL_TABLE_PFCWD)
+        if ((type != ACL_TABLE_PFCWD) && (type != ACL_TABLE_DROP))
         {
             gCrmOrch->decCrmAclUsedCounter(CrmResourceType::CRM_ACL_TABLE, sai_stage, SAI_ACL_BIND_POINT_TYPE_LAG, table_oid);
         }
