@@ -26,6 +26,8 @@ private:
     Table m_cfgLagMemberTable;
     Table m_statePortTable;
     ProducerStateTable m_appPortTable;
+    Table m_stateIntfTable;
+    Table m_appIntfTable;
     ProducerStateTable m_appSendToIngressPortTable;
 
     std::set<std::string> m_portList;
@@ -37,6 +39,7 @@ private:
     bool setPortMtu(const std::string &alias, const std::string &mtu);
     bool setPortAdminStatus(const std::string &alias, const bool up);
     bool isPortStateOk(const std::string &alias);
+    void setIntfIp2me(const std::string &alias, const std::string &opCmd, const IpPrefix &ipPrefix, const std::string &vrfName);
 };
 
 }

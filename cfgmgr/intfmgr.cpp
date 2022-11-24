@@ -134,6 +134,36 @@ void IntfMgr::setIntfIp(const string &alias, const string &opCmd,
     }
 }
 
+void IntfMgr::setIntfIp2me(const string &alias, const string &opCmd,
+                        const IpPrefix &ipPrefix, const string &vrfName)
+{
+    stringstream    cmd;
+    string          res;
+    string          ipPrefixStr = ipPrefix.getIp().to_string();
+
+    if (opCmd == "append")
+    {
+        if (vrfName == "")
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias));
+        else
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias) << " vrf " << shellquote(vrfName));
+    }
+    else
+    {
+        if (vrfName == "")
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias)
+            << " scope link");
+        else
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias)
+            << " scope link vrf " << shellquote(vrfName));
+    }
+    int ret = swss::exec(cmd.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_WARN("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+    }
+}
+
 void IntfMgr::setIntfMac(const string &alias, const string &mac_str)
 {
     stringstream cmd;
@@ -1113,10 +1143,44 @@ bool IntfMgr::doIntfAddrTask(const vector<string>& keys,
             fvVector.push_back(f);
             m_appIntfTableProducer.set(appKey, fvVector);
             m_stateIntfTable.hset(keys[0] + state_db_key_delimiter + keys[1], "state", "ok");
+            string vrfName = "";
+            vector<FieldValueTuple> temp;
+            if (m_stateIntfTable.get(alias, temp))
+            {
+                for (auto idx : temp)
+                {
+                    const auto &field = fvField(idx);
+                    const auto &value = fvValue(idx);
+                    if (field == "vrf")
+                    {
+                        vrfName = value;
+                    }
+                }
+            }
+            if (!(WarmStart::isWarmStart() && WarmStart::isSwssWarmStartEnable()))
+                setIntfIp2me(alias, "append", ip_prefix, vrfName);
         }
     }
     else if (op == DEL_COMMAND)
     {
+        if ((ip_prefix.isV4() == false) || (ip_prefix.getIp().getAddrScope() != IpAddress::AddrScope::LINK_SCOPE))
+        {
+            vector<FieldValueTuple> temp;
+            string vrfName = "";
+            if (m_stateIntfTable.get(alias, temp))
+            {
+                for (auto idx : temp)
+                {
+                    const auto &field = fvField(idx);
+                    const auto &value = fvValue(idx);
+                    if (field == "vrf")
+                    {
+                        vrfName = value;
+                    }
+                }
+            }
+            setIntfIp2me(alias, "del", ip_prefix, vrfName);
+        }
         setIntfIp(alias, "del", ip_prefix);
 
         // Don't send ipv4 link local config to AppDB and Orchagent
