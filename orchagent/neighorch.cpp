@@ -518,6 +518,12 @@ bool NeighOrch::removeNextHop(const IpAddress &ipAddress, const string &alias)
     }
 
     assert(hasNextHop(nexthop));
+    if (m_syncdNextHops.find(nexthop) == m_syncdNextHops.end())
+    {
+        SWSS_LOG_ERROR("Fail to get nexthop: %s@%d@%s", nexthop.ip_address.to_string().c_str(),
+                nexthop.vni, nexthop.mac_address.to_string().c_str());
+        return true;
+    }
 
     gFgNhgOrch->invalidNextHopInNextHopGroup(nexthop);
 
@@ -606,6 +612,13 @@ bool NeighOrch::removeOverlayNextHop(const NextHopKey &nexthop)
     SWSS_LOG_ENTER();
 
     assert(hasNextHop(nexthop));
+    if (m_syncdNextHops.find(nexthop) == m_syncdNextHops.end())
+    {
+        SWSS_LOG_ERROR("Fail to get nexthop: %s@%d@%s", nexthop.ip_address.to_string().c_str(),
+                nexthop.vni, nexthop.mac_address.to_string().c_str());
+
+        return true;
+    }
 
     if (m_syncdNextHops[nexthop].ref_count > 0)
     {
@@ -643,12 +656,20 @@ sai_object_id_t NeighOrch::getNextHopId(const NextHopKey &nexthop)
     {
         return nhid;
     }
+
+    if (m_syncdNextHops.find(nexthop) == m_syncdNextHops.end())
+        return SAI_NULL_OBJECT_ID;
+
     return m_syncdNextHops[nexthop].next_hop_id;
 }
 
 int NeighOrch::getNextHopRefCount(const NextHopKey &nexthop)
 {
     assert(hasNextHop(nexthop));
+
+    if (m_syncdNextHops.find(nexthop) == m_syncdNextHops.end())
+        return 0;
+
     return m_syncdNextHops[nexthop].ref_count;
 }
 
