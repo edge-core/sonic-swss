@@ -72,6 +72,14 @@ public:
     {
         m_fabricEnabled = enabled;
     }
+    void setFabricPortStatEnabled(bool enabled)
+    {
+        m_fabricPortStatEnabled = enabled;
+    }
+    void setFabricQueueStatEnabled(bool enabled)
+    {
+        m_fabricQueueStatEnabled = enabled;
+    }
     void logRotate();
 private:
     DBConnector *m_applDb;
@@ -80,6 +88,8 @@ private:
     DBConnector *m_chassisAppDb;
 
     bool m_fabricEnabled = false;
+    bool m_fabricPortStatEnabled = true;
+    bool m_fabricQueueStatEnabled = true;
 
     std::vector<Orch *> m_orchList;
     Select *m_select;
