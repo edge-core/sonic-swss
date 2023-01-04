@@ -57,7 +57,6 @@ extern int32_t gVoqMySwitchId;
 extern string gMyHostName;
 extern string gMyAsicName;
 extern event_handle_t g_events_handle;
-extern string gMySwitchType;
 
 // defines ------------------------------------------------------------------------------------------------------------
 
