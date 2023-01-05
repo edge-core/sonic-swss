@@ -6008,9 +6008,7 @@ void PortsOrch::generateQueueMapPerPort(const Port& port, FlexCounterQueueStates
         uint8_t queueRealIndex = 0;
         if (getQueueTypeAndIndex(port.m_queue_ids[queueIndex], queueType, queueRealIndex))
         {
-	    /* voq counters are always enabled. There is no mechanism to disable voq
-	     * counters in a voq system. */
-            if (!voq && !queuesState.isQueueCounterEnabled(queueRealIndex))
+            if (!queuesState.isQueueCounterEnabled(queueRealIndex))
             {
                 continue;
             }
