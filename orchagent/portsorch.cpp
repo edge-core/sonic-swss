@@ -2457,6 +2457,12 @@ void PortsOrch::initPortSupportedSpeeds(const std::string& alias, sai_object_id_
     m_portStateTable.set(alias, v);
 }
 
+void PortsOrch::updatePortSupportedSpeeds(const std::string& alias, sai_object_id_t port_id)
+{
+    m_portSupportedSpeeds.erase(port_id);
+    SWSS_LOG_INFO("Clear %s supported speeds for updating \n", alias.c_str());
+    initPortSupportedSpeeds(alias, port_id);
+}
 
 void PortsOrch::initPortCapAutoNeg(Port &port)
 {
@@ -3892,6 +3898,8 @@ void PortsOrch::doPortTask(Consumer &consumer)
                             "Set port %s speed to %u",
                             p.m_alias.c_str(), pCfg.speed.value
                         );
+                        /* Update supported speed after port speed configuration changed */
+                        updatePortSupportedSpeeds(p.m_alias, p.m_port_id);
                     }
                     else
                     {
