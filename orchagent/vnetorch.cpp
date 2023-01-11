@@ -429,6 +429,7 @@ bool VNetOrch::addOperation(const Request& request)
     uint32_t vni=0;
     string tunnel;
     string scope;
+    swss::MacAddress overlay_dmac;
 
     for (const auto& name: request.getAttrFieldNames())
     {
@@ -460,6 +461,10 @@ bool VNetOrch::addOperation(const Request& request)
         {
             advertise_prefix = request.getAttrBool("advertise_prefix");
         }
+        else if (name == "overlay_dmac")
+        {
+            overlay_dmac = request.getAttrMacAddress("overlay_dmac");
+        }
         else
         {
             SWSS_LOG_INFO("Unknown attribute: %s", name.c_str());
@@ -486,7 +491,7 @@ bool VNetOrch::addOperation(const Request& request)
 
             if (it == std::end(vnet_table_))
             {
-                VNetInfo vnet_info = { tunnel, vni, peer_list, scope, advertise_prefix };
+                VNetInfo vnet_info = { tunnel, vni, peer_list, scope, advertise_prefix, overlay_dmac };
                 obj = createObject<VNetVrfObject>(vnet_name, vnet_info, attrs);
                 create = true;
 
@@ -1917,7 +1922,9 @@ bool VNetRouteOrch::handleTunnel(const Request& request)
     vector<string> vni_list;
     vector<IpAddress> monitor_list;
     string profile = "";
-
+    vector<IpAddress> primary_list;
+    string monitoring;
+    swss::IpPrefix adv_prefix;
     for (const auto& name: request.getAttrFieldNames())
     {
         if (name == "endpoint")
@@ -1941,6 +1948,18 @@ bool VNetRouteOrch::handleTunnel(const Request& request)
         else if (name == "profile")
         {
             profile = request.getAttrString(name);
+        }
+        else if (name == "primary")
+        {
+            primary_list = request.getAttrIPList(name);
+        }
+        else if (name == "monitoring")
+        {
+            monitoring = request.getAttrString(name);
+        }
+        else if (name == "adv_prefix")
+        {
+            adv_prefix = request.getAttrIpPrefix(name);
         }
         else
         {
