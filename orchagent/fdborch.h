@@ -46,8 +46,6 @@ public:
     void update(sai_fdb_event_t, const sai_fdb_entry_t *, sai_object_id_t);
     void update(SubjectType type, void *cntx);
     bool getPort(const MacAddress&, uint16_t, Port&);
-    void flushFDBEntries(sai_object_id_t bridge_port_oid,
-                         sai_object_id_t vlan_oid);
 
 private:
     PortsOrch *m_portsOrch;
@@ -64,6 +62,7 @@ private:
     void updateVlanMember(const VlanMemberUpdate&);
     bool addFdbEntry(const FdbEntry&, const string&, const string&);
     bool removeFdbEntry(const FdbEntry&);
+
     bool storeFdbEntryState(const FdbUpdate& update);
 };
 
