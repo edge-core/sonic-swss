@@ -843,6 +843,14 @@ void NeighOrch::doTask(Consumer &consumer)
                     mac_address = MacAddress(fvValue(*i));
             }
 
+            if ((ip_address.getAddrScope() != IpAddress::LINK_SCOPE)
+                 && gIntfsOrch->isIpInIntfSubnet(ip_address, alias, vrf_name)== false)
+            {
+                SWSS_LOG_WARN("IP %s not in alias %s subnet", ip_address.to_string().c_str(), alias.c_str());
+                it = consumer.m_toSync.erase(it);
+                continue;
+            }
+
             bool nbr_not_found = (m_syncdNeighbors.find(neighbor_entry) == m_syncdNeighbors.end());
             if (nbr_not_found || m_syncdNeighbors[neighbor_entry].mac != mac_address)
             {
