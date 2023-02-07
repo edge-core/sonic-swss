@@ -38,6 +38,7 @@ public:
     bool isPrefixSubnet(const IpPrefix&, const string&);
     bool isInbandIntfInMgmtVrf(const string& alias);
     string getRouterIntfsAlias(const IpAddress &ip, const string &vrf_name = "");
+    bool isIpInIntfSubnet(const IpAddress &ip, const string &alias, const string &vrf_name);
     string getRifRateFlexCounterTableKey(string key);
     void increaseRouterIntfsRefCount(const string&);
     void decreaseRouterIntfsRefCount(const string&);
