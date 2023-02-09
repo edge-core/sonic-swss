@@ -562,6 +562,11 @@ void Orch::dumpPendingTasks(vector<string> &ts)
     }
 }
 
+void Orch::flushResponses()
+{
+    m_publisher.flush();
+}
+
 void Orch::logfileReopen()
 {
     gRecordOfs.close();

@@ -223,6 +223,11 @@ public:
     static void recordTuple(Consumer &consumer, const swss::KeyOpFieldsValuesTuple &tuple);
 
     void dumpPendingTasks(std::vector<std::string> &ts);
+
+    /**
+     * @brief Flush pending responses
+     */
+    void flushResponses();
 protected:
     ConsumerMap m_consumerMap;
 
