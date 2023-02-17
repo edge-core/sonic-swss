@@ -14,6 +14,7 @@ using namespace std;
 using namespace swss;
 
 #define DOT1Q_BRIDGE_NAME   "Bridge"
+#define DFLT_BR_AGE_TIME    "600"
 #define VLAN_PREFIX         "Vlan"
 #define LAG_PREFIX          "PortChannel"
 #define DEFAULT_VLAN_ID     "1"
@@ -128,6 +129,16 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
     ret = swss::exec(no_ll_learn_cmd, res);
     if (ret) {
         SWSS_LOG_ERROR("Command '%s' failed with rc %d", no_ll_learn_cmd.c_str(), ret);
+    }
+
+    // Initialize Linux dot1q bridge ageing time based on SWITCH_TABLE from APPL_DB
+    // The command should be generated as:
+    // /bin/bash -c "/sbin/brctl setageing Bridge 600"
+    const std::string brctl_cmd = std::string("")
+        + BRCTL_CMD + " setageing " + DOT1Q_BRIDGE_NAME + " " + DFLT_BR_AGE_TIME;
+    ret = swss::exec(brctl_cmd, res);
+    if (ret) {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", brctl_cmd.c_str(), ret);
     }
 }
 
