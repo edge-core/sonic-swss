@@ -4835,6 +4835,12 @@ bool PortsOrch::addBridgePort(Port &port)
         return true;
     }
 
+    if (port.m_rif_id != 0)
+    {
+        SWSS_LOG_NOTICE("Cannot create bridge port, interface %s is a router port", port.m_alias.c_str());
+        return false;
+    }
+
     sai_attribute_t attr;
     vector<sai_attribute_t> attrs;
 
