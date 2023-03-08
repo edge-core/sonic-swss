@@ -6107,7 +6107,7 @@ void PortsOrch::generateQueueMapPerPort(const Port& port, FlexCounterQueueStates
         {
 	    /* voq counters are always enabled. There is no mechanism to disable voq
 	     * counters in a voq system. */
-            if (!voq && !queuesState.isQueueCounterEnabled(queueRealIndex))
+            if ((gMySwitchType != "voq") && !queuesState.isQueueCounterEnabled(queueRealIndex))
             {
                 continue;
             }
@@ -8078,6 +8078,13 @@ bool PortsOrch::isMACsecPort(sai_object_id_t port_id) const
     SWSS_LOG_ENTER();
 
     return m_macsecEnabledPorts.find(port_id) != m_macsecEnabledPorts.end();
+}
+
+vector<sai_object_id_t> PortsOrch::getPortVoQIds(Port& port)
+{
+    SWSS_LOG_ENTER();
+
+    return m_port_voq_ids[port.m_alias];
 }
 
 /* Refresh the per-port Auto-Negotiation operational states */
