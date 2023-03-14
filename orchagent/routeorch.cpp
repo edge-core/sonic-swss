@@ -2429,7 +2429,6 @@ bool RouteOrch::removeRoutePost(const RouteBulkContext& ctx)
     }
     else
     {
-        gFlowCounterRouteOrch->handleRouteRemove(vrf_id, ipPrefix);
         it_route_table->second.erase(ipPrefix);
 
         /* Notify about the route next hop removal */
@@ -2440,6 +2439,8 @@ bool RouteOrch::removeRoutePost(const RouteBulkContext& ctx)
             m_syncdRoutes.erase(vrf_id);
             m_vrfOrch->decreaseVrfRefCount(vrf_id);
         }
+
+        gFlowCounterRouteOrch->handleRouteRemove(vrf_id, ipPrefix);
     }
 
     return true;
