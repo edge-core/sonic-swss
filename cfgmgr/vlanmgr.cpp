@@ -230,6 +230,7 @@ bool VlanMgr::setHostVlanMac(int vlan_id, const string &mac)
 bool VlanMgr::addHostVlanMember(int vlan_id, const string &port_alias, const string& tagging_mode)
 {
     SWSS_LOG_ENTER();
+    string key_def_vlan = VLAN_PREFIX DEFAULT_VLAN_ID CONFIGDB_KEY_SEPARATOR + port_alias;
 
     std::string tagging_cmd;
     if (tagging_mode == "untagged" || tagging_mode == "priority_tagged")
@@ -242,9 +243,17 @@ bool VlanMgr::addHostVlanMember(int vlan_id, const string &port_alias, const str
     //               /sbin/bridge vlan del vid 1 dev {{ port_alias }} &&
     //               /sbin/bridge vlan add vid {{vlan_id}} dev {{port_alias}} {{tagging_mode}}"
     ostringstream cmds, inner;
-    inner << IP_CMD " link set " << shellquote(port_alias) << " master " DOT1Q_BRIDGE_NAME " && "
-      BRIDGE_CMD " vlan del vid " DEFAULT_VLAN_ID " dev " << shellquote(port_alias) << " && "
-      BRIDGE_CMD " vlan add vid " + std::to_string(vlan_id) + " dev " << shellquote(port_alias) << " " + tagging_cmd;
+    if (!isVlanMemberStateOk(key_def_vlan))
+    {
+        inner << IP_CMD " link set " << shellquote(port_alias) << " master " DOT1Q_BRIDGE_NAME " && "
+          BRIDGE_CMD " vlan del vid " DEFAULT_VLAN_ID " dev " << shellquote(port_alias) << " && "
+          BRIDGE_CMD " vlan add vid " + std::to_string(vlan_id) + " dev " << shellquote(port_alias) << " " + tagging_cmd;
+    }
+    else
+    {
+        inner << IP_CMD " link set " << shellquote(port_alias) << " master " DOT1Q_BRIDGE_NAME " && "
+          BRIDGE_CMD " vlan add vid " + std::to_string(vlan_id) + " dev " << shellquote(port_alias) << " " + tagging_cmd;
+    }
     cmds << BASH_CMD " -c " << shellquote(inner.str());
 
     std::string res;
