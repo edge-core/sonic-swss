@@ -757,7 +757,6 @@ void OrchDaemon::start()
             gSaiRedisLogRotate = false;
 
             logRotate();
-            continue;
         }
 
         auto *c = (Executor *)s;
