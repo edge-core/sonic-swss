@@ -90,10 +90,13 @@ private:
     bool deleteVxlan(const VxlanInfo & info);
 
     void clearAllVxlanDevices();
+    void updateIntfIp2me(const std::string &alias);
+    void setIntfIp2me(const std::string &alias, const std::string &opCmd,
+                            const IpPrefix &ipPrefix, const std::string &vrfName);
 
     ProducerStateTable m_appVxlanTunnelTableProducer, m_appVxlanTunnelMapTable,m_appEvpnNvoTable;
     Table m_cfgVxlanTunnelTable,m_cfgVnetTable,m_stateVrfTable,m_stateVxlanTable, m_appSwitchTable, m_appVxlanTunnelTable;
-    Table m_stateVlanTable, m_stateNeighSuppressVlanTable, m_stateVxlanTunnelTable;
+    Table m_stateVlanTable, m_stateNeighSuppressVlanTable, m_stateVxlanTunnelTable, m_stateIntfTable;
 
     /*
     * Vxlan Tunnel Cache

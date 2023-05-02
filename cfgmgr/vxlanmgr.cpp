@@ -185,7 +185,8 @@ VxlanMgr::VxlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb,
         m_stateVxlanTable(stateDb, STATE_VXLAN_TABLE_NAME),
         m_stateVlanTable(stateDb, STATE_VLAN_TABLE_NAME),
         m_stateNeighSuppressVlanTable(stateDb, STATE_NEIGH_SUPPRESS_VLAN_TABLE_NAME),
-        m_stateVxlanTunnelTable(stateDb, STATE_VXLAN_TUNNEL_TABLE_NAME)
+        m_stateVxlanTunnelTable(stateDb, STATE_VXLAN_TUNNEL_TABLE_NAME),
+        m_stateIntfTable(stateDb, STATE_INTERFACE_TABLE_NAME)
 {
     getAllVxlanNetDevices();
 
@@ -608,7 +609,7 @@ bool VxlanMgr::doVxlanTunnelMapCreateTask(const KeyOpFieldsValuesTuple & t)
     FieldValueTuple s("netdev", vxlan_dev_name);
     fvVector.push_back(s);
     m_stateNeighSuppressVlanTable.set(key,fvVector);
-
+    updateIntfIp2me(vlan);
     return true;
 }
 
@@ -658,6 +659,7 @@ bool VxlanMgr::doVxlanTunnelMapDeleteTask(const KeyOpFieldsValuesTuple & t)
     std::string key = "Vlan" + vxlan_dev_name.substr(found+1,vxlan_dev_name.length());
     SWSS_LOG_INFO("Delete Tunnel Map for %s -> %s ", key.c_str(), vxlan_dev_name.c_str());
     m_stateNeighSuppressVlanTable.del(key);
+    updateIntfIp2me(vlan);
     return true;
 }
 
@@ -776,6 +778,85 @@ bool VxlanMgr::isVlanStateOk(const std::string &vlanName)
     }
     SWSS_LOG_INFO("%s is not ready", vlanName.c_str());
     return false;
+}
+
+void VxlanMgr::setIntfIp2me(const std::string &alias, const std::string &opCmd,
+                        const IpPrefix &ipPrefix, const std::string &vrfName)
+{
+    stringstream    cmd;
+    string          res;
+    string          ipPrefixStr = ipPrefix.getIp().to_string();
+
+    if (opCmd == "append")
+    {
+        if (vrfName == "")
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias));
+        else
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias) << " vrf " << shellquote(vrfName));
+    }
+    else
+    {
+        if (vrfName == "")
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias)
+            << " scope link");
+        else
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias)
+            << " scope link vrf " << shellquote(vrfName));
+    }
+    int ret = swss::exec(cmd.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_WARN("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+    }
+}
+
+void VxlanMgr::updateIntfIp2me(const std::string &alias)
+{
+    vector<FieldValueTuple> temp;
+    if (alias.compare(0, strlen(VLAN_PREFIX), VLAN_PREFIX))
+    {
+        return;
+    }
+    if (!m_stateVlanTable.get(alias, temp))
+    {
+        SWSS_LOG_DEBUG("%s is ready", alias.c_str());
+        return;
+    }
+
+    std::vector<std::string> keys;
+    m_stateIntfTable.getKeys(keys);
+    for (const auto& tmp_key : keys)
+    {
+        if (string(tmp_key).find(alias+'|') == string::npos)
+        {
+            continue;
+        }
+        vector<string> intf_keys = tokenize(tmp_key, '|');
+        IpPrefix ip_prefix;
+        if (intf_keys.size() > 1)
+        {
+            vector<FieldValueTuple> temp;
+            ip_prefix = tmp_key.substr(tmp_key.find('|')+1);
+            if ((ip_prefix.isV4() == true) && (ip_prefix.getIp().getAddrScope() == IpAddress::AddrScope::LINK_SCOPE))
+            {
+                continue;
+            }
+            string vrfName = "";
+            if (m_stateIntfTable.get(alias, temp))
+            {
+                for (const auto &idx : temp)
+                {
+                    const auto &field = fvField(idx);
+                    const auto &value = fvValue(idx);
+                    if (field == "vrf")
+                    {
+                        vrfName = value;
+                    }
+                }
+            }
+            setIntfIp2me(alias, "append", ip_prefix, vrfName);
+        }
+    }
 }
 
 std::pair<bool, std::string> VxlanMgr::getVxlanRouterMacAddress()
