@@ -6012,6 +6012,9 @@ bool PortsOrch::setDistributionOnLagMember(Port &lagMember, bool enableDistribut
     attr.value.booldata = !enableDistribution;
 
     status = sai_lag_api->set_lag_member_attribute(lagMember.m_lag_member_id, &attr);
+    SWSS_LOG_INFO("first time %s distribution on LAG member %s return %d", enableDistribution ? "enable" : "disable", lagMember.m_alias.c_str(), status);
+    status = sai_lag_api->set_lag_member_attribute(lagMember.m_lag_member_id, &attr);
+    SWSS_LOG_INFO("second time %s distribution on LAG member %s return %d", enableDistribution ? "enable" : "disable", lagMember.m_alias.c_str(), status);
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to %s distribution on LAG member %s",
