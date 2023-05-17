@@ -44,7 +44,7 @@ stages:
       sairedis_artifact_project: nvidia
       sairedis_artifact_pipeline: nvidia-sonic.sonic-buildimage
       sairedis_artifact_branch: bluefield
-      sairedis_artifact_pattern: target/debs/buster
+      sairedis_artifact_pattern: target/debs/bullseye
       common_lib_artifact_name: sonic-buildimage.vs
       common_lib_artifact_project: nvidia
       common_lib_artifact_pipeline: nvidia-sonic.sonic-buildimage
@@ -69,7 +69,7 @@ stages:
       sairedis_artifact_project: nvidia
       sairedis_artifact_pipeline: nvidia-sonic.sonic-buildimage
       sairedis_artifact_branch: bluefield
-      sairedis_artifact_pattern: target/debs/buster
+      sairedis_artifact_pattern: target/debs/bullseye
 
 - stage: Test
   dependsOn: BuildDocker
