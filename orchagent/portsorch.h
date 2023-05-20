@@ -75,6 +75,14 @@ struct VlanMemberUpdate
     bool add;
 };
 
+struct queueInfo
+{
+    // SAI_QUEUE_ATTR_TYPE
+    sai_queue_type_t type;
+    // SAI_QUEUE_ATTR_INDEX
+    sai_uint8_t index;
+};
+
 class PortsOrch : public Orch, public Subject
 {
 public:
@@ -441,5 +449,6 @@ private:
     set<sai_object_id_t> m_macsecEnabledPorts;
 
     std::unordered_set<std::string> generateCounterStats(const string& type, bool gearbox = false);
+    map<sai_object_id_t, struct queueInfo> m_queueInfo;
 };
 #endif /* SWSS_PORTSORCH_H */
