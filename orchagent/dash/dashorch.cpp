@@ -15,6 +15,7 @@
 #include "saiextensions.h"
 #include "swssnet.h"
 #include "tokenize.h"
+#include "crmorch.h"
 
 using namespace std;
 using namespace swss;
@@ -25,6 +26,7 @@ extern sai_dash_direction_lookup_api_t* sai_dash_direction_lookup_api;
 extern sai_dash_eni_api_t* sai_dash_eni_api;
 extern sai_object_id_t gSwitchId;
 extern size_t gMaxBulkSize;
+extern CrmOrch *gCrmOrch;
 
 DashOrch::DashOrch(DBConnector *db, vector<string> &tableName) : Orch(db, tableName)
 {
@@ -368,6 +370,9 @@ bool DashOrch::addEniObject(const string& eni, EniEntry& entry)
             return parseHandleSaiStatusFailure(handle_status);
         }
     }
+
+    gCrmOrch->incCrmResUsedCounter(CrmResourceType::CRM_DASH_ENI);
+
     SWSS_LOG_NOTICE("Created ENI object for %s", eni.c_str());
 
     return true;
@@ -398,6 +403,9 @@ bool DashOrch::addEniAddrMapEntry(const string& eni, const EniEntry& entry)
             return parseHandleSaiStatusFailure(handle_status);
         }
     }
+
+    gCrmOrch->incCrmResUsedCounter(CrmResourceType::CRM_DASH_ENI_ETHER_ADDRESS_MAP);
+
     SWSS_LOG_NOTICE("Created ENI ether address map entry for %s", eni.c_str());
 
     return true;
@@ -461,6 +469,9 @@ bool DashOrch::removeEniObject(const string& eni)
             return parseHandleSaiStatusFailure(handle_status);
         }
     }
+
+    gCrmOrch->decCrmResUsedCounter(CrmResourceType::CRM_DASH_ENI);
+
     SWSS_LOG_NOTICE("Removed ENI object for %s", eni.c_str());
 
     return true;
@@ -491,6 +502,9 @@ bool DashOrch::removeEniAddrMapEntry(const string& eni)
             return parseHandleSaiStatusFailure(handle_status);
         }
     }
+
+    gCrmOrch->decCrmResUsedCounter(CrmResourceType::CRM_DASH_ENI_ETHER_ADDRESS_MAP);
+
     SWSS_LOG_NOTICE("Removed ENI ether address map entry for %s", eni.c_str());
 
     return true;
