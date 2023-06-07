@@ -17,6 +17,8 @@
 #include "swssnet.h"
 #include "tokenize.h"
 #include "dashorch.h"
+#include "crmorch.h"
+#include "saihelper.h"
 
 using namespace std;
 using namespace swss;
@@ -26,12 +28,13 @@ extern sai_dash_outbound_routing_api_t* sai_dash_outbound_routing_api;
 extern sai_dash_inbound_routing_api_t* sai_dash_inbound_routing_api;
 extern sai_object_id_t gSwitchId;
 extern size_t gMaxBulkSize;
+extern CrmOrch *gCrmOrch;
 
 static std::unordered_map<std::string, sai_outbound_routing_entry_action_t> sOutboundAction =
 {
     { "vnet", SAI_OUTBOUND_ROUTING_ENTRY_ACTION_ROUTE_VNET },
     { "vnet_direct", SAI_OUTBOUND_ROUTING_ENTRY_ACTION_ROUTE_VNET_DIRECT },
-    { "route_direct", SAI_OUTBOUND_ROUTING_ENTRY_ACTION_ROUTE_DIRECT },
+    { "direct", SAI_OUTBOUND_ROUTING_ENTRY_ACTION_ROUTE_DIRECT },
     { "drop", SAI_OUTBOUND_ROUTING_ENTRY_ACTION_DROP }
 };
 
@@ -128,7 +131,10 @@ bool DashRouteOrch::addOutboundRoutingPost(const string& key, const OutboundRout
 
     OutboundRoutingEntry entry = { dash_orch_->getEni(ctxt.eni)->eni_id, ctxt.destination, ctxt.action_type, ctxt.vnet, ctxt.overlay_ip };
     routing_entries_[key] = entry;
-    SWSS_LOG_NOTICE("Outbound routing entry for %s added", key.c_str());
+
+    gCrmOrch->incCrmResUsedCounter(ctxt.destination.isV4() ? CrmResourceType::CRM_DASH_IPV4_OUTBOUND_ROUTING : CrmResourceType::CRM_DASH_IPV6_OUTBOUND_ROUTING);
+
+    SWSS_LOG_INFO("Outbound routing entry for %s added", key.c_str());
 
     return true;
 }
@@ -140,7 +146,7 @@ bool DashRouteOrch::removeOutboundRouting(const string& key, OutboundRoutingBulk
     bool exists = (routing_entries_.find(key) != routing_entries_.end());
     if (!exists)
     {
-        SWSS_LOG_WARN("Failed to find outbound routing entry %s to remove", key.c_str());
+        SWSS_LOG_INFO("Failed to find outbound routing entry %s to remove", key.c_str());
         return true;
     }
 
@@ -183,8 +189,10 @@ bool DashRouteOrch::removeOutboundRoutingPost(const string& key, const OutboundR
         }
     }
 
+    gCrmOrch->decCrmResUsedCounter(ctxt.destination.isV4() ? CrmResourceType::CRM_DASH_IPV4_OUTBOUND_ROUTING : CrmResourceType::CRM_DASH_IPV6_OUTBOUND_ROUTING);
+
     routing_entries_.erase(key);
-    SWSS_LOG_NOTICE("Outbound routing entry for %s removed", key.c_str());
+    SWSS_LOG_INFO("Outbound routing entry for %s removed", key.c_str());
 
     return true;
 }
@@ -404,7 +412,10 @@ bool DashRouteOrch::addInboundRoutingPost(const string& key, const InboundRoutin
 
     InboundRoutingEntry entry = { dash_orch_->getEni(ctxt.eni)->eni_id, ctxt.vni, ctxt.sip, ctxt.sip_mask, ctxt.action_type, ctxt.vnet, ctxt.pa_validation, ctxt.priority };
     routing_rule_entries_[key] = entry;
-    SWSS_LOG_NOTICE("Inbound routing entry for %s added", key.c_str());
+
+    gCrmOrch->incCrmResUsedCounter(ctxt.sip.isV4() ? CrmResourceType::CRM_DASH_IPV4_INBOUND_ROUTING : CrmResourceType::CRM_DASH_IPV6_INBOUND_ROUTING);
+
+    SWSS_LOG_INFO("Inbound routing entry for %s added", key.c_str());
 
     return true;
 }
@@ -416,7 +427,7 @@ bool DashRouteOrch::removeInboundRouting(const string& key, InboundRoutingBulkCo
     bool exists = (routing_rule_entries_.find(key) != routing_rule_entries_.end());
     if (!exists)
     {
-        SWSS_LOG_WARN("Failed to find inbound routing entry %s to remove", key.c_str());
+        SWSS_LOG_INFO("Failed to find inbound routing entry %s to remove", key.c_str());
         return true;
     }
 
@@ -462,9 +473,10 @@ bool DashRouteOrch::removeInboundRoutingPost(const string& key, const InboundRou
         }
     }
 
+    gCrmOrch->decCrmResUsedCounter(ctxt.sip.isV4() ? CrmResourceType::CRM_DASH_IPV4_INBOUND_ROUTING : CrmResourceType::CRM_DASH_IPV6_INBOUND_ROUTING);
 
     routing_rule_entries_.erase(key);
-    SWSS_LOG_NOTICE("Inbound routing entry for %s removed", key.c_str());
+    SWSS_LOG_INFO("Inbound routing entry for %s removed", key.c_str());
 
     return true;
 }
