@@ -10,27 +10,40 @@
 using namespace std;
 using namespace swss;
 
-map<string,string> sflowSpeedRateInitMap =
-{
-    {SFLOW_SAMPLE_RATE_KEY_400G, SFLOW_SAMPLE_RATE_VALUE_400G},
-    {SFLOW_SAMPLE_RATE_KEY_200G, SFLOW_SAMPLE_RATE_VALUE_200G},
-    {SFLOW_SAMPLE_RATE_KEY_100G, SFLOW_SAMPLE_RATE_VALUE_100G},
-    {SFLOW_SAMPLE_RATE_KEY_50G, SFLOW_SAMPLE_RATE_VALUE_50G},
-    {SFLOW_SAMPLE_RATE_KEY_40G, SFLOW_SAMPLE_RATE_VALUE_40G},
-    {SFLOW_SAMPLE_RATE_KEY_25G, SFLOW_SAMPLE_RATE_VALUE_25G},
-    {SFLOW_SAMPLE_RATE_KEY_10G, SFLOW_SAMPLE_RATE_VALUE_10G},
-    {SFLOW_SAMPLE_RATE_KEY_1G, SFLOW_SAMPLE_RATE_VALUE_1G}
-};
-
-SflowMgr::SflowMgr(DBConnector *cfgDb, DBConnector *appDb, const vector<string> &tableNames) :
-        Orch(cfgDb, tableNames),
-        m_cfgSflowTable(cfgDb, CFG_SFLOW_TABLE_NAME),
-        m_cfgSflowSessionTable(cfgDb, CFG_SFLOW_SESSION_TABLE_NAME),
+SflowMgr::SflowMgr(DBConnector *appDb, const std::vector<TableConnector>& tableNames) :
+        Orch(tableNames),
         m_appSflowTable(appDb, APP_SFLOW_TABLE_NAME),
         m_appSflowSessionTable(appDb, APP_SFLOW_SESSION_TABLE_NAME)
 {
     m_intfAllConf = true;
     m_gEnable = false;
+}
+
+void SflowMgr::readPortConfig()
+{
+    auto consumer_it = m_consumerMap.find(CFG_PORT_TABLE_NAME);
+    if (consumer_it != m_consumerMap.end())
+    {
+        consumer_it->second->drain();
+        SWSS_LOG_NOTICE("Port Configuration Read..");
+    }
+    else
+    {
+        SWSS_LOG_ERROR("Consumer object for PORT_TABLE not found");
+    }
+}
+
+bool SflowMgr::isPortEnabled(const std::string& alias)
+{
+    /* Checks if the sflow is enabled on the port */
+    auto it = m_sflowPortConfMap.find(alias);
+    if (it == m_sflowPortConfMap.end())
+    {
+        return false;
+    }
+    bool local_admin = it->second.local_admin_cfg;
+    bool status = it->second.admin == "up" ? true : false;
+    return m_gEnable && (m_intfAllConf || (local_admin && status));
 }
 
 void SflowMgr::sflowHandleService(bool enable)
@@ -69,7 +82,6 @@ void SflowMgr::sflowUpdatePortInfo(Consumer &consumer)
     while (it != consumer.m_toSync.end())
     {
         KeyOpFieldsValuesTuple t = it->second;
-
         string key = kfvKey(t);
         string op = kfvOp(t);
         auto values = kfvFieldsValues(t);
@@ -85,14 +97,15 @@ void SflowMgr::sflowUpdatePortInfo(Consumer &consumer)
                 new_port = true;
                 port_info.local_rate_cfg = false;
                 port_info.local_admin_cfg = false;
-                port_info.speed = SFLOW_ERROR_SPEED_STR;
+                port_info.speed = ERROR_SPEED;
+                port_info.oper_speed = NA_SPEED;
                 port_info.rate = "";
                 port_info.admin = "";
                 m_sflowPortConfMap[key] = port_info;
             }
 
-            bool speed_change = false;
-            string new_speed = SFLOW_ERROR_SPEED_STR;
+            bool rate_update = false;
+            string new_speed = ERROR_SPEED;
             for (auto i : values)
             {
                 if (fvField(i) == "speed")
@@ -103,16 +116,20 @@ void SflowMgr::sflowUpdatePortInfo(Consumer &consumer)
             if (m_sflowPortConfMap[key].speed != new_speed)
             {
                 m_sflowPortConfMap[key].speed = new_speed;
-                speed_change = true;
+                /* if oper_speed is set, no need to write to APP_DB */
+                if (m_sflowPortConfMap[key].oper_speed == NA_SPEED)
+                {
+                    rate_update = true;
+                }
             }
 
-            if (m_gEnable && m_intfAllConf)
+            if (isPortEnabled(key))
             {
-                // If the Local rate Conf is already present, dont't override it even though the speed is changed
-                if (new_port || (speed_change && !m_sflowPortConfMap[key].local_rate_cfg))
+                // If the Local rate conf is already present, dont't override it even though the speed is changed
+                if (new_port || (rate_update && !m_sflowPortConfMap[key].local_rate_cfg))
                 {
                     vector<FieldValueTuple> fvs;
-                    sflowGetGlobalInfo(fvs, m_sflowPortConfMap[key].speed);
+                    sflowGetGlobalInfo(fvs, key);
                     m_appSflowSessionTable.set(key, fvs);
                 }
             }
@@ -136,6 +153,60 @@ void SflowMgr::sflowUpdatePortInfo(Consumer &consumer)
     }
 }
 
+void SflowMgr::sflowProcessOperSpeed(Consumer &consumer)
+{
+    auto it = consumer.m_toSync.begin();
+
+    while (it != consumer.m_toSync.end())
+    {
+        KeyOpFieldsValuesTuple t = it->second;
+        string alias = kfvKey(t);
+        string op = kfvOp(t);
+        auto values = kfvFieldsValues(t);
+        string oper_speed = "";
+        bool rate_update = false;
+
+        for (auto i : values)
+        {
+            if (fvField(i) == "speed")
+            {
+                oper_speed = fvValue(i);
+            }
+        }
+
+        if (m_sflowPortConfMap.find(alias) != m_sflowPortConfMap.end() && op == SET_COMMAND)
+        {
+            SWSS_LOG_DEBUG("STATE_DB update: iface: %s, oper_speed: %s, cfg_speed: %s, new_speed: %s",
+                            alias.c_str(), m_sflowPortConfMap[alias].oper_speed.c_str(),
+                            m_sflowPortConfMap[alias].speed.c_str(),
+                            oper_speed.c_str());
+            /* oper_speed is updated by orchagent if the vendor supports and oper status is up */
+            if (m_sflowPortConfMap[alias].oper_speed != oper_speed && !oper_speed.empty())
+            {
+                rate_update = true;
+                if (oper_speed == m_sflowPortConfMap[alias].speed && m_sflowPortConfMap[alias].oper_speed == NA_SPEED)
+                {
+                    /* if oper_speed is equal to cfg_speed, avoid the write to APP_DB
+                       Can happen if auto-neg is not set */
+                    rate_update = false;
+                }
+                m_sflowPortConfMap[alias].oper_speed = oper_speed;
+            }
+
+            if (isPortEnabled(alias) && rate_update && !m_sflowPortConfMap[alias].local_rate_cfg)
+            {
+                auto rate = findSamplingRate(alias);
+                FieldValueTuple fv("sample_rate", rate);
+                vector<FieldValueTuple> fvs = {fv};
+                m_appSflowSessionTable.set(alias, fvs);
+                SWSS_LOG_NOTICE("Default sampling rate for %s updated to %s", alias.c_str(), rate.c_str());
+            }
+        }
+        /* Do nothing for DEL as the SflowPortConfMap will already be cleared by the DEL from CONFIG_DB */ 
+        it = consumer.m_toSync.erase(it);
+    }
+}
+
 void SflowMgr::sflowHandleSessionAll(bool enable)
 {
     for (auto it: m_sflowPortConfMap)
@@ -154,7 +225,7 @@ void SflowMgr::sflowHandleSessionAll(bool enable)
             }
             else
             {
-                sflowGetGlobalInfo(fvs, it.second.speed);
+                sflowGetGlobalInfo(fvs, it.first);
             }
             m_appSflowSessionTable.set(it.first, fvs);
         }
@@ -185,21 +256,12 @@ void SflowMgr::sflowHandleSessionLocal(bool enable)
     }
 }
 
-void SflowMgr::sflowGetGlobalInfo(vector<FieldValueTuple> &fvs, string speed)
+void SflowMgr::sflowGetGlobalInfo(vector<FieldValueTuple> &fvs, const string& alias)
 {
-    string rate;
     FieldValueTuple fv1("admin_state", "up");
     fvs.push_back(fv1);
 
-    if (speed != SFLOW_ERROR_SPEED_STR && sflowSpeedRateInitMap.find(speed) != sflowSpeedRateInitMap.end())
-    {
-        rate = sflowSpeedRateInitMap[speed];
-    }
-    else
-    {
-        rate = SFLOW_ERROR_SPEED_STR;
-    }
-    FieldValueTuple fv2("sample_rate",rate);
+    FieldValueTuple fv2("sample_rate", findSamplingRate(alias));
     fvs.push_back(fv2);
 }
 
@@ -254,17 +316,7 @@ void SflowMgr::sflowCheckAndFillValues(string alias, vector<FieldValueTuple> &va
         if (m_sflowPortConfMap[alias].rate == "" ||
             m_sflowPortConfMap[alias].local_rate_cfg)
         {
-            string speed = m_sflowPortConfMap[alias].speed;
-
-            if (speed != SFLOW_ERROR_SPEED_STR && sflowSpeedRateInitMap.find(speed) != sflowSpeedRateInitMap.end())
-            {
-                rate = sflowSpeedRateInitMap[speed];
-            }
-            else
-            {
-                rate = SFLOW_ERROR_SPEED_STR;
-            }
-            m_sflowPortConfMap[alias].rate = rate;
+            m_sflowPortConfMap[alias].rate = findSamplingRate(alias);
         }
         m_sflowPortConfMap[alias].local_rate_cfg = false;
         FieldValueTuple fv("sample_rate", m_sflowPortConfMap[alias].rate);
@@ -284,6 +336,24 @@ void SflowMgr::sflowCheckAndFillValues(string alias, vector<FieldValueTuple> &va
     }
 }
 
+string SflowMgr::findSamplingRate(const string& alias)
+{
+    /* Default sampling rate is equal to the oper_speed, if present. 
+        if oper_speed is not found, use the configured speed */
+    if (m_sflowPortConfMap.find(alias) == m_sflowPortConfMap.end())
+    {
+        SWSS_LOG_ERROR("%s not found in port configuration map", alias.c_str());
+        return ERROR_SPEED;
+    }
+    string oper_speed = m_sflowPortConfMap[alias].oper_speed;
+    string cfg_speed = m_sflowPortConfMap[alias].speed;
+    if (!oper_speed.empty() && oper_speed != NA_SPEED)
+    {
+        return oper_speed;
+    }
+    return cfg_speed;
+}
+
 void SflowMgr::doTask(Consumer &consumer)
 {
     SWSS_LOG_ENTER();
@@ -293,6 +363,11 @@ void SflowMgr::doTask(Consumer &consumer)
     if (table == CFG_PORT_TABLE_NAME)
     {
         sflowUpdatePortInfo(consumer);
+        return;
+    }
+    else if (table == STATE_PORT_TABLE_NAME)
+    {
+        sflowProcessOperSpeed(consumer);
         return;
     }
 
@@ -411,7 +486,7 @@ void SflowMgr::doTask(Consumer &consumer)
                     if (m_intfAllConf)
                     {
                         vector<FieldValueTuple> fvs;
-                        sflowGetGlobalInfo(fvs, m_sflowPortConfMap[key].speed);
+                        sflowGetGlobalInfo(fvs, key);
                         m_appSflowSessionTable.set(key,fvs);
                     }
                 }
