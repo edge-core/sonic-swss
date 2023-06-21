@@ -17,6 +17,8 @@ extern "C" {
 #include "table.h"
 #include "consumertable.h"
 #include "consumerstatetable.h"
+#include "zmqconsumerstatetable.h"
+#include "zmqserver.h"
 #include "notificationconsumer.h"
 #include "selectabletimer.h"
 #include "macaddress.h"
@@ -194,6 +196,23 @@ public:
     void drain() override;
 };
 
+class ZmqConsumer : public ConsumerBase {
+public:
+    ZmqConsumer(swss::ZmqConsumerStateTable *select, Orch *orch, const std::string &name)
+        : ConsumerBase(select, orch, name)
+    {
+    }
+
+    swss::TableBase *getConsumerTable() const override
+    {
+        // ZmqConsumerStateTable is a subclass of TableBase
+        return static_cast<swss::ZmqConsumerStateTable *>(getSelectable());
+    }
+
+    void execute() override;
+    void drain() override;
+};
+
 typedef std::map<std::string, std::shared_ptr<Executor>> ConsumerMap;
 
 typedef enum
@@ -248,6 +267,7 @@ public:
 protected:
     ConsumerMap m_consumerMap;
 
+    Orch();
     static void logfileReopen();
     std::string dumpTuple(Consumer &consumer, const swss::KeyOpFieldsValuesTuple &tuple);
     ref_resolve_status resolveFieldRefValue(type_map&, const std::string&, const std::string&, swss::KeyOpFieldsValuesTuple&, sai_object_id_t&, std::string&);
@@ -271,6 +291,19 @@ protected:
     ResponsePublisher m_publisher;
 private:
     void addConsumer(swss::DBConnector *db, std::string tableName, int pri = default_orch_pri);
+};
+
+class ZmqOrch : public Orch
+{
+public:
+    ZmqOrch(swss::DBConnector *db, const std::string tableName, int pri, swss::ZmqServer *zmqServer);
+    ZmqOrch(swss::DBConnector *db, const std::vector<std::string> &tableNames, swss::ZmqServer *zmqServer);
+    ZmqOrch(swss::DBConnector *db, const std::vector<table_name_with_pri_t> &tableNameWithPri, swss::ZmqServer *zmqServer);
+
+    virtual void doTask(ZmqConsumer &consumer) { };
+
+private:
+    void addConsumer(swss::DBConnector *db, std::string tableName, int pri, swss::ZmqServer *zmqServer);
 };
 
 #include "request_parser.h"
