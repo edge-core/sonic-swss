@@ -305,11 +305,17 @@ void TeamMgr::doLagTask(Consumer &consumer)
 
             if (m_lagList.find(alias) == m_lagList.end())
             {
-                if (addLag(alias, min_links, fallback, fast_rate) == task_need_retry)
+                auto status = addLag(alias, min_links, fallback, fast_rate);
+                if (status == task_need_retry)
                 {
                     // If LAG creation fails, we need to clean up any potentially orphaned teamd processes
                     removeLag(alias);
                     it++;
+                    continue;
+                }
+                else if (status == task_failed)
+                {
+                    it = consumer.m_toSync.erase(it);
                     continue;
                 }
 
