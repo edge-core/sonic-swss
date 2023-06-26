@@ -122,7 +122,7 @@ void CounterCheckOrch::pfcFrameCounterCheck()
         for (size_t prio = 0; prio != counters.size(); prio++)
         {
             bool isLossy = ((1 << prio) & pfcMask) == 0;
-            if (newCounters[prio] == numeric_limits<uint64_t>::max())
+            if (!isLossy && newCounters[prio] == numeric_limits<uint64_t>::max())
             {
                 SWSS_LOG_WARN("Could not retreive PFC frame count on queue %zu port %s",
                         prio,
