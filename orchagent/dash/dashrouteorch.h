@@ -13,6 +13,7 @@
 #include "macaddress.h"
 #include "timer.h"
 #include "dashorch.h"
+#include "zmqorch.h"
 #include "zmqserver.h"
 
 struct OutboundRoutingEntry
@@ -90,9 +91,9 @@ private:
     EntityBulker<sai_dash_inbound_routing_api_t> inbound_routing_bulker_;
     DashOrch *dash_orch_;
 
-    void doTask(ZmqConsumer &consumer);
-    void doTaskRouteTable(ZmqConsumer &consumer);
-    void doTaskRouteRuleTable(ZmqConsumer &consumer);
+    void doTask(ConsumerBase &consumer);
+    void doTaskRouteTable(ConsumerBase &consumer);
+    void doTaskRouteRuleTable(ConsumerBase &consumer);
     bool addOutboundRouting(const std::string& key, OutboundRoutingBulkContext& ctxt);
     bool addOutboundRoutingPost(const std::string& key, const OutboundRoutingBulkContext& ctxt);
     bool removeOutboundRouting(const std::string& key, OutboundRoutingBulkContext& ctxt);
