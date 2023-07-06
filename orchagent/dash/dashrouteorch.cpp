@@ -197,7 +197,7 @@ bool DashRouteOrch::removeOutboundRoutingPost(const string& key, const OutboundR
     return true;
 }
 
-void DashRouteOrch::doTaskRouteTable(ZmqConsumer& consumer)
+void DashRouteOrch::doTaskRouteTable(ConsumerBase& consumer)
 {
     SWSS_LOG_ENTER();
 
@@ -481,7 +481,7 @@ bool DashRouteOrch::removeInboundRoutingPost(const string& key, const InboundRou
     return true;
 }
 
-void DashRouteOrch::doTaskRouteRuleTable(ZmqConsumer& consumer)
+void DashRouteOrch::doTaskRouteRuleTable(ConsumerBase& consumer)
 {
     SWSS_LOG_ENTER();
 
@@ -626,7 +626,7 @@ void DashRouteOrch::doTaskRouteRuleTable(ZmqConsumer& consumer)
     }
 }
 
-void DashRouteOrch::doTask(ZmqConsumer& consumer)
+void DashRouteOrch::doTask(ConsumerBase& consumer)
 {
     SWSS_LOG_ENTER();
 

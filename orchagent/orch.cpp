@@ -46,6 +46,10 @@ Orch::Orch(const vector<TableConnector>& tables)
     }
 }
 
+Orch::Orch()
+{
+}
+
 vector<Selectable *> Orch::getSelectables()
 {
     vector<Selectable *> selectables;
@@ -245,29 +249,6 @@ void Consumer::drain()
 {
     if (!m_toSync.empty())
         ((Orch *)m_orch)->doTask((Consumer&)*this);
-}
-
-void ZmqConsumer::execute()
-{
-    // ConsumerBase::execute_impl<swss::ConsumerTableBase>();
-    SWSS_LOG_ENTER();
-
-    size_t update_size = 0;
-    auto table = static_cast<swss::ZmqConsumerStateTable *>(getSelectable());
-    do
-    {
-        std::deque<KeyOpFieldsValuesTuple> entries;
-        table->pops(entries);
-        update_size = addToSync(entries);
-    } while (update_size != 0);
-
-    drain();
-}
-
-void ZmqConsumer::drain()
-{
-    if (!m_toSync.empty())
-        ((ZmqOrch *)m_orch)->doTask((ZmqConsumer&)*this);
 }
 
 size_t Orch::addExistingData(const string& tableName)
@@ -800,27 +781,6 @@ void Orch::addConsumer(DBConnector *db, string tableName, int pri)
     else
     {
         addExecutor(new Consumer(new ConsumerStateTable(db, tableName, gBatchSize, pri), this, tableName));
-    }
-}
-
-void ZmqOrch::addConsumer(DBConnector *db, string tableName, int pri, ZmqServer *zmqServer)
-{
-    if (db->getDbId() == APPL_DB)
-    {
-        if (zmqServer != nullptr)
-        {
-            SWSS_LOG_DEBUG("ZmqConsumer initialize for: %s", tableName.c_str());
-            addExecutor(new ZmqConsumer(new ZmqConsumerStateTable(db, tableName, *zmqServer, gBatchSize, pri), this, tableName));
-        }
-        else
-        {
-            SWSS_LOG_DEBUG("Consumer initialize for: %s", tableName.c_str());
-            addExecutor(new Consumer(new ConsumerStateTable(db, tableName, gBatchSize, pri), this, tableName));
-        }
-    }
-    else
-    {
-        SWSS_LOG_WARN("ZmqOrch does not support create consumer for db: %d, table: %s", db->getDbId(), tableName.c_str());
     }
 }
 

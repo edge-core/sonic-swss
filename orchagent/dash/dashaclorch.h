@@ -13,6 +13,7 @@
 #include <dbconnector.h>
 #include <bulker.h>
 #include <orch.h>
+#include "zmqorch.h"
 #include "zmqserver.h"
 
 #include "dashorch.h"
@@ -73,7 +74,7 @@ public:
     DashAclOrch(swss::DBConnector *db, const std::vector<std::string> &tables, DashOrch *dash_orch, swss::ZmqServer *zmqServer);
 
 private:
-    void doTask(ZmqConsumer &consumer);
+    void doTask(ConsumerBase &consumer);
 
     task_process_status taskUpdateDashAclIn(
         const std::string &key,

@@ -294,7 +294,7 @@ DashAclOrch::DashAclOrch(DBConnector *db, const vector<string> &tables, DashOrch
     assert(m_dash_orch);
 }
 
-void DashAclOrch::doTask(ZmqConsumer &consumer)
+void DashAclOrch::doTask(ConsumerBase &consumer)
 {
     SWSS_LOG_ENTER();
 
