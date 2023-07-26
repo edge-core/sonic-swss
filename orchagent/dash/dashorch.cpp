@@ -18,6 +18,9 @@
 #include "crmorch.h"
 #include "saihelper.h"
 
+#include "taskworker.h"
+#include "pbutils.h"
+
 using namespace std;
 using namespace swss;
 
@@ -34,7 +37,7 @@ DashOrch::DashOrch(DBConnector *db, vector<string> &tableName, ZmqServer *zmqSer
     SWSS_LOG_ENTER();
 }
 
-bool DashOrch::addApplianceEntry(const string& appliance_id, const ApplianceEntry &entry)
+bool DashOrch::addApplianceEntry(const string& appliance_id, const dash::appliance::Appliance &entry)
 {
     SWSS_LOG_ENTER();
 
@@ -47,7 +50,10 @@ bool DashOrch::addApplianceEntry(const string& appliance_id, const ApplianceEntr
     uint32_t attr_count = 1;
     sai_vip_entry_t vip_entry;
     vip_entry.switch_id = gSwitchId;
-    swss::copy(vip_entry.vip, entry.sip);
+    if (!to_sai(entry.sip(), vip_entry.vip))
+    {
+        return false;
+    }
     sai_attribute_t appliance_attr;
     vector<sai_attribute_t> appliance_attrs;
     sai_status_t status;
@@ -66,7 +72,7 @@ bool DashOrch::addApplianceEntry(const string& appliance_id, const ApplianceEntr
 
     sai_direction_lookup_entry_t direction_lookup_entry;
     direction_lookup_entry.switch_id = gSwitchId;
-    direction_lookup_entry.vni = entry.vm_vni;
+    direction_lookup_entry.vni = entry.vm_vni();
     appliance_attr.id = SAI_DIRECTION_LOOKUP_ENTRY_ATTR_ACTION;
     appliance_attr.value.u32 = SAI_DIRECTION_LOOKUP_ENTRY_ACTION_SET_OUTBOUND_DIRECTION;
     status = sai_dash_direction_lookup_api->create_direction_lookup_entry(&direction_lookup_entry, attr_count, &appliance_attr);
@@ -90,7 +96,7 @@ bool DashOrch::removeApplianceEntry(const string& appliance_id)
     SWSS_LOG_ENTER();
 
     sai_status_t status;
-    ApplianceEntry entry;
+    dash::appliance::Appliance entry;
 
     if (appliance_entries_.find(appliance_id) == appliance_entries_.end())
     {
@@ -101,7 +107,10 @@ bool DashOrch::removeApplianceEntry(const string& appliance_id)
     entry = appliance_entries_[appliance_id];
     sai_vip_entry_t vip_entry;
     vip_entry.switch_id = gSwitchId;
-    swss::copy(vip_entry.vip, entry.sip);
+    if (!to_sai(entry.sip(), vip_entry.vip))
+    {
+        return false;
+    }
     status = sai_dash_vip_api->remove_vip_entry(&vip_entry);
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -115,7 +124,7 @@ bool DashOrch::removeApplianceEntry(const string& appliance_id)
 
     sai_direction_lookup_entry_t direction_lookup_entry;
     direction_lookup_entry.switch_id = gSwitchId;
-    direction_lookup_entry.vni = entry.vm_vni;
+    direction_lookup_entry.vni = entry.vm_vni();
     status = sai_dash_direction_lookup_api->remove_direction_lookup_entry(&direction_lookup_entry);
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -145,19 +154,15 @@ void DashOrch::doTaskApplianceTable(ConsumerBase& consumer)
 
         if (op == SET_COMMAND)
         {
-            ApplianceEntry entry;
+            dash::appliance::Appliance entry;
 
-            for (auto i : kfvFieldsValues(t))
+            if (!parsePbMessage(kfvFieldsValues(t), entry))
             {
-                if (fvField(i) == "sip")
-                {
-                    entry.sip = IpAddress(fvValue(i));
-                }
-                else if (fvField(i) == "vm_vni")
-                {
-                    entry.vm_vni = to_uint<uint32_t>(fvValue(i));
-                }
+                SWSS_LOG_WARN("Requires protobuff at appliance :%s", appliance_id.c_str());
+                it = consumer.m_toSync.erase(it);
+                continue;
             }
+
             if (addApplianceEntry(appliance_id, entry))
             {
                 it = consumer.m_toSync.erase(it);
@@ -186,7 +191,7 @@ void DashOrch::doTaskApplianceTable(ConsumerBase& consumer)
     }
 }
 
-bool DashOrch::addRoutingTypeEntry(const string& routing_type, const RoutingTypeEntry &entry)
+bool DashOrch::addRoutingTypeEntry(const string& routing_type, const dash::route_type::RouteType &entry)
 {
     SWSS_LOG_ENTER();
 
@@ -231,27 +236,15 @@ void DashOrch::doTaskRoutingTypeTable(ConsumerBase& consumer)
 
         if (op == SET_COMMAND)
         {
-            RoutingTypeEntry entry;
+            dash::route_type::RouteType entry;
 
-            for (auto i : kfvFieldsValues(t))
+            if (!parsePbMessage(kfvFieldsValues(t), entry))
             {
-                if (fvField(i) == "action_name")
-                {
-                    entry.action_name = fvValue(i);
-                }
-                else if (fvField(i) == "action_type")
-                {
-                    entry.action_type = fvValue(i);
-                }
-                else if (fvField(i) == "encap_type")
-                {
-                    entry.encap_type = fvValue(i);
-                }
-                else if (fvField(i) == "vni")
-                {
-                    entry.vni = to_uint<uint32_t>(fvValue(i));
-                }
+                SWSS_LOG_WARN("Requires protobuff at routing type :%s", routing_type.c_str());
+                it = consumer.m_toSync.erase(it);
+                continue;
             }
+
             if (addRoutingTypeEntry(routing_type, entry))
             {
                 it = consumer.m_toSync.erase(it);
@@ -286,7 +279,7 @@ bool DashOrch::setEniAdminState(const string& eni, const EniEntry& entry)
 
     sai_attribute_t eni_attr;
     eni_attr.id = SAI_ENI_ATTR_ADMIN_STATE;
-    eni_attr.value.booldata = entry.admin_state;
+    eni_attr.value.booldata = entry.metadata.admin_state();
 
     sai_status_t status = sai_dash_eni_api->set_eni_attribute(eni_entries_[eni].eni_id,
                                 &eni_attr);
@@ -299,8 +292,8 @@ bool DashOrch::setEniAdminState(const string& eni, const EniEntry& entry)
             return parseHandleSaiStatusFailure(handle_status);
         }
     }
-    eni_entries_[eni].admin_state = entry.admin_state;
-    SWSS_LOG_NOTICE("Set ENI %s admin state to %s", eni.c_str(), entry.admin_state ? "UP" : "DOWN");
+    eni_entries_[eni].metadata.set_admin_state(entry.metadata.admin_state());
+    SWSS_LOG_NOTICE("Set ENI %s admin state to %s", eni.c_str(), entry.metadata.admin_state() ? "UP" : "DOWN");
 
     return true;
 }
@@ -309,7 +302,7 @@ bool DashOrch::addEniObject(const string& eni, EniEntry& entry)
 {
     SWSS_LOG_ENTER();
 
-    const string &vnet = entry.vnet;
+    const string &vnet = entry.metadata.vnet();
 
     if (!vnet.empty() && gVnetNameToId.find(vnet) == gVnetNameToId.end())
     {
@@ -328,36 +321,39 @@ bool DashOrch::addEniObject(const string& eni, EniEntry& entry)
     vector<sai_attribute_t> eni_attrs;
 
     eni_attr.id = SAI_ENI_ATTR_VNET_ID;
-    eni_attr.value.oid = gVnetNameToId[entry.vnet];
+    eni_attr.value.oid = gVnetNameToId[entry.metadata.vnet()];
     eni_attrs.push_back(eni_attr);
 
-    bool has_qos = qos_entries_.find(entry.qos_name) != qos_entries_.end();
+    bool has_qos = qos_entries_.find(entry.metadata.qos()) != qos_entries_.end();
     if (has_qos)
     {
         eni_attr.id = SAI_ENI_ATTR_PPS;
-        eni_attr.value.u32 = qos_entries_[entry.qos_name].bw;
+        eni_attr.value.u32 = qos_entries_[entry.metadata.qos()].bw();
         eni_attrs.push_back(eni_attr);
 
         eni_attr.id = SAI_ENI_ATTR_CPS;
-        eni_attr.value.u32 = qos_entries_[entry.qos_name].cps;
+        eni_attr.value.u32 = qos_entries_[entry.metadata.qos()].cps();
         eni_attrs.push_back(eni_attr);
 
         eni_attr.id = SAI_ENI_ATTR_FLOWS;
-        eni_attr.value.u32 = qos_entries_[entry.qos_name].flows;
+        eni_attr.value.u32 = qos_entries_[entry.metadata.qos()].flows();
         eni_attrs.push_back(eni_attr);
     }
 
     eni_attr.id = SAI_ENI_ATTR_ADMIN_STATE;
-    eni_attr.value.booldata = entry.admin_state;
+    eni_attr.value.booldata = (entry.metadata.admin_state() == dash::eni::State::STATE_ENABLED);
     eni_attrs.push_back(eni_attr);
 
     eni_attr.id = SAI_ENI_ATTR_VM_UNDERLAY_DIP;
-    copy(eni_attr.value.ipaddr, entry.underlay_ip);
+    if (!to_sai(entry.metadata.underlay_ip(), eni_attr.value.ipaddr))
+    {
+        return false;
+    }
     eni_attrs.push_back(eni_attr);
 
     eni_attr.id = SAI_ENI_ATTR_VM_VNI;
     auto app_entry = appliance_entries_.begin()->second;
-    eni_attr.value.u32 = app_entry.vm_vni;
+    eni_attr.value.u32 = app_entry.vm_vni();
     eni_attrs.push_back(eni_attr);
 
     sai_status_t status = sai_dash_eni_api->create_eni(&eni_id, gSwitchId,
@@ -384,10 +380,9 @@ bool DashOrch::addEniAddrMapEntry(const string& eni, const EniEntry& entry)
     SWSS_LOG_ENTER();
 
     uint32_t attr_count = 1;
-    MacAddress mac_addr = MacAddress(entry.mac_address);
     sai_eni_ether_address_map_entry_t eni_ether_address_map_entry;
     eni_ether_address_map_entry.switch_id = gSwitchId;
-    memcpy(eni_ether_address_map_entry.address, mac_addr.getMac(), sizeof(sai_mac_t));
+    memcpy(eni_ether_address_map_entry.address, entry.metadata.mac_address().c_str(), sizeof(sai_mac_t));
 
     sai_attribute_t eni_ether_address_map_entry_attr;
     eni_ether_address_map_entry_attr.id = SAI_ENI_ETHER_ADDRESS_MAP_ENTRY_ATTR_ENI_ID;
@@ -397,7 +392,7 @@ bool DashOrch::addEniAddrMapEntry(const string& eni, const EniEntry& entry)
                                                                                 &eni_ether_address_map_entry_attr);
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to create ENI ether address map entry for %s", entry.mac_address.c_str());
+        SWSS_LOG_ERROR("Failed to create ENI ether address map entry for %s", MacAddress::to_string(reinterpret_cast<const uint8_t *>(entry.metadata.mac_address().c_str())).c_str());
         task_process_status handle_status = handleSaiCreateStatus((sai_api_t) SAI_API_DASH_ENI, status);
         if (handle_status != task_success)
         {
@@ -417,7 +412,7 @@ bool DashOrch::addEni(const string& eni, EniEntry &entry)
     SWSS_LOG_ENTER();
 
     auto it = eni_entries_.find(eni);
-    if (it != eni_entries_.end() && it->second.admin_state != entry.admin_state)
+    if (it != eni_entries_.end() && it->second.metadata.admin_state() != entry.metadata.admin_state())
     {
         return setEniAdminState(eni, entry);
     }
@@ -483,10 +478,9 @@ bool DashOrch::removeEniAddrMapEntry(const string& eni)
     SWSS_LOG_ENTER();
 
     EniEntry entry = eni_entries_[eni];
-    MacAddress mac_addr = MacAddress(entry.mac_address);
     sai_eni_ether_address_map_entry_t eni_ether_address_map_entry;
     eni_ether_address_map_entry.switch_id = gSwitchId;
-    memcpy(eni_ether_address_map_entry.address, mac_addr.getMac(), sizeof(sai_mac_t));
+    memcpy(eni_ether_address_map_entry.address, entry.metadata.mac_address().c_str(), sizeof(sai_mac_t));
 
     sai_status_t status = sai_dash_eni_api->remove_eni_ether_address_map_entry(&eni_ether_address_map_entry);
     if (status != SAI_STATUS_SUCCESS)
@@ -541,32 +535,17 @@ void DashOrch::doTaskEniTable(ConsumerBase& consumer)
         auto t = it->second;
         string eni = kfvKey(t);
         string op = kfvOp(t);
-        EniEntry entry;
-        for (auto i : kfvFieldsValues(t))
-        {
-            if (fvField(i) == "mac_address")
-            {
-                entry.mac_address = fvValue(i);
-            }
-            else if (fvField(i) == "underlay_ip")
-            {
-                entry.underlay_ip = IpAddress(fvValue(i));
-            }
-            else if (fvField(i) == "admin_state")
-            {
-                entry.admin_state = (fvValue(i) == "enabled" ? true : false);
-            }
-            else if (fvField(i) == "vnet")
-            {
-                entry.vnet = fvValue(i);
-            }
-            else if (fvField(i) == "qos")
-            {
-                entry.qos_name = fvValue(i);
-            }
-        }
         if (op == SET_COMMAND)
         {
+            EniEntry entry;
+
+            if (!parsePbMessage(kfvFieldsValues(t), entry.metadata))
+            {
+                SWSS_LOG_WARN("Requires protobuff at ENI :%s", eni.c_str());
+                it = consumer.m_toSync.erase(it);
+                continue;
+            }
+
             if (addEni(eni, entry))
             {
                 it = consumer.m_toSync.erase(it);
@@ -595,7 +574,7 @@ void DashOrch::doTaskEniTable(ConsumerBase& consumer)
     }
 }
 
-bool DashOrch::addQosEntry(const string& qos_name, const QosEntry &entry)
+bool DashOrch::addQosEntry(const string& qos_name, const dash::qos::Qos &entry)
 {
     SWSS_LOG_ENTER();
 
@@ -635,27 +614,15 @@ void DashOrch::doTaskQosTable(ConsumerBase& consumer)
 
         if (op == SET_COMMAND)
         {
-            QosEntry entry;
+            dash::qos::Qos entry;
 
-            for (auto i : kfvFieldsValues(t))
+            if (!parsePbMessage(kfvFieldsValues(t), entry))
             {
-                if (fvField(i) == "qos_id")
-                {
-                    entry.qos_id = fvValue(i);
-                }
-                else if (fvField(i) == "bw")
-                {
-                    entry.bw = to_uint<uint32_t>(fvValue(i));
-                }
-                else if (fvField(i) == "cps")
-                {
-                    entry.cps = to_uint<uint32_t>(fvValue(i));
-                }
-                else if (fvField(i) == "flows")
-                {
-                    entry.flows = to_uint<uint32_t>(fvValue(i));
-                }
+                SWSS_LOG_WARN("Requires protobuff at QOS :%s", qos_name.c_str());
+                it = consumer.m_toSync.erase(it);
+                continue;
             }
+
             if (addQosEntry(qos_name, entry))
             {
                 it = consumer.m_toSync.erase(it);
