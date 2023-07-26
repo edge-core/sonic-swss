@@ -20,6 +20,10 @@
 #include "crmorch.h"
 #include "saihelper.h"
 
+#include "taskworker.h"
+#include "pbutils.h"
+#include "dash_api/route_type.pb.h"
+
 using namespace std;
 using namespace swss;
 
@@ -30,12 +34,12 @@ extern sai_object_id_t gSwitchId;
 extern size_t gMaxBulkSize;
 extern CrmOrch *gCrmOrch;
 
-static std::unordered_map<std::string, sai_outbound_routing_entry_action_t> sOutboundAction =
+static std::unordered_map<dash::route_type::RoutingType, sai_outbound_routing_entry_action_t> sOutboundAction =
 {
-    { "vnet", SAI_OUTBOUND_ROUTING_ENTRY_ACTION_ROUTE_VNET },
-    { "vnet_direct", SAI_OUTBOUND_ROUTING_ENTRY_ACTION_ROUTE_VNET_DIRECT },
-    { "direct", SAI_OUTBOUND_ROUTING_ENTRY_ACTION_ROUTE_DIRECT },
-    { "drop", SAI_OUTBOUND_ROUTING_ENTRY_ACTION_DROP }
+    { dash::route_type::RoutingType::ROUTING_TYPE_VNET, SAI_OUTBOUND_ROUTING_ENTRY_ACTION_ROUTE_VNET },
+    { dash::route_type::RoutingType::ROUTING_TYPE_VNET_DIRECT, SAI_OUTBOUND_ROUTING_ENTRY_ACTION_ROUTE_VNET_DIRECT },
+    { dash::route_type::RoutingType::ROUTING_TYPE_DIRECT, SAI_OUTBOUND_ROUTING_ENTRY_ACTION_ROUTE_DIRECT },
+    { dash::route_type::RoutingType::ROUTING_TYPE_DROP, SAI_OUTBOUND_ROUTING_ENTRY_ACTION_DROP }
 };
 
 DashRouteOrch::DashRouteOrch(DBConnector *db, vector<string> &tableName, DashOrch *dash_orch, ZmqServer *zmqServer) :
@@ -62,9 +66,9 @@ bool DashRouteOrch::addOutboundRouting(const string& key, OutboundRoutingBulkCon
         SWSS_LOG_INFO("Retry as ENI entry %s not found", ctxt.eni.c_str());
         return false;
     }
-    if (!ctxt.vnet.empty() && gVnetNameToId.find(ctxt.vnet) == gVnetNameToId.end())
+    if (ctxt.metadata.has_vnet() && gVnetNameToId.find(ctxt.metadata.vnet()) == gVnetNameToId.end())
     {
-        SWSS_LOG_INFO("Retry as vnet %s not found", ctxt.vnet.c_str());
+        SWSS_LOG_INFO("Retry as vnet %s not found", ctxt.metadata.vnet().c_str());
         return false;
     }
 
@@ -77,20 +81,25 @@ bool DashRouteOrch::addOutboundRouting(const string& key, OutboundRoutingBulkCon
     auto& object_statuses = ctxt.object_statuses;
 
     outbound_routing_attr.id = SAI_OUTBOUND_ROUTING_ENTRY_ATTR_ACTION;
-    outbound_routing_attr.value.u32 = sOutboundAction[ctxt.action_type];
+    outbound_routing_attr.value.u32 = sOutboundAction[ctxt.metadata.action_type()];
     outbound_routing_attrs.push_back(outbound_routing_attr);
 
-    if (!ctxt.vnet.empty())
+    if (ctxt.metadata.has_vnet())
     {
         outbound_routing_attr.id = SAI_OUTBOUND_ROUTING_ENTRY_ATTR_DST_VNET_ID;
-        outbound_routing_attr.value.oid = gVnetNameToId[ctxt.vnet];
+        outbound_routing_attr.value.oid = gVnetNameToId[ctxt.metadata.vnet()];
         outbound_routing_attrs.push_back(outbound_routing_attr);
     }
 
-    if (!ctxt.action_type.compare("vnet_direct") && !ctxt.overlay_ip.isZero())
+    if (ctxt.metadata.action_type() == dash::route_type::RoutingType::ROUTING_TYPE_VNET_DIRECT
+        && ctxt.metadata.has_vnet_direct()
+        && (ctxt.metadata.vnet_direct().overlay_ip().has_ipv4() || ctxt.metadata.vnet_direct().overlay_ip().has_ipv6()))
     {
         outbound_routing_attr.id = SAI_OUTBOUND_ROUTING_ENTRY_ATTR_OVERLAY_IP;
-        copy(outbound_routing_attr.value.ipaddr, ctxt.overlay_ip);
+        if (!to_sai(ctxt.metadata.vnet_direct().overlay_ip(), outbound_routing_attr.value.ipaddr))
+        {
+            return false;
+        }
         outbound_routing_attrs.push_back(outbound_routing_attr);
     }
 
@@ -129,7 +138,7 @@ bool DashRouteOrch::addOutboundRoutingPost(const string& key, const OutboundRout
         }
     }
 
-    OutboundRoutingEntry entry = { dash_orch_->getEni(ctxt.eni)->eni_id, ctxt.destination, ctxt.action_type, ctxt.vnet, ctxt.overlay_ip };
+    OutboundRoutingEntry entry = { dash_orch_->getEni(ctxt.eni)->eni_id, ctxt.destination, ctxt.metadata };
     routing_entries_[key] = entry;
 
     gCrmOrch->incCrmResUsedCounter(ctxt.destination.isV4() ? CrmResourceType::CRM_DASH_IPV4_OUTBOUND_ROUTING : CrmResourceType::CRM_DASH_IPV6_OUTBOUND_ROUTING);
@@ -224,9 +233,6 @@ void DashRouteOrch::doTaskRouteTable(ConsumerBase& consumer)
                 ctxt.clear();
             }
 
-            string& action_type = ctxt.action_type;
-            string& vnet = ctxt.vnet;
-            IpAddress& overlay_ip = ctxt.overlay_ip;
             string& eni = ctxt.eni;
             IpPrefix& destination = ctxt.destination;
 
@@ -239,20 +245,11 @@ void DashRouteOrch::doTaskRouteTable(ConsumerBase& consumer)
 
             if (op == SET_COMMAND)
             {
-                for (auto i : kfvFieldsValues(tuple))
+                if (!parsePbMessage(kfvFieldsValues(tuple), ctxt.metadata))
                 {
-                    if (fvField(i) == "action_type")
-                    {
-                        action_type = fvValue(i);
-                    }
-                    else if (fvField(i) == "vnet")
-                    {
-                        vnet = fvValue(i);
-                    }
-                    else if (fvField(i) == "overlay_ip")
-                    {
-                        overlay_ip = IpAddress(fvValue(i));
-                    }
+                    SWSS_LOG_WARN("Requires protobuff at OutboundRouting :%s", key.c_str());
+                    it = consumer.m_toSync.erase(it);
+                    continue;
                 }
                 if (addOutboundRouting(key, ctxt))
                 {
@@ -345,9 +342,9 @@ bool DashRouteOrch::addInboundRouting(const string& key, InboundRoutingBulkConte
         SWSS_LOG_INFO("Retry as ENI entry %s not found", ctxt.eni.c_str());
         return false;
     }
-    if (!ctxt.vnet.empty() && gVnetNameToId.find(ctxt.vnet) == gVnetNameToId.end())
+    if (ctxt.metadata.has_vnet() && gVnetNameToId.find(ctxt.metadata.vnet()) == gVnetNameToId.end())
     {
-        SWSS_LOG_INFO("Retry as vnet %s not found", ctxt.vnet.c_str());
+        SWSS_LOG_INFO("Retry as vnet %s not found", ctxt.metadata.vnet().c_str());
         return false;
     }
 
@@ -358,20 +355,20 @@ bool DashRouteOrch::addInboundRouting(const string& key, InboundRoutingBulkConte
     inbound_routing_entry.vni = ctxt.vni;
     swss::copy(inbound_routing_entry.sip, ctxt.sip);
     swss::copy(inbound_routing_entry.sip_mask, ctxt.sip_mask);
-    inbound_routing_entry.priority = ctxt.priority;
+    inbound_routing_entry.priority = ctxt.metadata.priority();
     auto& object_statuses = ctxt.object_statuses;
 
     sai_attribute_t inbound_routing_attr;
     vector<sai_attribute_t> inbound_routing_attrs;
 
     inbound_routing_attr.id = SAI_INBOUND_ROUTING_ENTRY_ATTR_ACTION;
-    inbound_routing_attr.value.u32 = ctxt.pa_validation ? SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP_PA_VALIDATE : SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP;
+    inbound_routing_attr.value.u32 = ctxt.metadata.pa_validation() ? SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP_PA_VALIDATE : SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP;
     inbound_routing_attrs.push_back(inbound_routing_attr);
 
-    if (!ctxt.vnet.empty())
+    if (ctxt.metadata.has_vnet())
     {
         inbound_routing_attr.id = SAI_INBOUND_ROUTING_ENTRY_ATTR_SRC_VNET_ID;
-        inbound_routing_attr.value.oid = gVnetNameToId[ctxt.vnet];
+        inbound_routing_attr.value.oid = gVnetNameToId[ctxt.metadata.vnet()];
         inbound_routing_attrs.push_back(inbound_routing_attr);
     }
 
@@ -410,7 +407,7 @@ bool DashRouteOrch::addInboundRoutingPost(const string& key, const InboundRoutin
         }
     }
 
-    InboundRoutingEntry entry = { dash_orch_->getEni(ctxt.eni)->eni_id, ctxt.vni, ctxt.sip, ctxt.sip_mask, ctxt.action_type, ctxt.vnet, ctxt.pa_validation, ctxt.priority };
+    InboundRoutingEntry entry = { dash_orch_->getEni(ctxt.eni)->eni_id, ctxt.vni, ctxt.sip, ctxt.sip_mask, ctxt.metadata };
     routing_rule_entries_[key] = entry;
 
     gCrmOrch->incCrmResUsedCounter(ctxt.sip.isV4() ? CrmResourceType::CRM_DASH_IPV4_INBOUND_ROUTING : CrmResourceType::CRM_DASH_IPV6_INBOUND_ROUTING);
@@ -439,7 +436,7 @@ bool DashRouteOrch::removeInboundRouting(const string& key, InboundRoutingBulkCo
     inbound_routing_entry.vni = entry.vni;
     swss::copy(inbound_routing_entry.sip, entry.sip);
     swss::copy(inbound_routing_entry.sip_mask, entry.sip_mask);
-    inbound_routing_entry.priority = entry.priority;
+    inbound_routing_entry.priority = entry.metadata.priority();
     object_statuses.emplace_back();
     inbound_routing_bulker_.remove_entry(&object_statuses.back(), &inbound_routing_entry);
 
@@ -510,12 +507,8 @@ void DashRouteOrch::doTaskRouteRuleTable(ConsumerBase& consumer)
 
             string& eni = ctxt.eni;
             uint32_t& vni = ctxt.vni;
-            string& action_type = ctxt.action_type;
-            string& vnet = ctxt.vnet;
             IpAddress& sip = ctxt.sip;
             IpAddress& sip_mask = ctxt.sip_mask;
-            uint32_t& priority = ctxt.priority;
-            bool& pa_validation = ctxt.pa_validation;
             IpPrefix prefix;
 
             vector<string> keys = tokenize(key, ':');
@@ -531,24 +524,11 @@ void DashRouteOrch::doTaskRouteRuleTable(ConsumerBase& consumer)
 
             if (op == SET_COMMAND)
             {
-                for (auto i : kfvFieldsValues(tuple))
+                if (!parsePbMessage(kfvFieldsValues(tuple), ctxt.metadata))
                 {
-                    if (fvField(i) == "action_type")
-                    {
-                        action_type = fvValue(i);
-                    }
-                    else if (fvField(i) == "vnet")
-                    {
-                        vnet = fvValue(i);
-                    }
-                    else if (fvField(i) == "priority")
-                    {
-                        priority = to_uint<uint32_t>(fvValue(i));
-                    }
-                    else if (fvField(i) == "pa_validation")
-                    {
-                        pa_validation = fvValue(i) == "true";
-                    }
+                    SWSS_LOG_WARN("Requires protobuff at InboundRouting :%s", key.c_str());
+                    it = consumer.m_toSync.erase(it);
+                    continue;
                 }
                 if (addInboundRouting(key, ctxt))
                 {

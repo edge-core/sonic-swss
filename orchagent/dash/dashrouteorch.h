@@ -16,25 +16,24 @@
 #include "zmqorch.h"
 #include "zmqserver.h"
 
+#include "dash_api/route.pb.h"
+#include "dash_api/route_rule.pb.h"
+
+
 struct OutboundRoutingEntry
 {
     sai_object_id_t eni;
     swss::IpPrefix destination;
-    std::string action_type;
-    std::string vnet;
-    swss::IpAddress overlay_ip;
+    dash::route_lpm::Route metadata;
 };
 
 struct InboundRoutingEntry
 {
     sai_object_id_t eni;
-    uint32_t vni;
+    uint32_t vni;   
     swss::IpAddress sip;
     swss::IpAddress sip_mask;
-    std::string action_type;
-    std::string vnet;
-    bool pa_validation;
-    uint32_t priority;
+    dash::route_rule::RouteRule metadata;
 };
 
 typedef std::map<std::string, OutboundRoutingEntry> RoutingTable;
@@ -44,9 +43,7 @@ struct OutboundRoutingBulkContext
 {
     std::string eni;
     swss::IpPrefix destination;
-    std::string action_type;
-    std::string vnet;
-    swss::IpAddress overlay_ip;
+    dash::route_lpm::Route metadata;
     std::deque<sai_status_t> object_statuses;
     OutboundRoutingBulkContext() {}
     OutboundRoutingBulkContext(const OutboundRoutingBulkContext&) = delete;
@@ -62,12 +59,9 @@ struct InboundRoutingBulkContext
 {
     std::string eni;
     uint32_t vni;
-    std::string action_type;
-    std::string vnet;
     swss::IpAddress sip;
     swss::IpAddress sip_mask;
-    uint32_t priority;
-    bool pa_validation;
+    dash::route_rule::RouteRule metadata;
     std::deque<sai_status_t> object_statuses;
     InboundRoutingBulkContext() {}
     InboundRoutingBulkContext(const InboundRoutingBulkContext&) = delete;

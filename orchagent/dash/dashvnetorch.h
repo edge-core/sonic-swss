@@ -14,21 +14,20 @@
 #include "zmqorch.h"
 #include "zmqserver.h"
 
+#include "dash_api/vnet.pb.h"
+#include "dash_api/vnet_mapping.pb.h"
+
 struct VnetEntry
 {
     sai_object_id_t vni;
-    std::string guid;
+    dash::vnet::Vnet metadata;
 };
 
 struct VnetMapEntry
 {
     sai_object_id_t dst_vnet_id;
-    std::string routing_type;
     swss::IpAddress dip;
-    swss::IpAddress underlay_ip;
-    swss::MacAddress mac_address;
-    uint32_t metering_bucket;
-    bool use_dst_vni;
+    dash::vnet_mapping::VnetMapping metadata;
 };
 
 typedef std::unordered_map<std::string, VnetEntry> DashVnetTable;
@@ -38,8 +37,7 @@ typedef std::unordered_map<std::string, uint32_t> PaRefCountTable;
 struct DashVnetBulkContext
 {
     std::string vnet_name;
-    uint32_t vni;
-    std::string guid;
+    dash::vnet::Vnet metadata;
     std::deque<sai_object_id_t> object_ids;
     std::deque<sai_status_t> object_statuses;
     DashVnetBulkContext() {}
@@ -58,11 +56,7 @@ struct VnetMapBulkContext
 {
     std::string vnet_name;
     swss::IpAddress dip;
-    std::string routing_type;
-    swss::IpAddress underlay_ip;
-    swss::MacAddress mac_address;
-    uint32_t metering_bucket;
-    bool use_dst_vni = false;
+    dash::vnet_mapping::VnetMapping metadata;
     std::deque<sai_status_t> outbound_ca_to_pa_object_statuses;
     std::deque<sai_status_t> pa_validation_object_statuses;
     VnetMapBulkContext() {}
