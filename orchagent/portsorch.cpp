@@ -4592,13 +4592,6 @@ void PortsOrch::doVlanMemberTask(Consumer &consumer)
         assert(m_portList.find(vlan_alias) != m_portList.end());
         Port vlan, port;
 
-        /* When VLAN member is to be created before VLAN is created */
-        if (!getPort(vlan_alias, vlan))
-        {
-            SWSS_LOG_INFO("Failed to locate VLAN %s", vlan_alias.c_str());
-            it++;
-            continue;
-        }
 
         if (!getPort(port_alias, port))
         {
@@ -4609,6 +4602,14 @@ void PortsOrch::doVlanMemberTask(Consumer &consumer)
 
         if (op == SET_COMMAND)
         {
+            /* When VLAN member is to be created before VLAN is created */
+            if (!getPort(vlan_alias, vlan))
+            {
+                SWSS_LOG_INFO("Failed to locate VLAN %s", vlan_alias.c_str());
+                it++;
+                continue;
+            }
+
             string tagging_mode = "untagged";
 
             for (auto i : kfvFieldsValues(t))
@@ -4640,7 +4641,7 @@ void PortsOrch::doVlanMemberTask(Consumer &consumer)
         }
         else if (op == DEL_COMMAND)
         {
-            if (vlan.m_members.find(port_alias) != vlan.m_members.end())
+            if (getPort(vlan_alias, vlan) && vlan.m_members.find(port_alias) != vlan.m_members.end())
             {
                 if (removeVlanMember(vlan, port))
                 {
