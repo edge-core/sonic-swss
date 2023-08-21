@@ -40,10 +40,12 @@ public:
 
         int getFd() override;
         uint64_t readData() override;
+        int operUpdate();
 
         /* member_name -> enabled|disabled */
         std::map<std::string, bool> m_lagMembers;
         bool admin_state;
+        bool lag_oper_status;
         unsigned int mtu;
     protected:
         int onChange();
