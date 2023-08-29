@@ -2087,3 +2087,24 @@ void FdbOrch::notifyTunnelOrch(Port& port)
     tunnel_orch->deleteTunnelPort(port);
 }
 
+int FdbOrch::getFdbCountByPortVlan(string vlan_name, string port_name)
+{
+    int count = 0;
+    Port port, vlan;
+
+    if (!m_portsOrch->getPort(vlan_name, vlan) || !m_portsOrch->getPort(port_name, port)
+        || port.m_fdb_count == 0)
+        return 0;
+
+    SWSS_LOG_INFO("port m_bridge_port_id 0x%lx vlan 0x%lx", port.m_bridge_port_id, vlan.m_vlan_info.vlan_oid);
+
+    for (auto fdb = m_entries.begin(); fdb != m_entries.end(); fdb++)
+    {
+        if(fdb->second.bridge_port_id == port.m_bridge_port_id && fdb->first.bv_id == vlan.m_vlan_info.vlan_oid)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+

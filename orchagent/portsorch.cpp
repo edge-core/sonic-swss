@@ -6318,6 +6318,20 @@ bool PortsOrch::removeVlanMember(Port &vlan, Port &port, string end_point_ip)
     sai_tagging_mode = vlan_member->second.vlan_mode;
     vlan_member_id = vlan_member->second.vlan_member_id;
 
+    string platform = getenv("platform") ? getenv("platform") : "";
+    VxlanTunnelMapOrch* mapOrch = gDirectory.get<VxlanTunnelMapOrch*>();
+    if (platform == BRCM_PLATFORM_SUBSTRING && mapOrch->isIntfConfigVlanVni(vlan.m_alias)
+        && port.m_type != Port::TUNNEL)
+    {
+        gFdbOrch->flushFDBEntries(port.m_bridge_port_id, vlan.m_vlan_info.vlan_oid);
+        gFdbOrch->notifyObserversFDBFlush(port, vlan.m_vlan_info.vlan_oid);
+        int fdb_count = gFdbOrch->getFdbCountByPortVlan(vlan.m_alias, port.m_alias);
+        if (fdb_count > 0)
+        {
+            SWSS_LOG_NOTICE("Port still has %d fdb entries, port %s vlan %s", fdb_count, port.m_alias.c_str(), vlan.m_alias.c_str());
+            return false;
+        }
+    }
     sai_status_t status = sai_vlan_api->remove_vlan_member(vlan_member_id);
     if (status != SAI_STATUS_SUCCESS)
     {
