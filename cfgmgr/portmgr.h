@@ -37,6 +37,7 @@ private:
     bool setPortMtu(const std::string &alias, const std::string &mtu);
     bool setPortAdminStatus(const std::string &alias, const bool up);
     bool isPortStateOk(const std::string &alias);
+    bool setPortMtuSlowpath(const std::string &alias, const std::string &mtu_slowpath);
 };
 
 }

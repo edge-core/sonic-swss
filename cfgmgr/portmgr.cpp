@@ -47,8 +47,56 @@ bool PortMgr::setPortMtu(const string &alias, const string &mtu)
     {
         throw runtime_error(cmd_str + " : " + res);
     }
+    vector<FieldValueTuple> temp;
+
+    /* 'mtu_slowpath' has higher priority than 'mtu' for the netdev mtu in kernel */
+    if (m_cfgPortTable.get(alias, temp))
+    {
+        auto mtu_slowpath = swss::fvsGetValue(temp, "mtu_slowpath", true);
+        if (!mtu_slowpath)
+        {
+            // ip link set dev <port_name> mtu <mtu>
+            cmd << IP_CMD << " link set dev " << shellquote(alias) << " mtu " << shellquote(mtu);
+            EXEC_WITH_ERROR_THROW(cmd.str(), res);
+
+        }
+    }
+
+    // Set the port MTU in application database to update both
+    // the port MTU and possibly the port based router interface MTU
+    vector<FieldValueTuple> fvs;
+    FieldValueTuple fv("mtu", mtu);
+    fvs.push_back(fv);
+    m_appPortTable.set(alias, fvs);
+
     return true;
 }
+
+bool PortMgr::setPortMtuSlowpath(const string &alias, const string &mtu_slowpath)
+{
+    /* 'mtu_slowpath' will only configure the netdev mtu in kernel, and has higher priority than 'mtu' attr
+     */
+    stringstream cmd;
+    string res;
+    int ret;
+
+    SWSS_LOG_NOTICE("set mtu_slowpath netdev %s %s",
+                        alias.c_str(), mtu_slowpath.c_str());
+
+    // ip link set dev <port_name> mtu <mtu>
+    cmd << IP_CMD << " link set dev " << shellquote(alias) << " mtu " << shellquote(mtu_slowpath);
+    ret = swss::exec(cmd.str(), res);
+
+    if (ret)
+    {
+        SWSS_LOG_WARN("Failed to set mtu_slowpath to %s netdev with cmd:%s, rc:%d, error:%s",
+                        alias.c_str(), cmd.str().c_str(), ret, res.c_str());
+    }
+
+    return (ret == 0);
+}
+
+
 
 bool PortMgr::setPortAdminStatus(const string &alias, const bool up)
 {
@@ -157,6 +205,7 @@ void PortMgr::doTask(Consumer &consumer)
 
             string admin_status, mtu;
             std::vector<FieldValueTuple> field_values;
+            string mtu_slowpath = "";
 
             bool configured = (m_portList.find(alias) != m_portList.end());
 
@@ -185,6 +234,10 @@ void PortMgr::doTask(Consumer &consumer)
                 else if (fvField(i) == "admin_status")
                 {
                     admin_status = fvValue(i);
+                }
+                else if (fvField(i) == "mtu_slowpath")
+                {
+                    mtu_slowpath = fvValue(i);
                 }
                 else
                 {
@@ -216,6 +269,12 @@ void PortMgr::doTask(Consumer &consumer)
             {
                 setPortMtu(alias, mtu);
                 SWSS_LOG_NOTICE("Configure %s MTU to %s", alias.c_str(), mtu.c_str());
+            }
+
+            if (!mtu_slowpath.empty())
+            {
+                setPortMtuSlowpath(alias, mtu_slowpath);
+                SWSS_LOG_NOTICE("Configure %s slowpath MTU to %s", alias.c_str(), mtu_slowpath.c_str());
             }
 
             if (!admin_status.empty())
