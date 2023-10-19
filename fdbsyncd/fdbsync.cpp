@@ -448,6 +448,14 @@ void FdbSync::updateMclagRemoteMac (struct m_fdb_info *info)
 
     SWSS_LOG_INFO("cmd:%s, res=%s, ret=%d", cmds.c_str(), res.c_str(), ret);
 
+    /* Check if this vlan+key is also learned by vxlan neighbor then delete learned on */
+    if (info->op_type == FDB_OPER_ADD && m_mac.find(key) != m_mac.end())
+    {
+        macDelVxlanEntry(key, info);
+        SWSS_LOG_NOTICE("[MCLAG] Local learn event deleting from VXLAN table DEL_KEY %s", key.c_str());
+        macDelVxlan(key, "");
+    }
+
     return;
 }
 
