@@ -89,6 +89,12 @@ public:
 
     using Orch::doTask;  // Allow access to the basic doTask
 
+    // Handling SAI status
+    task_process_status handleSaiCreateStatus(sai_api_t api, sai_status_t status, void* context = nullptr);
+    task_process_status handleSaiSetStatus(sai_api_t api, sai_status_t status, void* context = nullptr);
+    task_process_status handleSaiRemoveStatus(sai_api_t api, sai_status_t status, void* context = nullptr);
+    task_process_status handleSaiGetStatus(sai_api_t api, sai_status_t status, void* context = nullptr);
+
 private:
     PortsOrch *m_portsOrch;
     RouteOrch *m_routeOrch;
