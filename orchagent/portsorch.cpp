@@ -5612,11 +5612,6 @@ bool PortsOrch::addBridgePort(Port &port)
 {
     SWSS_LOG_ENTER();
 
-    if (port.m_bridge_port_id != SAI_NULL_OBJECT_ID)
-    {
-        return true;
-    }
-
     if (port.m_rif_id != 0)
     {
         SWSS_LOG_NOTICE("Cannot create bridge port, interface %s is a router port", port.m_alias.c_str());
@@ -5625,6 +5620,49 @@ bool PortsOrch::addBridgePort(Port &port)
 
     sai_attribute_t attr;
     vector<sai_attribute_t> attrs;
+
+    if (port.m_bridge_port_id != SAI_NULL_OBJECT_ID)
+    {
+        if (port.m_bridge_port_admin_state == true)
+        {
+            return true;
+        }
+        else
+        {
+            /* Set bridge port admin status to UP */
+            attr.id = SAI_BRIDGE_PORT_ATTR_ADMIN_STATE;
+            attr.value.booldata = true;
+            sai_status_t status = sai_bridge_api->set_bridge_port_attribute(port.m_bridge_port_id, &attr);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to set bridge port %s admin status to UP, rv:%d",
+                    port.m_alias.c_str(), status);
+                task_process_status handle_status = handleSaiSetStatus(SAI_API_BRIDGE, status);
+                if (handle_status != task_success)
+                {
+                    return parseHandleSaiStatusFailure(handle_status);
+                }
+            }
+            port.m_bridge_port_admin_state = true;
+            m_portList[port.m_alias] = port;
+
+            /* And with hardware FDB learning mode set to HW (explicit default value) */
+            attr.id = SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE;
+            attr.value.s32 = port.m_learn_mode;
+            status = sai_bridge_api->set_bridge_port_attribute(port.m_bridge_port_id, &attr);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to set bridge port %s learning mode, rv:%d",
+                    port.m_alias.c_str(), status);
+                task_process_status handle_status = handleSaiSetStatus(SAI_API_BRIDGE, status);
+                if (handle_status != task_success)
+                {
+                    return parseHandleSaiStatusFailure(handle_status);
+                }
+            }
+            return true;
+        }
+    }
 
     if (port.m_type == Port::PHY)
     {
@@ -5688,6 +5726,8 @@ bool PortsOrch::addBridgePort(Port &port)
             return parseHandleSaiStatusFailure(handle_status);
         }
     }
+    port.m_bridge_port_admin_state = true;
+    m_portList[port.m_alias] = port;
 
     if (!setHostIntfsStripTag(port, SAI_HOSTIF_VLAN_TAG_KEEP))
     {
@@ -5729,6 +5769,10 @@ bool PortsOrch::removeBridgePort(Port &port)
             return parseHandleSaiStatusFailure(handle_status);
         }
     }
+
+    port.m_bridge_port_admin_state = false;
+    m_portList[port.m_alias] = port;
+
     if (port.m_child_ports.empty())
     {
         if (!setHostIntfsStripTag(port, SAI_HOSTIF_VLAN_TAG_STRIP))
