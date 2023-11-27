@@ -758,6 +758,20 @@ task_process_status handleSaiRemoveStatus(sai_api_t api, sai_status_t status, vo
                     break;
             }
             break;
+        case SAI_API_BRIDGE:
+            switch (status)
+            {
+                case SAI_STATUS_OBJECT_IN_USE:
+                    /*
+                     *  In Bridge deletion, there are scenarios where the fdb count is cleared but entry deletion in AsicDb not complete
+                     *  the SAI deletion would report the status of SAI_STATUS_OBJECT_IN_USE, in this case need retry to success deletion
+                     */
+                    return task_need_retry;
+                default:
+                    SWSS_LOG_ERROR("Encountered failure in remove operation, exiting orchagent, SAI API: %s, status: %s",
+                                sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
+                    exit(EXIT_FAILURE);
+            }
         default:
             switch (status)
             {
