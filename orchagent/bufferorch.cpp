@@ -279,6 +279,61 @@ void BufferOrch::clearBufferPoolWatermarkCounterIdList(const sai_object_id_t obj
     }
 }
 
+void BufferOrch::updateBufferPoolWatermarkCounterIdList(const sai_object_id_t object_id)
+{
+    if (m_isBufferPoolWatermarkCounterIdListGenerated)
+    {
+        bool isSupportClear = true;
+        sai_status_t status = sai_buffer_api->clear_buffer_pool_stats(
+            object_id,
+            static_cast<uint32_t>(bufferPoolWatermarkStatIds.size()),
+            reinterpret_cast<const sai_stat_id_t*>(bufferPoolWatermarkStatIds.data()));
+        if (status == SAI_STATUS_NOT_SUPPORTED || status == SAI_STATUS_NOT_IMPLEMENTED)
+        {
+            SWSS_LOG_NOTICE("Clear watermark failed on %s, rv: %s",
+                            sai_serialize_object_id(object_id).c_str(),
+                            sai_serialize_status(status).c_str());
+            isSupportClear = false;
+        }
+
+        if (isSupportClear)
+        {
+            vector<FieldValueTuple> fvs;
+
+            fvs.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ_AND_CLEAR);
+            m_flexCounterGroupTable->set(BUFFER_POOL_WATERMARK_STAT_COUNTER_FLEX_COUNTER_GROUP, fvs);
+        }
+
+        // Create a buffer pool watermark to FLEX_COUNTER_TABLE.
+        string key = BUFFER_POOL_WATERMARK_STAT_COUNTER_FLEX_COUNTER_GROUP ":" + sai_serialize_object_id(object_id);
+        vector<FieldValueTuple> fvTuples;
+
+        {
+            string statList;
+
+            for (const auto& it : bufferPoolWatermarkStatIds)
+            {
+                statList += (sai_serialize_buffer_pool_stat(it) + list_item_delimiter);
+            }
+
+            if (!statList.empty())
+            {
+                statList.pop_back();
+            }
+
+            fvTuples.emplace_back(BUFFER_POOL_COUNTER_ID_LIST, statList);
+        }
+
+        if (!isSupportClear)
+        {
+            string stats_mode = STATS_MODE_READ;
+            fvTuples.emplace_back(STATS_MODE_FIELD, stats_mode);
+        }
+
+        m_flexCounterTable->set(key, fvTuples);
+    }
+}
+
 void BufferOrch::generateBufferPoolWatermarkCounterIdList(void)
 {
     // This function will be called in FlexCounterOrch when field:value tuple "FLEX_COUNTER_STATUS":"enable"
@@ -525,6 +580,8 @@ task_process_status BufferOrch::processBufferPool(KeyOpFieldsValuesTuple &tuple)
             // In pg and queue case, this mapping installment is deferred to FlexCounterOrch at a reception of field
             // "FLEX_COUNTER_STATUS"
             m_countersDb->hset(COUNTERS_BUFFER_POOL_NAME_MAP, object_name, sai_serialize_object_id(sai_object));
+
+            updateBufferPoolWatermarkCounterIdList(sai_object);
         }
 
         // Only publish the result when shared headroom pool is enabled and it has been successfully applied to SAI

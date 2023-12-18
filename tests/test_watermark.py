@@ -8,7 +8,7 @@ import redis
 from swsscommon import swsscommon
 
 class SaiWmStats:
-    queue_shared = "SAI_QUEUE_STAT_SHARED_WATERMARK_BYTES"
+    queue_shared = "SAI_QUEUE_STAT_WATERMARK_BYTES"
     pg_shared = "SAI_INGRESS_PRIORITY_GROUP_STAT_SHARED_WATERMARK_BYTES"
     pg_headroom = "SAI_INGRESS_PRIORITY_GROUP_STAT_XOFF_ROOM_WATERMARK_BYTES"
     buffer_pool = "SAI_BUFFER_POOL_STAT_WATERMARK_BYTES"
