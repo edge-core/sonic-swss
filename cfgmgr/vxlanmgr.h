@@ -90,6 +90,7 @@ private:
     bool deleteVxlan(const VxlanInfo & info);
 
     void clearAllVxlanDevices();
+    void disableLearningForAllVxlanNetdevices();
     void updateIntfIp2me(const std::string &alias);
     void setIntfIp2me(const std::string &alias, const std::string &opCmd,
                             const IpPrefix &ipPrefix, const std::string &vrfName);
