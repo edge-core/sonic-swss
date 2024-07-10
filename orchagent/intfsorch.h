@@ -76,6 +76,8 @@ public:
     bool isRemoteSystemPortIntf(string alias);
     bool isLocalSystemPortIntf(string alias);
 
+    bool isRouterIntfRemoving(const string &alias);
+
 private:
 
     SelectableTimer* m_updateMapsTimer = nullptr;
