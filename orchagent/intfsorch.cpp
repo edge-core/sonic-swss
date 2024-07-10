@@ -113,6 +113,14 @@ IntfsOrch::IntfsOrch(DBConnector *db, DBConnector *stateDb, vector<table_name_wi
 
 }
 
+bool IntfsOrch::isRouterIntfRemoving(const string &alias)
+{
+    if (m_syncdIntfses.find(alias) == m_syncdIntfses.end() || !m_syncdIntfses[alias].remove_intf_hw_pending)
+        return false;
+
+    return true;
+}
+
 sai_object_id_t IntfsOrch::getRouterIntfsId(const string &alias)
 {
     Port port;
