@@ -460,6 +460,21 @@ bool RouteOrch::invalidnexthopinNextHopGroup(const NextHopKey &nexthop, uint32_t
     return true;
 }
 
+void RouteOrch::trimComsumer(Consumer &consumer)
+{
+    auto it = consumer.m_toSync.begin(), prev_it = it++;
+    for (; it != consumer.m_toSync.end(); ++it)
+    {
+        if ((*prev_it).first == (*it).first)
+        {
+            if (kfvOp(prev_it->second) == DEL_COMMAND)
+                consumer.m_toSync.erase(prev_it);
+        }
+
+        prev_it = it;
+    }
+}
+
 void RouteOrch::doTask(Consumer& consumer)
 {
     SWSS_LOG_ENTER();
@@ -476,6 +491,12 @@ void RouteOrch::doTask(Consumer& consumer)
         doLabelTask(consumer);
         return;
     }
+
+    /*There are two entry E1 and E2 in consumer, which has same prefix but operation are DEL and SET, respectively.
+     *Under this situation, we need to remove the E1 before performing the next action to prevet that "out of range"
+     *error on m_syncdRoutes.
+     */
+    trimComsumer(consumer);
 
     /* Default handling is for APP_ROUTE_TABLE_NAME */
     auto it = consumer.m_toSync.begin();

@@ -270,6 +270,8 @@ private:
     const NhgBase &getNhg(const std::string& nhg_index);
     void incNhgRefCount(const std::string& nhg_index);
     void decNhgRefCount(const std::string& nhg_index);
+
+    void trimComsumer(Consumer &consumer);
 };
 
 #endif /* SWSS_ROUTEORCH_H */
