@@ -109,7 +109,7 @@ int main()
             else if (res == swss::Select::ERROR)
             {
                 SWSS_LOG_ERROR("Select returned ERROR");
-                rc = -2;
+                continue;
             }
             else if (res == swss::Select::TIMEOUT)
             {
