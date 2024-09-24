@@ -76,6 +76,8 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
     //               /sbin/ip link add Bridge up type bridge &&
     //               /sbin/ip link set Bridge mtu {{ mtu_size }} &&
     //               /sbin/ip link set Bridge address {{gMacAddress}} &&
+    //               /sbin/ip link set Bridge addrgenmode none &&
+    //               /sbin/ip address flush Bridge &&
     //               /sbin/bridge vlan del vid 1 dev Bridge self;
     //               /sbin/ip link del dummy 2>/dev/null;
     //               /sbin/ip link add dummy type dummy &&
@@ -87,6 +89,8 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
       + IP_CMD + " link add " + DOT1Q_BRIDGE_NAME + " up type bridge && "
       + IP_CMD + " link set " + DOT1Q_BRIDGE_NAME + " mtu " + DEFAULT_MTU_STR + " && "
       + IP_CMD + " link set " + DOT1Q_BRIDGE_NAME + " address " + gMacAddress.to_string() + " && "
+      + IP_CMD + " link set " + DOT1Q_BRIDGE_NAME + " addrgenmode none && "
+      + IP_CMD + " address flush " + DOT1Q_BRIDGE_NAME + " && "
       + BRIDGE_CMD + " vlan del vid " + DEFAULT_VLAN_ID + " dev " + DOT1Q_BRIDGE_NAME + " self; "
       + IP_CMD + " link del dev dummy 2>/dev/null; "
       + IP_CMD + " link add dummy type dummy && "
