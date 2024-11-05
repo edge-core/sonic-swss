@@ -39,6 +39,7 @@ IntfMgr::IntfMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
         m_stateVlanTable(stateDb, STATE_VLAN_TABLE_NAME),
         m_stateVrfTable(stateDb, STATE_VRF_TABLE_NAME),
         m_stateIntfTable(stateDb, STATE_INTERFACE_TABLE_NAME),
+        m_appIntfTable(appDb, APP_INTF_TABLE_NAME),
         m_appIntfTableProducer(appDb, APP_INTF_TABLE_NAME),
         m_neighTable(appDb, APP_NEIGH_TABLE_NAME)
 {
@@ -1105,6 +1106,20 @@ bool IntfMgr::doIntfAddrTask(const vector<string>& keys,
             m_appIntfTableProducer.del(appKey);
             m_stateIntfTable.del(keys[0] + state_db_key_delimiter + keys[1]);
         }
+
+        // If there is no IPv6 address set on the interface, flush the IPv6 neighbor
+        string ifname(keys[0]);
+        if (getIntfAddrCount(ifname, IPV6_NAME) == 0)
+        {
+            stringstream cmd;
+            string res;
+            cmd << "ip -6 neigh flush dev " << ifname;
+            int ret = swss::exec(cmd.str(), res);
+            if (ret)
+            {
+                SWSS_LOG_ERROR("Command '%s' failed with rc %d, res:%s", cmd.str().c_str(), ret, res.c_str());
+            }
+        }
     }
     else
     {
@@ -1216,4 +1231,36 @@ bool IntfMgr::enableIpv6Flag(const string &alias)
     int ret = swss::exec(cmd.str(), temp_res);
     SWSS_LOG_INFO("disable_ipv6 flag is set to 0 for iface: %s, cmd: %s, ret: %d", alias.c_str(), cmd.str().c_str(), ret);
     return (ret == 0) ? true : false;
+}
+
+int IntfMgr::getIntfAddrCount(const string &ifName, const string &ipType)
+{
+    // Check ipType is valid, empty for both type
+    if (!ipType.empty() && ipType != IPV4_NAME && ipType != IPV6_NAME)
+    {
+        throw std::invalid_argument("Invalid ipType. It must be either 'IPv4' or 'IPv6'.");
+    }
+
+    int count = 0;
+    vector<string> intf_keys;
+    m_appIntfTable.getKeys(intf_keys);
+
+    for (const auto &key : intf_keys)
+    {
+        // Search for keys that contain the IP prefix. e.g. "<ifName>:<ip_prefix>"
+        if (key.size() > ifName.size() + 1 && key.compare(0, ifName.size() + 1, ifName + ":") == 0)
+        {
+            string family;
+            string ip_prefix = key.substr(ifName.size() + 1); // Extract IP prefix
+
+            m_appIntfTable.hget(key, "family", family);
+
+            if (ipType.empty() || ipType == family)
+            {
+                count++;
+            }
+        }
+    }
+
+    return count;
 }

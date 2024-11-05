@@ -35,7 +35,7 @@ public:
 private:
     ProducerStateTable m_appIntfTableProducer;
     Table m_cfgIntfTable, m_cfgVlanIntfTable, m_cfgLagIntfTable, m_cfgLoopbackIntfTable;
-    Table m_statePortTable, m_stateLagTable, m_stateVlanTable, m_stateVrfTable, m_stateIntfTable;
+    Table m_statePortTable, m_stateLagTable, m_stateVlanTable, m_stateVrfTable, m_stateIntfTable, m_appIntfTable;
     Table m_neighTable;
 
     SubIntfMap m_subIntfList;
@@ -78,6 +78,7 @@ private:
 
     bool setIntfProxyArp(const std::string &alias, const std::string &proxy_arp);
     bool setIntfGratArp(const std::string &alias, const std::string &grat_arp);
+    int getIntfAddrCount(const std::string &ifName, const std::string &ipType = "");
 
     void updateSubIntfAdminStatus(const std::string &alias, const std::string &admin);
     void updateSubIntfMtu(const std::string &alias, const std::string &mtu);
