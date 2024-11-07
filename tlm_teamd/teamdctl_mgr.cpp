@@ -60,6 +60,12 @@ bool TeamdCtlMgr::has_key(const std::string & lag_name) const
 ///
 bool TeamdCtlMgr::add_lag(const std::string & lag_name)
 {
+    if (lag_name.find(".") != std::string::npos)
+    {
+        SWSS_LOG_INFO("lag_name %s is subport interface, so ignore it.", lag_name.c_str());
+        return true;
+    }
+
     if (has_key(lag_name))
     {
         SWSS_LOG_DEBUG("The LAG '%s' was already added. Skip adding it.", lag_name.c_str());
@@ -121,6 +127,12 @@ bool TeamdCtlMgr::try_add_lag(const std::string & lag_name)
 ///
 bool TeamdCtlMgr::remove_lag(const std::string & lag_name)
 {
+    if (lag_name.find(".") != std::string::npos)
+    {
+        SWSS_LOG_INFO("lag_name %s is subport interface, so ignore it.", lag_name.c_str());
+        return true;
+    }
+
     if (has_key(lag_name))
     {
         auto tdc = m_handlers[lag_name];
