@@ -8,6 +8,7 @@
 #include "shellcmd.h"
 #include "warm_restart.h"
 #include <swss/redisutility.h>
+#include "subintf.h"
 
 using namespace std;
 using namespace swss;
@@ -31,6 +32,7 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
         m_stateVlanMemberTable(stateDb, STATE_VLAN_MEMBER_TABLE_NAME),
         m_appVlanTableProducer(appDb, APP_VLAN_TABLE_NAME),
         m_appVlanMemberTableProducer(appDb, APP_VLAN_MEMBER_TABLE_NAME),
+        m_cfgSubInterfaceTable(cfgDb, CFG_VLAN_SUB_INTF_TABLE_NAME),
         replayDone(false)
 {
     SWSS_LOG_ENTER();
@@ -287,6 +289,24 @@ bool VlanMgr::isVlanMacOk()
 {
     return !!gMacAddress;
 }
+bool VlanMgr::isSubportConfigVlan(const int vlan_id)
+{
+    std::vector<std::string> keys;
+    m_cfgSubInterfaceTable.getKeys(keys);
+    for (const auto& tmp_key : keys)
+    {
+        if (tmp_key.find(VLAN_SUB_INTERFACE_SEPARATOR) == string::npos)
+        {
+            continue;
+        }
+        subIntf subIf(tmp_key);
+        if (vlan_id && vlan_id == subIf.subIntfIdx())
+        {
+            return true;
+        }
+    }
+    return false;
+}
 
 void VlanMgr::doVlanTask(Consumer &consumer)
 {
@@ -335,6 +355,13 @@ void VlanMgr::doVlanTask(Consumer &consumer)
             vector<FieldValueTuple> fvVector;
             string members;
 
+            string platform = getenv("platform") ? getenv("platform") : "";
+            if (platform == BRCM_PLATFORM_SUBSTRING && isSubportConfigVlan(vlan_id))
+            {
+                it = consumer.m_toSync.erase(it);
+                SWSS_LOG_ERROR("%s invaild config: subport config the vlan already", key.c_str());
+                continue;
+            }
             /*
              * If state is already set for this vlan, but it doesn't exist in m_vlans set,
              * just add it to m_vlans set and remove the request to skip disrupting Linux vlan.
