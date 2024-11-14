@@ -36,6 +36,7 @@ public:
 
     sai_object_id_t getRouterIntfsId(const string&);
     bool isPrefixSubnet(const IpPrefix&, const string&);
+    bool isIp2MeRoute(const IpPrefix&, const string&);
     bool isInbandIntfInMgmtVrf(const string& alias);
     string getRouterIntfsAlias(const IpAddress &ip, const string &vrf_name = "");
     bool isIpInIntfSubnet(const IpAddress &ip, const string &alias, const string &vrf_name);
