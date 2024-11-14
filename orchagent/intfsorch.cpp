@@ -135,6 +135,27 @@ bool IntfsOrch::isPrefixSubnet(const IpPrefix &ip_prefix, const string &alias)
     return false;
 }
 
+bool IntfsOrch::isIp2MeRoute(const IpPrefix &ip_prefix, const string &alias)
+{
+    SWSS_LOG_INFO("Checking whether the ip_prefix matches any IP2me route for the alias [%s]", alias);
+    if (m_syncdIntfses.find(alias) == m_syncdIntfses.end())
+    {
+        return false;
+    }
+
+    for (auto &prefixIt: m_syncdIntfses[alias].ip_addresses)
+    {
+        SWSS_LOG_DEBUG("ip_prefix = [%s]", ip_prefix.to_string().c_str());
+        SWSS_LOG_DEBUG("prefixIt in alias [%s] = [%s]", alias, prefixIt.to_string().c_str());
+        if (prefixIt.getIp() == ip_prefix.getIp())
+        {
+            SWSS_LOG_INFO("The ip_prefix is the same as the IP2me route of the alias [%s]", alias);
+            return true;
+        }
+    }
+    return false;
+}
+
 string IntfsOrch::getRouterIntfsAlias(const IpAddress &ip, const string &vrf_name)
 {
     sai_object_id_t vrf_id = gVirtualRouterId;
