@@ -91,8 +91,10 @@
 
 /*
  * Largest message that can be sent to or received from the FPM.
+ * The maximum length of a message that can be sent to or received from the FPM.
+ * This defines the upper limit on the size of nexthop groups that the FPM can handle.
  */
-#define FPM_MAX_MSG_LEN 4096
+#define FPM_MAX_MSG_LEN 8192
 
 /*
  * Header that precedes each fpm message to/from the FPM.
