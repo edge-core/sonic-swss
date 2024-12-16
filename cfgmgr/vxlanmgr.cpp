@@ -78,6 +78,16 @@ static int cmdUpVxlan(const swss::VxlanMgr::VxlanInfo & info, std::string & res)
     return swss::exec(cmd.str(), res);
 }
 
+static int cmdDownVxlan(const swss::VxlanMgr::VxlanInfo & info, std::string & res)
+{
+    // ip link set dev {{VXLAN}} down
+    ostringstream cmd;
+    cmd << IP_CMD " link set dev "
+        << shellquote(info.m_vxlan)
+        << " down";
+    return swss::exec(cmd.str(), res);
+}
+
 static int cmdCreateVxlanIf(const swss::VxlanMgr::VxlanInfo & info, std::string & res)
 {
     // ip link add {{VXLAN_IF}} type bridge
@@ -127,6 +137,16 @@ static int cmdUpVxlanIf(const swss::VxlanMgr::VxlanInfo & info, std::string & re
     cmd << IP_CMD " link set dev "
         << shellquote(info.m_vxlanIf)
         << " up";
+    return swss::exec(cmd.str(), res);
+}
+
+static int cmdDownVxlanIf(const swss::VxlanMgr::VxlanInfo & info, std::string & res)
+{
+    // ip link set dev {{VXLAN_IF}} down
+    ostringstream cmd;
+    cmd << IP_CMD " link set dev "
+        << shellquote(info.m_vxlanIf)
+        << " down";
     return swss::exec(cmd.str(), res);
 }
 
@@ -828,6 +848,7 @@ bool VxlanMgr::createVxlan(const VxlanInfo & info)
     ret = cmdCreateVxlanIf(info, res);
     if (ret != RET_SUCCESS)
     {
+        cmdDownVxlan(info, res);
         cmdDeleteVxlan(info, res);
         SWSS_LOG_WARN(
             "Fail to create vxlan interface %s",
@@ -839,7 +860,9 @@ bool VxlanMgr::createVxlan(const VxlanInfo & info)
     ret = cmdAddVxlanIntoVxlanIf(info, res);
     if ( ret != RET_SUCCESS )
     {
+        cmdDownVxlanIf(info, res);
         cmdDeleteVxlanIf(info, res);
+        cmdDownVxlan(info, res);
         cmdDeleteVxlan(info, res);
         SWSS_LOG_WARN(
             "Fail to add %s into %s",
@@ -853,7 +876,9 @@ bool VxlanMgr::createVxlan(const VxlanInfo & info)
     if ( ret != RET_SUCCESS )
     {
         cmdDeleteVxlanFromVxlanIf(info, res);
+        cmdDownVxlanIf(info, res);
         cmdDeleteVxlanIf(info, res);
+        cmdDownVxlan(info, res);
         cmdDeleteVxlan(info, res);
         SWSS_LOG_WARN(
             "Fail to set %s master %s",
@@ -869,7 +894,9 @@ bool VxlanMgr::createVxlan(const VxlanInfo & info)
     {
         cmdDetachVxlanIfFromVnet(info, res);
         cmdDeleteVxlanFromVxlanIf(info, res);
+        cmdDownVxlanIf(info, res);
         cmdDeleteVxlanIf(info, res);
+        cmdDownVxlan(info, res);
         cmdDeleteVxlan(info, res);
         SWSS_LOG_WARN(
             "Fail to up bridge %s",
@@ -892,7 +919,9 @@ bool VxlanMgr::deleteVxlan(const VxlanInfo & info)
 
     cmdDetachVxlanIfFromVnet(info, res);
     cmdDeleteVxlanFromVxlanIf(info, res);
+    cmdDownVxlanIf(info, res);
     cmdDeleteVxlanIf(info, res);
+    cmdDownVxlan(info, res);
     cmdDeleteVxlan(info, res);
 
     m_stateVxlanTable.del(info.m_vxlan);
