@@ -1511,6 +1511,8 @@ bool PortsOrch::setPortAdminStatus(Port &port, bool state)
 void PortsOrch::setHostTxReady(sai_object_id_t portId, const std::string &status)
 {
     Port p;
+    vector<FieldValueTuple> tuples;
+    bool exist;
 
     if (!getPort(portId, p))
     {
@@ -1518,8 +1520,13 @@ void PortsOrch::setHostTxReady(sai_object_id_t portId, const std::string &status
         return;
     }
 
-    SWSS_LOG_NOTICE("Setting host_tx_ready status = %s, alias = %s, port_id = 0x%" PRIx64, status.c_str(), p.m_alias.c_str(), portId);
-    m_portStateTable.hset(p.m_alias, "host_tx_ready", status);
+    /* If the port is revmoed, don't need to update StateDB*/
+    exist = m_portStateTable.get(p.m_alias, tuples);
+    if (exist)
+    {
+        SWSS_LOG_NOTICE("Setting host_tx_ready status = %s, alias = %s, port_id = 0x%" PRIx64, status.c_str(), p.m_alias.c_str(), portId);
+        m_portStateTable.hset(p.m_alias, "host_tx_ready", status);
+    }
 }
 
 bool PortsOrch::getPortAdminStatus(sai_object_id_t id, bool &up)
