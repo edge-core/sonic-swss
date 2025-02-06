@@ -28,6 +28,8 @@ const string buffer_value_egress            = "egress";
 const string buffer_value_both              = "both";
 const string buffer_profile_list_field_name = "profile_list";
 const string buffer_headroom_type_field_name= "headroom_type";
+const string buffer_pg_prefix               = "PG_";
+const string buffer_queue_prefix            = "QUEUE_";
 
 class BufferOrch : public Orch
 {
