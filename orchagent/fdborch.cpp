@@ -1979,7 +1979,7 @@ bool FdbOrch::removeFdbEntry(const FdbEntry& entry, FdbOrigin origin)
         SWSS_LOG_ERROR("FdbOrch RemoveFDBEntry: Failed to remove FDB entry. mac=%s, bv_id=0x%" PRIx64,
                        entry.mac.to_string().c_str(), entry.bv_id);
         task_process_status handle_status = handleSaiRemoveStatus(SAI_API_FDB, status); //FIXME: it should be based on status. Some could be retried. some not
-        if (handle_status != task_success)
+        if (handle_status != task_success && status != SAI_STATUS_ITEM_NOT_FOUND)
         {
             return parseHandleSaiStatusFailure(handle_status);
         }
