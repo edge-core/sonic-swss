@@ -33,6 +33,7 @@ extern string gMySwitchType;
 
 /* Default maximum number of next hop groups */
 #define DEFAULT_NUMBER_OF_ECMP_GROUPS   128
+#define EC_DEFAULT_NUMBER_OF_ECMP_GROUPS   32
 #define DEFAULT_MAX_ECMP_GROUP_SIZE     32
 
 RouteOrch::RouteOrch(DBConnector *db, vector<table_name_with_pri_t> &tableNames, SwitchOrch *switchOrch, NeighOrch *neighOrch, IntfsOrch *intfsOrch, VRFOrch *vrfOrch, FgNhgOrch *fgNhgOrch, Srv6Orch *srv6Orch) :
@@ -81,6 +82,13 @@ RouteOrch::RouteOrch(DBConnector *db, vector<table_name_with_pri_t> &tableNames,
         if (platform && strstr(platform, MLNX_PLATFORM_SUBSTRING))
         {
             m_maxNextHopGroupCount /= DEFAULT_MAX_ECMP_GROUP_SIZE;
+        }
+
+        /* For 202411 sai issue, this api get fail but will return success with value 0 */
+        if (attr.value.s32 == 0)
+        {
+            SWSS_LOG_WARN("Number of ECMP groups get from switch attribute is 0. Use ec platform minimal value.");
+            m_maxNextHopGroupCount = EC_DEFAULT_NUMBER_OF_ECMP_GROUPS;
         }
     }
     vector<FieldValueTuple> fvTuple;
