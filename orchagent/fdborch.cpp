@@ -1037,7 +1037,7 @@ void FdbOrch::doTask(NotificationConsumer& consumer)
             {
                 return;
             }
-            flushFDBEntries(port.m_bridge_port_id, vlanPort.m_vlan_info.vlan_oid); 
+            flushFDBEntries(port.m_bridge_port_id, vlanPort.m_vlan_info.vlan_oid);
             SWSS_LOG_NOTICE("Clear fdb by port(%s)+vlan(%s)", alias.c_str(), vlan.c_str());
             return;
         }
@@ -1120,7 +1120,7 @@ void FdbOrch::flushFDBEntries(sai_object_id_t bridge_port_oid,
         attr.value.oid = vlan_oid;
         attrs.push_back(attr);
     }
-    
+
     /* do not flush static mac */
     attr.id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
     attr.value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
@@ -1147,6 +1147,36 @@ void FdbOrch::flushFDBEntries(sai_object_id_t bridge_port_oid,
             }
         }
     }
+}
+
+void FdbOrch::flushFdbByVlan(const string &alias)
+{
+    sai_status_t status;
+    swss::Port vlan;
+    sai_attribute_t vlan_attr[2];
+
+    if (!m_portsOrch->getPort(alias, vlan))
+    {
+        return;
+    }
+
+    vlan_attr[0].id = SAI_FDB_FLUSH_ATTR_BV_ID;
+    vlan_attr[0].value.oid = vlan.m_vlan_info.vlan_oid;
+    vlan_attr[1].id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
+    vlan_attr[1].value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+    status = sai_fdb_api->flush_fdb_entries(gSwitchId, 2, vlan_attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Flush fdb failed, return code %x", status);
+    }
+    else
+    {
+        SWSS_LOG_INFO("Flush by vlan %s vlan_oid 0x%" PRIx64 "",
+                    alias.c_str(), vlan.m_vlan_info.vlan_oid);
+    }
+
+    return;
 }
 
 void FdbOrch::notifyObserversFDBFlush(Port &port, sai_object_id_t& bvid)
@@ -1521,7 +1551,7 @@ bool FdbOrch::addFdbEntry(const FdbEntry& entry, const string& port_name,
         //MAC is added/updated as dynamic to allow aging.
         SWSS_LOG_INFO("MAC-Update Modify to dynamic FDB %s in %s on from-%s:to-%s from-%s:to-%s origin-%d-to-%d",
                 entry.mac.to_string().c_str(), vlan.m_alias.c_str(), oldPort.m_alias.c_str(),
-                port_name.c_str(), oldType.c_str(), fdbData.type.c_str(), 
+                port_name.c_str(), oldType.c_str(), fdbData.type.c_str(),
                 oldOrigin, fdbData.origin);
 
         storeFdbData.origin = FDB_ORIGIN_LEARN;
