@@ -27,6 +27,9 @@
 #include "muxorch.h"
 #include "nhgorch.h"
 #include "copporch.h"
+#define private public
+#include "stporch.h"
+#undef private
 #include "directory.h"
 
 extern int gBatchSize;
@@ -57,6 +60,7 @@ extern Srv6Orch  *gSrv6Orch;
 extern BfdOrch *gBfdOrch;
 extern AclOrch *gAclOrch;
 extern PolicerOrch *gPolicerOrch;
+extern StpOrch *gStpOrch;
 extern Directory<Orch*> gDirectory;
 
 extern sai_acl_api_t *sai_acl_api;
@@ -86,3 +90,4 @@ extern sai_mpls_api_t* sai_mpls_api;
 extern sai_counter_api_t* sai_counter_api;
 extern sai_samplepacket_api_t *sai_samplepacket_api;
 extern sai_fdb_api_t* sai_fdb_api;
+extern sai_stp_api_t* sai_stp_api;
