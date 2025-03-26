@@ -995,7 +995,7 @@ bool AclRule::validateAddMatch(string attr_name, string attr_value)
         else if (attr_name == MATCH_TUNNEL_VNI)
         {
             matchData.data.u32 = to_uint<uint32_t>(attr_value);
-            matchData.mask.u32 = 0xFFFFFFFF;
+            matchData.mask.u32 = 0xFFFFFF;
         }
         else if (attr_name == MATCH_INNER_ETHER_TYPE || attr_name == MATCH_INNER_L4_SRC_PORT ||
             attr_name == MATCH_INNER_L4_DST_PORT)
