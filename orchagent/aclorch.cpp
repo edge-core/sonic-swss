@@ -68,6 +68,10 @@ acl_rule_attr_lookup_t aclMatchLookup =
     { MATCH_L4_SRC_PORT_RANGE, SAI_ACL_ENTRY_ATTR_FIELD_ACL_RANGE_TYPE },
     { MATCH_L4_DST_PORT_RANGE, SAI_ACL_ENTRY_ATTR_FIELD_ACL_RANGE_TYPE },
     { MATCH_TUNNEL_VNI,        SAI_ACL_ENTRY_ATTR_FIELD_TUNNEL_VNI },
+    { MATCH_INNER_SRC_IP,      SAI_ACL_ENTRY_ATTR_FIELD_INNER_SRC_IP },
+    { MATCH_INNER_DST_IP,      SAI_ACL_ENTRY_ATTR_FIELD_INNER_DST_IP },
+    { MATCH_INNER_SRC_IPV6,    SAI_ACL_ENTRY_ATTR_FIELD_INNER_SRC_IPV6 },
+    { MATCH_INNER_DST_IPV6,    SAI_ACL_ENTRY_ATTR_FIELD_INNER_DST_IPV6 },
     { MATCH_INNER_ETHER_TYPE,  SAI_ACL_ENTRY_ATTR_FIELD_INNER_ETHER_TYPE },
     { MATCH_INNER_IP_PROTOCOL, SAI_ACL_ENTRY_ATTR_FIELD_INNER_IP_PROTOCOL },
     { MATCH_INNER_L4_SRC_PORT, SAI_ACL_ENTRY_ATTR_FIELD_INNER_L4_SRC_PORT },
@@ -928,7 +932,8 @@ bool AclRule::validateAddMatch(string attr_name, string attr_value)
             matchData.data.u8 = to_uint<uint8_t>(attr_value);
             matchData.mask.u8 = 0xFF;
         }
-        else if (attr_name == MATCH_SRC_IP || attr_name == MATCH_DST_IP)
+        else if (attr_name == MATCH_SRC_IP || attr_name == MATCH_DST_IP ||
+            attr_name == MATCH_INNER_SRC_IP || attr_name == MATCH_INNER_DST_IP)
         {
             IpPrefix ip(attr_value);
 
@@ -940,7 +945,8 @@ bool AclRule::validateAddMatch(string attr_name, string attr_value)
             matchData.data.ip4 = ip.getIp().getV4Addr();
             matchData.mask.ip4 = ip.getMask().getV4Addr();
         }
-        else if (attr_name == MATCH_SRC_IPV6 || attr_name == MATCH_DST_IPV6)
+        else if (attr_name == MATCH_SRC_IPV6 || attr_name == MATCH_DST_IPV6 ||
+            attr_name == MATCH_INNER_SRC_IPV6 || attr_name == MATCH_INNER_DST_IPV6)
         {
             IpPrefix ip(attr_value);
             if (ip.isV4())
