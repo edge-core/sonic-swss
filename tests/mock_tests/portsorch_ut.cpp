@@ -376,7 +376,7 @@ namespace portsorch_test
                 CFG_EXP_TO_FC_MAP_TABLE_NAME,
                 CFG_TC_TO_DSCP_MAP_TABLE_NAME
             };
-            gQosOrch = new QosOrch(m_config_db.get(), qos_tables);
+            gQosOrch = new QosOrch(m_config_db.get(), m_state_db.get(), qos_tables);
 
             vector<string> pfc_wd_tables = {
                 CFG_PFC_WD_TABLE_NAME

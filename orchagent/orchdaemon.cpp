@@ -294,7 +294,7 @@ bool OrchDaemon::init()
         CFG_TC_TO_DOT1P_MAP_TABLE_NAME,
         CFG_TC_TO_DSCP_MAP_TABLE_NAME
     };
-    gQosOrch = new QosOrch(m_configDb, qos_tables);
+    gQosOrch = new QosOrch(m_configDb, m_stateDb, qos_tables);
 
     vector<string> buffer_tables = {
         APP_BUFFER_POOL_TABLE_NAME,

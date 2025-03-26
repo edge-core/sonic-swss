@@ -8,6 +8,12 @@
 #include "switchorch.h"
 #include "portsorch.h"
 
+enum class QosObjectStatus
+{
+    SUCCESS = 0,
+    FAILURE
+};
+
 const string dscp_to_tc_field_name              = "dscp_to_tc_map";
 const string mpls_tc_to_tc_field_name           = "mpls_tc_to_tc_map";
 const string dot1p_to_tc_field_name             = "dot1p_to_tc_map";
@@ -47,6 +53,7 @@ const string scheduler_algo_WRR                 = "WRR";
 const string scheduler_algo_STRICT              = "STRICT";
 const string scheduler_weight_field_name        = "weight";
 const string scheduler_meter_type_field_name    = "meter_type";
+
 const string scheduler_min_bandwidth_rate_field_name       = "cir";//Committed Information Rate
 const string scheduler_min_bandwidth_burst_rate_field_name = "cbs";//Committed Burst Size
 const string scheduler_max_bandwidth_rate_field_name       = "pir";//Peak Information Rate
@@ -187,7 +194,7 @@ public:
 class QosOrch : public Orch
 {
 public:
-    QosOrch(DBConnector *db, vector<string> &tableNames);
+    QosOrch(DBConnector *db, DBConnector* stateDb, vector<string> &tableNames);
 
     static type_map& getTypeMap();
     static type_map m_qos_maps;
@@ -195,6 +202,9 @@ public:
     sai_object_id_t resolveTunnelQosMap(std::string referencing_table_name, std::string tunnel_name, std::string map_type_name, KeyOpFieldsValuesTuple& tuple);
     void removeTunnelReference(std::string referencing_table_name, std::string tunnel_name);
 private:
+    Table m_tcToQueueStateTable;
+    Table m_pfcPriorityToQueueStateTable;
+
     void doTask() override;
     virtual void doTask(Consumer& consumer);
 
@@ -241,5 +251,18 @@ private:
 
     friend QosMapHandler;
     friend DscpToTcMapHandler;
+
+    void setStatus(const string& qos_map_type_name,
+                   const KeyOpFieldsValuesTuple& tuple,
+                   QosObjectStatus status,
+                   const string& message = "");
+
+    void setTcToQueueQosMapStatus(const KeyOpFieldsValuesTuple& tuple,
+                                  QosObjectStatus status,
+                                  const string& message = "");
+
+    void setPfcPriorityToQueueQosMapStatus(const KeyOpFieldsValuesTuple& tuple,
+                                           QosObjectStatus status,
+                                           const string& message = "");
 };
 #endif /* SWSS_QOSORCH_H */

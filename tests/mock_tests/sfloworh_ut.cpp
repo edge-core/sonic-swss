@@ -208,7 +208,7 @@ namespace sflow_test
                 CFG_DSCP_TO_FC_MAP_TABLE_NAME,
                 CFG_EXP_TO_FC_MAP_TABLE_NAME
             };
-            gQosOrch = new QosOrch(this->configDb.get(), qosTableList);
+            gQosOrch = new QosOrch(this->configDb.get(), this->stateDb.get(), qosTableList);
             gDirectory.set(gQosOrch);
             resourcesList.push_back(gQosOrch);
 

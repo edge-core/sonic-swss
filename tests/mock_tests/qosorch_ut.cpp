@@ -444,7 +444,7 @@ namespace qosorch_test
                 CFG_EXP_TO_FC_MAP_TABLE_NAME,
                 CFG_TC_TO_DSCP_MAP_TABLE_NAME
             };
-            gQosOrch = new QosOrch(m_config_db.get(), qos_tables);
+            gQosOrch = new QosOrch(m_config_db.get(), m_state_db.get(), qos_tables);
 
             // Recreate buffer orch to read populated data
             vector<string> buffer_tables = { APP_BUFFER_POOL_TABLE_NAME,
@@ -1182,7 +1182,7 @@ namespace qosorch_test
         // Check DSCP_TO_TC_MAP|AZURE is removed, and the switch_level dscp_to_tc_map is set to NULL
         ASSERT_EQ(current_sai_remove_qos_map_count + 1, sai_remove_qos_map_count);
         ASSERT_EQ((*QosOrch::getTypeMap()[CFG_DSCP_TO_TC_MAP_TABLE_NAME]).count("AZURE"), 0);
-        
+
     }
 
     TEST_F(QosOrchTest, QosOrchTestRetryFirstItem)
