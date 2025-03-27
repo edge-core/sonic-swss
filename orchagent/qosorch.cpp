@@ -753,6 +753,60 @@ bool WredMapHandler::convertFieldValuesToAttributes(KeyOpFieldsValuesTuple &tupl
             attr.value.s32 = ecn;
             attribs.push_back(attr);
         }
+        else if (fvField(*i) == ecn_yellow_max_threshold_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_YELLOW_MAX_THRESHOLD;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_yellow_min_threshold_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_YELLOW_MIN_THRESHOLD;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_green_max_threshold_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_GREEN_MAX_THRESHOLD;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_green_min_threshold_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_GREEN_MIN_THRESHOLD;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_red_max_threshold_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_RED_MAX_THRESHOLD;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_red_min_threshold_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_RED_MIN_THRESHOLD;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_green_mark_probability_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_GREEN_MARK_PROBABILITY;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_yellow_mark_probability_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_YELLOW_MARK_PROBABILITY;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_red_mark_probability_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_RED_MARK_PROBABILITY;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
         else {
             SWSS_LOG_ERROR("Unknown wred profile field:%s", fvField(*i).c_str());
             return false;
@@ -836,6 +890,15 @@ sai_object_id_t WredMapHandler::addQosItem(const vector<sai_attribute_t> &attrib
         case SAI_WRED_ATTR_RED_DROP_PROBABILITY:
             drop_prob_set |= RED_DROP_PROBABILITY_SET;
             break;
+        case SAI_WRED_ATTR_ECN_GREEN_MARK_PROBABILITY:
+            drop_prob_set |= GREEN_MARK_PROBABILITY_SET;
+            break;
+        case SAI_WRED_ATTR_ECN_YELLOW_MARK_PROBABILITY:
+            drop_prob_set |= YELLOW_MARK_PROBABILITY_SET;
+            break;
+        case SAI_WRED_ATTR_ECN_RED_MARK_PROBABILITY:
+            drop_prob_set |= RED_MARK_PROBABILITY_SET;
+            break;
         default:
             break;
         }
@@ -858,6 +921,30 @@ sai_object_id_t WredMapHandler::addQosItem(const vector<sai_attribute_t> &attrib
         attr.id = SAI_WRED_ATTR_RED_DROP_PROBABILITY;
         attr.value.s32 = 100;
         attrs.push_back(attr);
+    }
+
+    // Only Broadcom switches support green/yellow/red mark probability.
+    string platform = getenv("platform") ? getenv("platform") : "";
+    if (platform == BRCM_PLATFORM_SUBSTRING)
+    {
+        if (!(drop_prob_set & GREEN_MARK_PROBABILITY_SET))
+        {
+            attr.id = SAI_WRED_ATTR_ECN_GREEN_MARK_PROBABILITY;
+            attr.value.s32 = 100;
+            attrs.push_back(attr);
+        }
+        if (!(drop_prob_set & YELLOW_MARK_PROBABILITY_SET))
+        {
+            attr.id = SAI_WRED_ATTR_ECN_YELLOW_MARK_PROBABILITY;
+            attr.value.s32 = 100;
+            attrs.push_back(attr);
+        }
+        if (!(drop_prob_set & RED_MARK_PROBABILITY_SET))
+        {
+            attr.id = SAI_WRED_ATTR_ECN_RED_MARK_PROBABILITY;
+            attr.value.s32 = 100;
+            attrs.push_back(attr);
+        }
     }
 
     sai_status = sai_wred_api->create_wred(&sai_object, gSwitchId, (uint32_t)attrs.size(), attrs.data());
