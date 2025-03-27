@@ -14,60 +14,70 @@ enum class QosObjectStatus
     FAILURE
 };
 
-const string dscp_to_tc_field_name              = "dscp_to_tc_map";
-const string mpls_tc_to_tc_field_name           = "mpls_tc_to_tc_map";
-const string dot1p_to_tc_field_name             = "dot1p_to_tc_map";
-const string pfc_to_pg_map_name                 = "pfc_to_pg_map";
-const string pfc_to_queue_map_name              = "pfc_to_queue_map";
-const string pfc_enable_name                    = "pfc_enable";
-const string pfcwd_sw_enable_name               = "pfcwd_sw_enable";
-const string tc_to_pg_map_field_name            = "tc_to_pg_map";
-const string tc_to_queue_field_name             = "tc_to_queue_map";
-const string tc_to_dot1p_field_name             = "tc_to_dot1p_map";
-const string tc_to_dscp_field_name              = "tc_to_dscp_map";
-const string scheduler_field_name               = "scheduler";
-const string red_max_threshold_field_name       = "red_max_threshold";
-const string red_min_threshold_field_name       = "red_min_threshold";
-const string yellow_max_threshold_field_name    = "yellow_max_threshold";
-const string yellow_min_threshold_field_name    = "yellow_min_threshold";
-const string green_max_threshold_field_name     = "green_max_threshold";
-const string green_min_threshold_field_name     = "green_min_threshold";
-const string red_drop_probability_field_name    = "red_drop_probability";
-const string yellow_drop_probability_field_name = "yellow_drop_probability";
-const string green_drop_probability_field_name  = "green_drop_probability";
-const string dscp_to_fc_field_name              = "dscp_to_fc_map";
-const string exp_to_fc_field_name               = "exp_to_fc_map";
-const string decap_dscp_to_tc_field_name        = "decap_dscp_to_tc_map";
-const string decap_tc_to_pg_field_name          = "decap_tc_to_pg_map";
-const string encap_tc_to_queue_field_name       = "encap_tc_to_queue_map";
-const string encap_tc_to_dscp_field_name        = "encap_tc_to_dscp_map";
+const string dscp_to_tc_field_name                   = "dscp_to_tc_map";
+const string mpls_tc_to_tc_field_name                = "mpls_tc_to_tc_map";
+const string dot1p_to_tc_field_name                  = "dot1p_to_tc_map";
+const string pfc_to_pg_map_name                      = "pfc_to_pg_map";
+const string pfc_to_queue_map_name                   = "pfc_to_queue_map";
+const string pfc_enable_name                         = "pfc_enable";
+const string pfcwd_sw_enable_name                    = "pfcwd_sw_enable";
+const string tc_to_pg_map_field_name                 = "tc_to_pg_map";
+const string tc_to_queue_field_name                  = "tc_to_queue_map";
+const string tc_to_dot1p_field_name                  = "tc_to_dot1p_map";
+const string tc_to_dscp_field_name                   = "tc_to_dscp_map";
+const string scheduler_field_name                    = "scheduler";
+const string ing_scheduler_field_name                = "ing_scheduler";
+const string red_max_threshold_field_name            = "red_max_threshold";
+const string red_min_threshold_field_name            = "red_min_threshold";
+const string yellow_max_threshold_field_name         = "yellow_max_threshold";
+const string yellow_min_threshold_field_name         = "yellow_min_threshold";
+const string green_max_threshold_field_name          = "green_max_threshold";
+const string green_min_threshold_field_name          = "green_min_threshold";
+const string red_drop_probability_field_name         = "red_drop_probability";
+const string yellow_drop_probability_field_name      = "yellow_drop_probability";
+const string green_drop_probability_field_name       = "green_drop_probability";
+const string ecn_red_max_threshold_field_name        = "ecn_red_max_threshold";
+const string ecn_red_min_threshold_field_name        = "ecn_red_min_threshold";
+const string ecn_yellow_max_threshold_field_name     = "ecn_yellow_max_threshold";
+const string ecn_yellow_min_threshold_field_name     = "ecn_yellow_min_threshold";
+const string ecn_green_max_threshold_field_name      = "ecn_green_max_threshold";
+const string ecn_green_min_threshold_field_name      = "ecn_green_min_threshold";
+const string ecn_red_mark_probability_field_name     = "ecn_red_mark_probability";
+const string ecn_yellow_mark_probability_field_name  = "ecn_yellow_mark_probability";
+const string ecn_green_mark_probability_field_name   = "ecn_green_mark_probability";
+const string dscp_to_fc_field_name                   = "dscp_to_fc_map";
+const string exp_to_fc_field_name                    = "exp_to_fc_map";
+const string decap_dscp_to_tc_field_name             = "decap_dscp_to_tc_map";
+const string decap_tc_to_pg_field_name               = "decap_tc_to_pg_map";
+const string encap_tc_to_queue_field_name            = "encap_tc_to_queue_map";
+const string encap_tc_to_dscp_field_name             = "encap_tc_to_dscp_map";
 
-const string wred_profile_field_name            = "wred_profile";
-const string wred_red_enable_field_name         = "wred_red_enable";
-const string wred_yellow_enable_field_name      = "wred_yellow_enable";
-const string wred_green_enable_field_name       = "wred_green_enable";
+const string wred_profile_field_name                 = "wred_profile";
+const string wred_red_enable_field_name              = "wred_red_enable";
+const string wred_yellow_enable_field_name           = "wred_yellow_enable";
+const string wred_green_enable_field_name            = "wred_green_enable";
 
-const string scheduler_algo_type_field_name     = "type";
-const string scheduler_algo_DWRR                = "DWRR";
-const string scheduler_algo_WRR                 = "WRR";
-const string scheduler_algo_STRICT              = "STRICT";
-const string scheduler_weight_field_name        = "weight";
-const string scheduler_meter_type_field_name    = "meter_type";
+const string scheduler_algo_type_field_name          = "type";
+const string scheduler_algo_DWRR                     = "DWRR";
+const string scheduler_algo_WRR                      = "WRR";
+const string scheduler_algo_STRICT                   = "STRICT";
+const string scheduler_weight_field_name             = "weight";
+const string scheduler_meter_type_field_name         = "meter_type";
 
 const string scheduler_min_bandwidth_rate_field_name       = "cir";//Committed Information Rate
 const string scheduler_min_bandwidth_burst_rate_field_name = "cbs";//Committed Burst Size
 const string scheduler_max_bandwidth_rate_field_name       = "pir";//Peak Information Rate
 const string scheduler_max_bandwidth_burst_rate_field_name = "pbs";//Peak Burst Size
 
-const string ecn_field_name                     = "ecn";
-const string ecn_none                           = "ecn_none";
-const string ecn_red                            = "ecn_red";
-const string ecn_yellow                         = "ecn_yellow";
-const string ecn_yellow_red                     = "ecn_yellow_red";
-const string ecn_green                          = "ecn_green";
-const string ecn_green_red                      = "ecn_green_red";
-const string ecn_green_yellow                   = "ecn_green_yellow";
-const string ecn_all                            = "ecn_all";
+const string ecn_field_name                          = "ecn";
+const string ecn_none                                = "ecn_none";
+const string ecn_red                                 = "ecn_red";
+const string ecn_yellow                              = "ecn_yellow";
+const string ecn_yellow_red                          = "ecn_yellow_red";
+const string ecn_green                               = "ecn_green";
+const string ecn_green_red                           = "ecn_green_red";
+const string ecn_green_yellow                        = "ecn_green_yellow";
+const string ecn_all                                 = "ecn_all";
 
 class QosMapHandler
 {
