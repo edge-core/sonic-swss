@@ -1554,9 +1554,12 @@ bool FdbOrch::addFdbEntry(const FdbEntry& entry, const string& port_name,
                 port_name.c_str(), oldType.c_str(), fdbData.type.c_str(),
                 oldOrigin, fdbData.origin);
 
-        storeFdbData.origin = FDB_ORIGIN_LEARN;
-        storeFdbData.type = "dynamic";
+        fdbData.origin = FDB_ORIGIN_LEARN;
+        fdbData.type = "dynamic";
     }
+
+    storeFdbData = fdbData;
+    storeFdbData.bridge_port_id = port.m_bridge_port_id;
 
     m_entries[entry] = storeFdbData;
 
