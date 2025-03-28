@@ -4509,7 +4509,7 @@ void PortsOrch::doVlanTask(Consumer &consumer)
                         gIntfsOrch->setRouterIntfsMtu(vl);
                     }
                 }
-                if (mac)
+                if (mac && vl.m_mac != mac)
                 {
                     vl.m_mac = mac;
                     m_portList[vlan_alias] = vl;
@@ -6311,9 +6311,16 @@ bool PortsOrch::removeVlanMember(Port &vlan, Port &port, string end_point_ip)
     /* Restore to default pvid if this port joined this VLAN in untagged mode previously */
     if (sai_tagging_mode == SAI_VLAN_TAGGING_MODE_UNTAGGED)
     {
-        if (!setPortPvid(port, DEFAULT_PORT_VLAN_ID))
+        if (port.m_port_vlan_id == vlan.m_vlan_info.vlan_id)
         {
-            return false;
+            if (!setPortPvid(port, DEFAULT_PORT_VLAN_ID))
+            {
+                return false;
+            }
+        }
+        else if (port.m_port_vlan_id != DEFAULT_PORT_VLAN_ID)
+        {
+            SWSS_LOG_NOTICE("skip update to default PVID for port %s as its PVID is already set to %u", port.m_alias.c_str(), port.m_port_vlan_id);
         }
     }
 

@@ -1135,6 +1135,13 @@ bool IntfsOrch::addRouterIntfs(sai_object_id_t vrf_id, Port &port, string loopba
         return true;
     }
 
+    if ((port.m_type == Port::PHY || port.m_type == Port::LAG)
+        && port.m_bridge_port_id != SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_NOTICE("Wait %s remove bridge port", port.m_alias.c_str());
+        return false;
+    }
+
     /* Create router interface if the router interface doesn't exist */
     sai_attribute_t attr;
     vector<sai_attribute_t> attrs;
