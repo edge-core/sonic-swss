@@ -209,6 +209,7 @@ public:
 
     int m_cap_an = -1; /* Capability - AutoNeg, -1 means not set */
     int m_cap_lt = -1; /* Capability - LinkTraining, -1 means not set */
+    bool m_bridge_port_removing = false;
 };
 
 }

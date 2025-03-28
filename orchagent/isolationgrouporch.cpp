@@ -230,7 +230,7 @@ IsoGrpOrch::update(SubjectType type, void *cntx)
 {
     SWSS_LOG_ENTER();
 
-    if (type != SUBJECT_TYPE_BRIDGE_PORT_CHANGE)
+    if (type != SUBJECT_TYPE_BRIDGE_PORT_CHANGE && type != SUBJECT_TYPE_PRE_BRIDGE_PORT_CHANGE)
     {
         return;
     }
@@ -711,7 +711,7 @@ IsolationGroup::setBindPorts(string ports)
 }
 
 void
-IsolationGroup::update(SubjectType, void *cntx)
+IsolationGroup::update(SubjectType type, void *cntx)
 {
     PortUpdate *update = static_cast<PortUpdate *>(cntx);
     Port &port = update->port;
@@ -734,6 +734,11 @@ IsolationGroup::update(SubjectType, void *cntx)
     }
     else
     {
+        if (type != SUBJECT_TYPE_PRE_BRIDGE_PORT_CHANGE)
+        {
+            return;
+        }
+
         auto bind_node = find(m_bind_ports.begin(), m_bind_ports.end(), port.m_alias);
         if (bind_node != m_bind_ports.end())
         {
