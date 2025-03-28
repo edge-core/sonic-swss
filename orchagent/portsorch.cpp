@@ -4489,7 +4489,7 @@ void PortsOrch::doVlanTask(Consumer &consumer)
                         gIntfsOrch->setRouterIntfsMtu(vl);
                     }
                 }
-                if (mac)
+                if (mac && vl.m_mac != mac)
                 {
                     vl.m_mac = mac;
                     m_portList[vlan_alias] = vl;
