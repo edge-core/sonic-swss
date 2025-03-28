@@ -79,6 +79,7 @@ struct SavedFdbEntry
 };
 
 typedef unordered_map<string, vector<SavedFdbEntry>> fdb_entries_by_port_t;
+typedef std::map<FdbEntry, FdbOrigin> MclagFdbEntry;
 
 class FdbOrch: public Orch, public Subject, public Observer
 {

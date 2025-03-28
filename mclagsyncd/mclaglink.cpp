@@ -543,6 +543,11 @@ void MclagLink::setFdbEntry(char *msg, int msg_len)
             p_fdb_tbl->del(fdb_key);
             SWSS_LOG_NOTICE("del fdb entry from ASIC_DB:key =%s", fdb_key.c_str());
         }
+        else if (fdb_info->op_type == MCLAG_FDB_OPER_DEL_APP_DB)
+        {
+            p_mclag_app_fdb_tbl->del(fdb_key);
+            SWSS_LOG_NOTICE("del fdb entry from APP_DB:key =%s", fdb_key.c_str());
+        }
     }
     return;
 }
@@ -1991,13 +1996,15 @@ MclagLink::MclagLink(Select *select, int port) :
     p_notificationsDb = unique_ptr<DBConnector>(new DBConnector("STATE_DB", 0));
 
     p_device_metadata_tbl          = unique_ptr<Table>(new Table(p_config_db.get(), CFG_DEVICE_METADATA_TABLE_NAME));
-    p_mclag_cfg_table              = unique_ptr<Table>(new Table(p_config_db.get(), CFG_MCLAG_TABLE_NAME)); 
+    p_mclag_cfg_table              = unique_ptr<Table>(new Table(p_config_db.get(), CFG_MCLAG_TABLE_NAME));
     p_mclag_intf_cfg_table         = unique_ptr<Table>(new Table(p_config_db.get(), CFG_MCLAG_INTF_TABLE_NAME));
 
     p_mclag_tbl                    = unique_ptr<Table>(new Table(p_state_db.get(), STATE_MCLAG_TABLE_NAME));
     p_mclag_local_intf_tbl         = unique_ptr<Table>(new Table(p_state_db.get(), STATE_MCLAG_LOCAL_INTF_TABLE_NAME));
     p_mclag_remote_intf_tbl        = unique_ptr<Table>(new Table(p_state_db.get(), STATE_MCLAG_REMOTE_INTF_TABLE_NAME));
     p_port_state_tbl               = unique_ptr<Table>(new Table(p_state_db.get(), STATE_PORT_TABLE_NAME));
+
+    p_mclag_app_fdb_tbl            = unique_ptr<Table>(new Table(p_appl_db.get(), APP_MCLAG_FDB_TABLE_NAME));
 
     p_intf_tbl      = unique_ptr<ProducerStateTable>(new ProducerStateTable(p_appl_db.get(), APP_INTF_TABLE_NAME));
     p_iso_grp_tbl   = unique_ptr<ProducerStateTable>(new ProducerStateTable(p_appl_db.get(), APP_ISOLATION_GROUP_TABLE_NAME));

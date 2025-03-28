@@ -436,7 +436,7 @@ void FdbSync::updateMclagRemoteMac (struct m_fdb_info *info)
     }
     else
     {
-        type = "static";
+        type = "static sticky";
     }
 
     const std::string cmds = std::string("")

@@ -4842,6 +4842,15 @@ void PortsOrch::doLagTask(Consumer &consumer)
                 {
                     updatePortOperStatus(l, string_oper_status.at(operation_status));
 
+                    //The fdb count of the LAG may be changed in updatePortOperStatus,
+                    //because processing MAC consistency for MCLAG.
+                    Port old_l;
+
+                    if (getPort(alias, old_l))
+                    {
+                        l.m_fdb_count = old_l.m_fdb_count;
+                    }
+
                     m_portList[alias] = l;
                 }
 
@@ -5730,10 +5739,16 @@ bool PortsOrch::removeBridgePort(Port &port)
 
     /* Remove STP ports before bridge port deletion*/
     gStpOrch->removeStpPorts(port);
+    port.m_bridge_port_removing = true;
+    m_portList[port.m_alias] = port;
 
     //Flush the FDB entires corresponding to the port
     gFdbOrch->flushFDBEntries(port.m_bridge_port_id, SAI_NULL_OBJECT_ID);
     SWSS_LOG_INFO("Flush FDB entries for port %s", port.m_alias.c_str());
+
+    /* Remove bridge port */
+    PortUpdate update = { port, false };
+    notify(SUBJECT_TYPE_PRE_BRIDGE_PORT_CHANGE, static_cast<void *>(&update));
 
     /* Remove bridge port */
     status = sai_bridge_api->remove_bridge_port(port.m_bridge_port_id);
@@ -5749,9 +5764,9 @@ bool PortsOrch::removeBridgePort(Port &port)
     }
     saiOidToAlias.erase(port.m_bridge_port_id);
     port.m_bridge_port_id = SAI_NULL_OBJECT_ID;
+    port.m_bridge_port_removing = false;
 
     /* Remove bridge port */
-    PortUpdate update = { port, false };
     notify(SUBJECT_TYPE_BRIDGE_PORT_CHANGE, static_cast<void *>(&update));
 
     SWSS_LOG_NOTICE("Remove bridge port %s from default 1Q bridge", port.m_alias.c_str());

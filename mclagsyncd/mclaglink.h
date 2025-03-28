@@ -229,6 +229,8 @@ namespace swss {
             unique_ptr<Table> p_mclag_intf_cfg_table;
             unique_ptr<Table> p_port_state_tbl;
 
+            unique_ptr<Table> p_mclag_app_fdb_tbl;
+
             unique_ptr<ProducerStateTable> p_port_tbl;
             unique_ptr<ProducerStateTable> p_intf_tbl;
             unique_ptr<ProducerStateTable> p_acl_table_tbl;
