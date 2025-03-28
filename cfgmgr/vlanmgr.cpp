@@ -8,6 +8,7 @@
 #include "shellcmd.h"
 #include "warm_restart.h"
 #include <swss/redisutility.h>
+#include "subintf.h"
 
 using namespace std;
 using namespace swss;
@@ -31,6 +32,7 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
         m_stateVlanMemberTable(stateDb, STATE_VLAN_MEMBER_TABLE_NAME),
         m_appVlanTableProducer(appDb, APP_VLAN_TABLE_NAME),
         m_appVlanMemberTableProducer(appDb, APP_VLAN_MEMBER_TABLE_NAME),
+        m_cfgSubInterfaceTable(cfgDb, CFG_VLAN_SUB_INTF_TABLE_NAME),
         replayDone(false)
 {
     SWSS_LOG_ENTER();
@@ -76,6 +78,8 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
     //               /sbin/ip link add Bridge up type bridge &&
     //               /sbin/ip link set Bridge mtu {{ mtu_size }} &&
     //               /sbin/ip link set Bridge address {{gMacAddress}} &&
+    //               /sbin/ip link set Bridge addrgenmode none &&
+    //               /sbin/ip address flush Bridge &&
     //               /sbin/bridge vlan del vid 1 dev Bridge self;
     //               /sbin/ip link del dummy 2>/dev/null;
     //               /sbin/ip link add dummy type dummy &&
@@ -87,6 +91,8 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
       + IP_CMD + " link add " + DOT1Q_BRIDGE_NAME + " up type bridge && "
       + IP_CMD + " link set " + DOT1Q_BRIDGE_NAME + " mtu " + DEFAULT_MTU_STR + " && "
       + IP_CMD + " link set " + DOT1Q_BRIDGE_NAME + " address " + gMacAddress.to_string() + " && "
+      + IP_CMD + " link set " + DOT1Q_BRIDGE_NAME + " addrgenmode none && "
+      + IP_CMD + " address flush " + DOT1Q_BRIDGE_NAME + " && "
       + BRIDGE_CMD + " vlan del vid " + DEFAULT_VLAN_ID + " dev " + DOT1Q_BRIDGE_NAME + " self; "
       + IP_CMD + " link del dev dummy 2>/dev/null; "
       + IP_CMD + " link add dummy type dummy && "
@@ -287,6 +293,24 @@ bool VlanMgr::isVlanMacOk()
 {
     return !!gMacAddress;
 }
+bool VlanMgr::isSubportConfigVlan(const int vlan_id)
+{
+    std::vector<std::string> keys;
+    m_cfgSubInterfaceTable.getKeys(keys);
+    for (const auto& tmp_key : keys)
+    {
+        if (tmp_key.find(VLAN_SUB_INTERFACE_SEPARATOR) == string::npos)
+        {
+            continue;
+        }
+        subIntf subIf(tmp_key);
+        if (vlan_id && vlan_id == subIf.subIntfIdx())
+        {
+            return true;
+        }
+    }
+    return false;
+}
 
 void VlanMgr::doVlanTask(Consumer &consumer)
 {
@@ -335,6 +359,13 @@ void VlanMgr::doVlanTask(Consumer &consumer)
             vector<FieldValueTuple> fvVector;
             string members;
 
+            string platform = getenv("platform") ? getenv("platform") : "";
+            if (platform == BRCM_PLATFORM_SUBSTRING && isSubportConfigVlan(vlan_id))
+            {
+                it = consumer.m_toSync.erase(it);
+                SWSS_LOG_ERROR("%s invaild config: subport config the vlan already", key.c_str());
+                continue;
+            }
             /*
              * If state is already set for this vlan, but it doesn't exist in m_vlans set,
              * just add it to m_vlans set and remove the request to skip disrupting Linux vlan.

@@ -34,7 +34,7 @@ public:
 
 private:
     ProducerStateTable m_appIntfTableProducer;
-    Table m_cfgIntfTable, m_cfgVlanIntfTable, m_cfgLagIntfTable, m_cfgLoopbackIntfTable;
+    Table m_cfgIntfTable, m_cfgVlanIntfTable, m_cfgLagIntfTable, m_cfgLoopbackIntfTable, m_cfgVlanTable;
     Table m_statePortTable, m_stateLagTable, m_stateVlanTable, m_stateVrfTable, m_stateIntfTable, m_appIntfTable;
     Table m_neighTable;
 

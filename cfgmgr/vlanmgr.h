@@ -20,13 +20,13 @@ public:
 private:
     ProducerStateTable m_appVlanTableProducer, m_appVlanMemberTableProducer;
     Table m_cfgVlanTable, m_cfgVlanMemberTable;
-    Table m_statePortTable, m_stateLagTable;
+    Table m_statePortTable, m_stateLagTable, m_cfgSubInterfaceTable;
     Table m_stateVlanTable, m_stateVlanMemberTable;
     std::set<std::string> m_vlans;
     std::set<std::string> m_vlanReplay;
     std::set<std::string> m_vlanMemberReplay;
     bool replayDone;
-    
+
     void doTask(Consumer &consumer);
     void doVlanTask(Consumer &consumer);
     void doVlanMemberTask(Consumer &consumer);
@@ -43,6 +43,7 @@ private:
     bool isVlanStateOk(const std::string &alias);
     bool isVlanMacOk();
     bool isVlanMemberStateOk(const std::string &vlanMemberKey);
+    bool isSubportConfigVlan(const int vlan_id);
 };
 
 }

@@ -299,7 +299,7 @@ namespace bufferorch_test
                 CFG_DSCP_TO_FC_MAP_TABLE_NAME,
                 CFG_EXP_TO_FC_MAP_TABLE_NAME
             };
-            gQosOrch = new QosOrch(m_config_db.get(), qos_tables);
+            gQosOrch = new QosOrch(m_config_db.get(), m_state_db.get(), qos_tables);
 
             // Recreate buffer orch to read populated data
             vector<string> buffer_tables = { APP_BUFFER_POOL_TABLE_NAME,

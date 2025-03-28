@@ -46,7 +46,10 @@ map<string, sai_ecn_mark_mode_t> ecn_map = {
 enum {
     GREEN_DROP_PROBABILITY_SET  = (1U << 0),
     YELLOW_DROP_PROBABILITY_SET = (1U << 1),
-    RED_DROP_PROBABILITY_SET    = (1U << 2)
+    RED_DROP_PROBABILITY_SET    = (1U << 2),
+    GREEN_MARK_PROBABILITY_SET  = (1U << 3),
+    YELLOW_MARK_PROBABILITY_SET = (1U << 4),
+    RED_MARK_PROBABILITY_SET    = (1U << 5)
 };
 
 enum {
@@ -113,6 +116,12 @@ map<string, string> qos_to_ref_table_map = {
     {decap_tc_to_pg_field_name, CFG_TC_TO_PRIORITY_GROUP_MAP_TABLE_NAME},
     {encap_tc_to_dscp_field_name, CFG_TC_TO_DSCP_MAP_TABLE_NAME},
     {encap_tc_to_queue_field_name, CFG_TC_TO_QUEUE_MAP_TABLE_NAME}
+};
+
+static map<QosObjectStatus, string> qosObjectStatusLookup =
+{
+    {QosObjectStatus::SUCCESS, "SUCCESS"},
+    {QosObjectStatus::FAILURE, "FAILURE"}
 };
 
 #define DSCP_MAX_VAL 63
@@ -593,7 +602,7 @@ bool WredMapHandler::convertFieldValuesToAttributes(KeyOpFieldsValuesTuple &tupl
 
     /*
      * Setting WRED profile can fail in case
-     * - the current min threshold is greater than the new max threshold 
+     * - the current min threshold is greater than the new max threshold
      * - or the current max threshold is less than the new min threshold
      * for any color at any time, on some vendor's platforms.
      *
@@ -744,6 +753,60 @@ bool WredMapHandler::convertFieldValuesToAttributes(KeyOpFieldsValuesTuple &tupl
             attr.value.s32 = ecn;
             attribs.push_back(attr);
         }
+        else if (fvField(*i) == ecn_yellow_max_threshold_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_YELLOW_MAX_THRESHOLD;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_yellow_min_threshold_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_YELLOW_MIN_THRESHOLD;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_green_max_threshold_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_GREEN_MAX_THRESHOLD;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_green_min_threshold_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_GREEN_MIN_THRESHOLD;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_red_max_threshold_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_RED_MAX_THRESHOLD;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_red_min_threshold_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_RED_MIN_THRESHOLD;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_green_mark_probability_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_GREEN_MARK_PROBABILITY;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_yellow_mark_probability_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_YELLOW_MARK_PROBABILITY;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
+        else if (fvField(*i) == ecn_red_mark_probability_field_name)
+        {
+            attr.id = SAI_WRED_ATTR_ECN_RED_MARK_PROBABILITY;
+            attr.value.s32 = stoi(fvValue(*i));
+            attribs.push_back(attr);
+        }
         else {
             SWSS_LOG_ERROR("Unknown wred profile field:%s", fvField(*i).c_str());
             return false;
@@ -827,6 +890,15 @@ sai_object_id_t WredMapHandler::addQosItem(const vector<sai_attribute_t> &attrib
         case SAI_WRED_ATTR_RED_DROP_PROBABILITY:
             drop_prob_set |= RED_DROP_PROBABILITY_SET;
             break;
+        case SAI_WRED_ATTR_ECN_GREEN_MARK_PROBABILITY:
+            drop_prob_set |= GREEN_MARK_PROBABILITY_SET;
+            break;
+        case SAI_WRED_ATTR_ECN_YELLOW_MARK_PROBABILITY:
+            drop_prob_set |= YELLOW_MARK_PROBABILITY_SET;
+            break;
+        case SAI_WRED_ATTR_ECN_RED_MARK_PROBABILITY:
+            drop_prob_set |= RED_MARK_PROBABILITY_SET;
+            break;
         default:
             break;
         }
@@ -849,6 +921,30 @@ sai_object_id_t WredMapHandler::addQosItem(const vector<sai_attribute_t> &attrib
         attr.id = SAI_WRED_ATTR_RED_DROP_PROBABILITY;
         attr.value.s32 = 100;
         attrs.push_back(attr);
+    }
+
+    // Only Broadcom switches support green/yellow/red mark probability.
+    string platform = getenv("platform") ? getenv("platform") : "";
+    if (platform == BRCM_PLATFORM_SUBSTRING)
+    {
+        if (!(drop_prob_set & GREEN_MARK_PROBABILITY_SET))
+        {
+            attr.id = SAI_WRED_ATTR_ECN_GREEN_MARK_PROBABILITY;
+            attr.value.s32 = 100;
+            attrs.push_back(attr);
+        }
+        if (!(drop_prob_set & YELLOW_MARK_PROBABILITY_SET))
+        {
+            attr.id = SAI_WRED_ATTR_ECN_YELLOW_MARK_PROBABILITY;
+            attr.value.s32 = 100;
+            attrs.push_back(attr);
+        }
+        if (!(drop_prob_set & RED_MARK_PROBABILITY_SET))
+        {
+            attr.id = SAI_WRED_ATTR_ECN_RED_MARK_PROBABILITY;
+            attr.value.s32 = 100;
+            attrs.push_back(attr);
+        }
     }
 
     sai_status = sai_wred_api->create_wred(&sai_object, gSwitchId, (uint32_t)attrs.size(), attrs.data());
@@ -973,7 +1069,7 @@ sai_object_id_t PfcPrioToPgHandler::addQosItem(const vector<sai_attribute_t> &at
     sai_status = sai_qos_map_api->create_qos_map(&sai_object, gSwitchId, (uint32_t)qos_map_attrs.size(), qos_map_attrs.data());
     if (SAI_STATUS_SUCCESS != sai_status)
     {
-        SWSS_LOG_ERROR("Failed to create pfc_priority_to_queue map. status:%d", sai_status);
+        SWSS_LOG_ERROR("Failed to create pfc_to_pg map. status:%d", sai_status);
         return SAI_NULL_OBJECT_ID;
     }
     return sai_object;
@@ -1309,7 +1405,11 @@ task_process_status QosOrch::handleTcToDscpTable(Consumer& consumer, KeyOpFields
     return tc_to_dscp_handler.processWorkItem(consumer, tuple);
 }
 
-QosOrch::QosOrch(DBConnector *db, vector<string> &tableNames) : Orch(db, tableNames)
+QosOrch::QosOrch(DBConnector *db, DBConnector* stateDb, vector<string> &tableNames) :
+    Orch(db, tableNames),
+    m_tcToQueueStateTable(stateDb, STATE_QOS_TC_TO_QUEUE_MAP_TABLE_NAME),
+    m_pfcPriorityToQueueStateTable(stateDb, STATE_QOS_PFC_PRIORITY_TO_QUEUE_MAP_TABLE_NAME)
+
 {
     SWSS_LOG_ENTER();
 
@@ -1633,13 +1733,13 @@ bool QosOrch::applySchedulerToQueueSchedulerGroup(Port &port, size_t queue_ind, 
     Port input_port = port;
     sai_object_id_t group_id = 0;
 
-    if (gMySwitchType == "voq") 
+    if (gMySwitchType == "voq")
     {
         if(port.m_system_port_info.type == SAI_SYSTEM_PORT_TYPE_REMOTE)
         {
             return true;
         }
-       
+
         // Get local port from system port. port is pointing to local port now
         if (!gPortsOrch->getPort(port.m_system_port_info.local_port_oid, port))
         {
@@ -1653,7 +1753,7 @@ bool QosOrch::applySchedulerToQueueSchedulerGroup(Port &port, size_t queue_ind, 
             return false;
         }
         queue_id = port.m_queue_ids[queue_ind];
-        
+
         group_id = getSchedulerGroup(port, queue_id);
         if(group_id == SAI_NULL_OBJECT_ID)
         {
@@ -1672,7 +1772,7 @@ bool QosOrch::applySchedulerToQueueSchedulerGroup(Port &port, size_t queue_ind, 
             return false;
         }
         queue_id = port.m_queue_ids[queue_ind];
-        
+
         group_id = getSchedulerGroup(port, queue_id);
         if(group_id == SAI_NULL_OBJECT_ID)
         {
@@ -1680,7 +1780,7 @@ bool QosOrch::applySchedulerToQueueSchedulerGroup(Port &port, size_t queue_ind, 
             return false;
         }
     }
-    
+
     /* Apply scheduler profile to all port groups  */
     sai_attribute_t attr;
     sai_status_t    sai_status;
@@ -1711,7 +1811,7 @@ bool QosOrch::applyWredProfileToQueue(Port &port, size_t queue_ind, sai_object_i
     sai_status_t    sai_status;
     sai_object_id_t queue_id;
 
-    if (gMySwitchType == "voq") 
+    if (gMySwitchType == "voq")
     {
         std :: vector<sai_object_id_t> queue_ids = gPortsOrch->getPortVoQIds(port);
         if (queue_ids.size() <= queue_ind)
@@ -1720,7 +1820,7 @@ bool QosOrch::applyWredProfileToQueue(Port &port, size_t queue_ind, sai_object_i
             return task_process_status::task_invalid_entry;
         }
         queue_id = queue_ids[queue_ind];
-    } 
+    }
     else
     {
         if (port.m_queue_ids.size() <= queue_ind)
@@ -1768,7 +1868,7 @@ task_process_status QosOrch::handleQueueTable(Consumer& consumer, KeyOpFieldsVal
     */
     tokens = tokenize(key, config_db_key_delimiter);
 
-    if (gMySwitchType == "voq") 
+    if (gMySwitchType == "voq")
     {
         if (tokens.size() != 4)
         {
@@ -1975,7 +2075,7 @@ task_process_status QosOrch::handleGlobalQosMap(const string &OP, KeyOpFieldsVal
     SWSS_LOG_ENTER();
 
     task_process_status task_status = task_process_status::task_success;
-    
+
     if (OP == DEL_COMMAND)
     {
         string referenced_obj;
@@ -2269,26 +2369,75 @@ void QosOrch::doTask(Consumer &consumer)
         switch(task_status)
         {
             case task_process_status::task_success :
+                setStatus(qos_map_type_name, it->second, QosObjectStatus::SUCCESS);
+
                 it = consumer.m_toSync.erase(it);
                 break;
             case task_process_status::task_invalid_entry :
                 SWSS_LOG_ERROR("Failed to process invalid QOS task");
+                setStatus(qos_map_type_name, it->second, QosObjectStatus::FAILURE, "Invalid configuration");
+
                 it = consumer.m_toSync.erase(it);
                 break;
             case task_process_status::task_failed :
                 SWSS_LOG_ERROR("Failed to process QOS task, drop it");
+                setStatus(qos_map_type_name, it->second, QosObjectStatus::FAILURE, "Invalid configuration");
+
                 it = consumer.m_toSync.erase(it);
                 return;
             case task_process_status::task_need_retry :
                 SWSS_LOG_INFO("Failed to process QOS task, retry it");
+                setStatus(qos_map_type_name, it->second, QosObjectStatus::FAILURE, "Invalid configuration");
+
                 it++;
                 break;
             default:
                 SWSS_LOG_ERROR("Invalid task status %d", task_status);
+                setStatus(qos_map_type_name, it->second, QosObjectStatus::FAILURE, "Invalid configuration");
+
                 it = consumer.m_toSync.erase(it);
                 break;
         }
     }
+}
+
+void QosOrch::setStatus(const string& qos_map_type_name,
+                        const KeyOpFieldsValuesTuple& tuple,
+                        QosObjectStatus status,
+                        const string& message)
+{
+    if (qos_map_type_name == CFG_TC_TO_QUEUE_MAP_TABLE_NAME)
+    {
+        setTcToQueueQosMapStatus(tuple, status, message);
+    }
+    else if (qos_map_type_name == CFG_PFC_PRIORITY_TO_QUEUE_MAP_TABLE_NAME)
+    {
+        setPfcPriorityToQueueQosMapStatus(tuple, status, message);
+    }
+}
+
+void QosOrch::setTcToQueueQosMapStatus(const KeyOpFieldsValuesTuple& tuple,
+                                       QosObjectStatus status,
+                                       const string& message)
+{
+    string table_name = kfvKey(tuple);
+    vector<FieldValueTuple> fvVector;
+
+    fvVector.emplace_back("status", qosObjectStatusLookup[status]);
+    fvVector.emplace_back("message", message);
+    m_tcToQueueStateTable.set(table_name, fvVector);
+}
+
+void QosOrch::setPfcPriorityToQueueQosMapStatus(const KeyOpFieldsValuesTuple& tuple,
+                                                QosObjectStatus status,
+                                                const string& message)
+{
+    string table_name = kfvKey(tuple);
+    vector<FieldValueTuple> fvVector;
+
+    fvVector.emplace_back("status", qosObjectStatusLookup[status]);
+    fvVector.emplace_back("message", message);
+    m_pfcPriorityToQueueStateTable.set(table_name, fvVector);
 }
 
 /**
@@ -2311,7 +2460,7 @@ sai_object_id_t QosOrch::resolveTunnelQosMap(std::string referencing_table_name,
     ref_resolve_status status = resolveFieldRefValue(m_qos_maps, map_type_name, qos_to_ref_table_map.at(map_type_name), tuple, id, object_name);
     if (status == ref_resolve_status::success)
     {
-        
+
         setObjectReference(m_qos_maps, referencing_table_name, tunnel_name, map_type_name, object_name);
         SWSS_LOG_INFO("Resolved QoS map for table %s tunnel %s type %s name %s", referencing_table_name.c_str(), tunnel_name.c_str(), map_type_name.c_str(), object_name.c_str());
         return id;

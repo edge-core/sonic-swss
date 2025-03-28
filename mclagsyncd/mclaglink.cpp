@@ -428,6 +428,36 @@ void MclagLink::setFdbFlush()
     return;
 }
 
+void MclagLink::setFdbFlushByPort(char *msg, size_t msg_len)
+{
+    mclag_sub_option_hdr_t *op_hdr;
+    string port_name;
+    swss::NotificationProducer flushFdb(p_appl_db.get(), "FLUSHFDBREQUEST");
+    vector<FieldValueTuple> values;
+
+    if (msg_len > 0)
+    {
+        op_hdr = reinterpret_cast<mclag_sub_option_hdr_t *>(static_cast<void *>(msg));
+
+        if (op_hdr->op_type != MCLAG_SUB_OPTION_TYPE_PEER_LINK)
+        {
+            SWSS_LOG_ERROR("Invalid option type %u", op_hdr->op_type);
+
+            return;
+        }
+        else
+        {
+            port_name.insert(0, (const char*)op_hdr->data, op_hdr->op_len);
+        }
+
+        SWSS_LOG_NOTICE("send fdb flush by port notification, port = [%s]", port_name.c_str());
+
+        flushFdb.send("PORT", port_name, values);
+
+    }
+    else
+        SWSS_LOG_ERROR("Invalid msg length %lu", msg_len);
+}
 
 void MclagLink::setIntfMac(char *msg)
 {
@@ -512,6 +542,11 @@ void MclagLink::setFdbEntry(char *msg, int msg_len)
         {
             p_fdb_tbl->del(fdb_key);
             SWSS_LOG_NOTICE("del fdb entry from ASIC_DB:key =%s", fdb_key.c_str());
+        }
+        else if (fdb_info->op_type == MCLAG_FDB_OPER_DEL_APP_DB)
+        {
+            p_mclag_app_fdb_tbl->del(fdb_key);
+            SWSS_LOG_NOTICE("del fdb entry from APP_DB:key =%s", fdb_key.c_str());
         }
     }
     return;
@@ -650,13 +685,14 @@ void MclagLink::processMclagDomainCfg(std::deque<KeyOpFieldsValuesTuple> &entrie
         int attrBmap = MCLAG_CFG_ATTR_NONE;
         int attrDelBmap = MCLAG_CFG_ATTR_NONE;
         enum MCLAG_DOMAIN_CFG_OP_TYPE cfgOpType = MCLAG_CFG_OPER_NONE;
+        uint8_t mclag_sys_id[ETHER_ADDR_LEN];
 
         memset(&cfg_info, 0, sizeof(mclag_domain_cfg_info));
         cfg_info.domain_id  = stoi(domain_id_str);
         memcpy(cfg_info.system_mac, system_mac, ETHER_ADDR_LEN);
 
 
-        SWSS_LOG_INFO("Key(mclag domain_id):%s;  op:%s ", domain_id_str.c_str(), op.c_str()); 
+        SWSS_LOG_INFO("Key(mclag domain_id):%s;  op:%s ", domain_id_str.c_str(), op.c_str());
 
         const struct mclagDomainEntry domain(stoi(domain_id_str));
         auto it = m_mclag_domains.find(domain);
@@ -726,12 +762,28 @@ void MclagLink::processMclagDomainCfg(std::deque<KeyOpFieldsValuesTuple> &entrie
                     }
                     else
                     {
-                        domainData.session_timeout = stoi(fvValue(i).c_str()); 
+                        domainData.session_timeout = stoi(fvValue(i).c_str());
                     }
                     if(!entryExists)
                     {
                         attrBmap = (attrBmap | MCLAG_CFG_ATTR_SESSION_TIMEOUT);
                         cfg_info.session_timeout = domainData.session_timeout;
+                    }
+                }
+                if (fvField(i) == "mclag_system_id")
+                {
+                    if (!fvValue(i).empty())
+                    {
+                        domainData.mclag_sys_id = fvValue(i);
+                        MacAddress::parseMacString(domainData.mclag_sys_id, mclag_sys_id);
+                        memcpy(cfg_info.mclag_system_mac, mclag_sys_id, ETHER_ADDR_LEN);
+
+                        SWSS_LOG_NOTICE("Add MCLAG sysytem MAC = [%s]", domainData.mclag_sys_id.c_str());
+
+                        if(!entryExists)
+                        {
+                            attrBmap = (attrBmap | MCLAG_CFG_ATTR_MCLAG_SYS_MAC);
+                        }
                     }
                 }
             }
@@ -786,6 +838,18 @@ void MclagLink::processMclagDomainCfg(std::deque<KeyOpFieldsValuesTuple> &entrie
                     if (domainData.session_timeout == -1)
                     {
                         attrDelBmap = attrDelBmap | MCLAG_CFG_ATTR_SESSION_TIMEOUT;
+                    }
+                }
+
+                if(it->second.mclag_sys_id.compare(domainData.mclag_sys_id) != 0)
+                {
+                    attrBmap |= MCLAG_CFG_ATTR_MCLAG_SYS_MAC;
+
+                    SWSS_LOG_NOTICE("Update MCLAG sysytem MAC = [%s]", domainData.mclag_sys_id.c_str());
+
+                    if (domainData.mclag_sys_id.empty())
+                    {
+                        attrDelBmap = attrDelBmap | MCLAG_CFG_ATTR_MCLAG_SYS_MAC;
                     }
                 }
             }
@@ -1323,7 +1387,8 @@ void MclagLink::mclagsyncdSetIccpState(
     char                      *cur;
     size_t                    cur_len = 0;
     mclag_sub_option_hdr_t    *op_hdr;
-    vector<FieldValueTuple>   fvVector;
+    vector<FieldValueTuple>   fvVector, port_attr;
+    string                    peer_link_mbr;
 
     while (cur_len < msg_len)
     {
@@ -1341,6 +1406,10 @@ void MclagLink::mclagsyncdSetIccpState(
                         make_pair("oper_status", is_oper_up ? "up" : "down"));
                 break;
 
+            case MCLAG_SUB_OPTION_TYPE_PEER_LINK_MEMBER:
+               peer_link_mbr.insert(0, (const char*)op_hdr->data, op_hdr->op_len);
+               break;
+
             default:
                 SWSS_LOG_WARN("Invalid option type %u", op_hdr->op_type);
                 break;
@@ -1352,8 +1421,39 @@ void MclagLink::mclagsyncdSetIccpState(
         is_iccp_up = is_oper_up;
         /* Update MLAG table: key = mlag_id, value = oper_status */
         p_mclag_tbl->set(to_string(mlag_id), fvVector);
+        p_mclag_app_tbl->set(to_string(mlag_id), fvVector);
         SWSS_LOG_NOTICE("Set mlag %d ICCP state to %s",
                 mlag_id, is_oper_up ? "up" : "down");
+
+	/*
+        SWSS_LOG_NOTICE("Peer link member = [%s]", peer_link_mbr.c_str());
+
+        istringstream s(peer_link_mbr);
+        string intermediate;
+        vector<string> mbrs;
+        port_attr.push_back(make_pair("flood_block", is_oper_up ? "false" : "true"));
+
+        while(getline(s, intermediate, ','))
+        {
+            p_port_tbl->set(intermediate, port_attr);
+            mbrs.push_back(intermediate);
+        }
+
+        auto mbr = mbrs.begin();
+        while (mbr != mbrs.end())
+        {
+            vector <FieldValueTuple> fvs;
+
+            p_port_state_tbl->get(*mbr, fvs);
+
+            auto it = find_if(fvs.begin(), fvs.end(), [](const FieldValueTuple &fv) {
+                    return fv.first == "flood_block";});
+
+            if ((is_oper_up == false && it != fvs.end()) ||
+                (is_oper_up == true && it == fvs.end()))
+                mbr = mbrs.erase(mbr);
+        }
+	*/
     }
     else
     {
@@ -1407,6 +1507,7 @@ void MclagLink::mclagsyncdSetIccpRole(
     {
         /* Update MLAG table: key = mlag_id, value = role */
         p_mclag_tbl->set(to_string(mlag_id), fvVector);
+        p_mclag_app_tbl->set(to_string(mlag_id), fvVector);
         SWSS_LOG_NOTICE("Set mlag %d ICCP role to %s, system_id(%s)",
                 mlag_id, is_active_role ? "active" : "standby",
                 valid_system_id ? system_id_str.c_str() : "None");
@@ -1455,6 +1556,7 @@ void MclagLink::mclagsyncdSetSystemId(
     {
         /* Update MLAG table: key = mlag_id, value = system_mac */
         p_mclag_tbl->set(to_string(mlag_id), fvVector);
+        p_mclag_app_tbl->set(to_string(mlag_id), fvVector);
         SWSS_LOG_NOTICE("Set mlag %d system mac to %s",
                 mlag_id, system_id_str.c_str());
     }
@@ -1480,6 +1582,102 @@ void MclagLink::processStateVlanMember(SubscriberStateTable *stateVlanMemberTbl)
     processVlanMemberTableUpdates(entries);
 }
 
+/* Set the peer link field in the STATE_MCLAG_TABLE */
+void MclagLink::mclagsyncdSetPeerLink(
+    char                      *msg,
+    size_t                    msg_len)
+{
+    int                       mlag_id = 0;
+    string                    lag_name;
+    char                      *cur;
+    size_t                    cur_len = 0;
+    mclag_sub_option_hdr_t    *op_hdr;
+    vector<FieldValueTuple>   fvVector;
+
+    while (cur_len < msg_len)
+    {
+        cur = msg + cur_len;
+        op_hdr = (mclag_sub_option_hdr_t *)cur;
+
+        switch(op_hdr->op_type)
+        {
+            case MCLAG_SUB_OPTION_TYPE_MCLAG_ID:
+                memcpy(&mlag_id, op_hdr->data, op_hdr->op_len);
+                break;
+
+            case MCLAG_SUB_OPTION_TYPE_PEER_LINK:
+                lag_name.insert(0, (const char*)op_hdr->data, op_hdr->op_len);
+                fvVector.push_back(make_pair("peer_link", lag_name));
+                break;
+
+            default:
+                SWSS_LOG_WARN("Invalid option type %u", op_hdr->op_type);
+                break;
+        }
+        cur_len += (MCLAG_SUB_OPTION_HDR_LEN + op_hdr->op_len);
+    }
+    if ((mlag_id > 0) && (fvVector.size() > 0))
+    {
+        /* Update MLAG table: key = mlag_id, value = peer link */
+        p_mclag_tbl->set(to_string(mlag_id), fvVector);
+        p_mclag_app_tbl->set(to_string(mlag_id), fvVector);
+        SWSS_LOG_NOTICE("Set mlag %d peer link to %s",
+                         mlag_id, lag_name.c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("Invalid parameter, mlag %d", mlag_id);
+    }
+}
+
+/* Delete the peer link field in the STATE_MCLAG_TABLE */
+void MclagLink::mclagsyncdDelPeerLink(
+    char                      *msg,
+    size_t                    msg_len)
+{
+    int                       mlag_id = 0;
+    string                    lag_name;
+    char                      *cur;
+    size_t                    cur_len = 0;
+    mclag_sub_option_hdr_t    *op_hdr;
+    vector<FieldValueTuple>   fvVector;
+
+    while (cur_len < msg_len)
+    {
+        cur = msg + cur_len;
+        op_hdr = (mclag_sub_option_hdr_t *)cur;
+
+        switch(op_hdr->op_type)
+        {
+            case MCLAG_SUB_OPTION_TYPE_MCLAG_ID:
+                memcpy(&mlag_id, op_hdr->data, op_hdr->op_len);
+                break;
+
+            case MCLAG_SUB_OPTION_TYPE_PEER_LINK:
+                lag_name.insert(0, (const char*)op_hdr->data, op_hdr->op_len);
+                fvVector.push_back(make_pair("peer_link", lag_name));
+                break;
+
+            default:
+                SWSS_LOG_WARN("Invalid option type %u", op_hdr->op_type);
+                break;
+        }
+        cur_len += (MCLAG_SUB_OPTION_HDR_LEN + op_hdr->op_len);
+    }
+    if ((mlag_id > 0) && (fvVector.size() > 0))
+    {
+        /* Update MLAG table: key = mlag_id, value = peer link */
+        p_mclag_tbl->hdel(to_string(mlag_id), "peer_link");
+        p_mclag_app_tbl->del(to_string(mlag_id), "peer_link");
+        SWSS_LOG_NOTICE("Delete mlag %d peer link to %s",
+                         mlag_id, lag_name.c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("Invalid parameter, mlag %d", mlag_id);
+    }
+}
+
 /* Delete Mlag entry in the STATE_MCLAG_TABLE */
 void MclagLink::mclagsyncdDelIccpInfo(
         char                      *msg)
@@ -1498,6 +1696,7 @@ void MclagLink::mclagsyncdDelIccpInfo(
     {
         memcpy(&mlag_id, op_hdr->data, op_hdr->op_len);
         p_mclag_tbl->del(to_string(mlag_id));
+        p_mclag_app_tbl->del(to_string(mlag_id));
         SWSS_LOG_NOTICE("Delete mlag %d", mlag_id);
     }
 }
@@ -1728,6 +1927,7 @@ void MclagLink::mclagsyncdSetPeerSystemId(
     {
         /* Update MLAG table: key = mlag_id, value = system_mac */
         p_mclag_tbl->set(to_string(mlag_id), fvVector);
+        p_mclag_app_tbl->set(to_string(mlag_id), fvVector);
         SWSS_LOG_NOTICE("Set mlag %d peer system mac to %s", mlag_id, system_id_str.c_str());
     }
     else
@@ -1796,13 +1996,15 @@ MclagLink::MclagLink(Select *select, int port) :
     p_notificationsDb = unique_ptr<DBConnector>(new DBConnector("STATE_DB", 0));
 
     p_device_metadata_tbl          = unique_ptr<Table>(new Table(p_config_db.get(), CFG_DEVICE_METADATA_TABLE_NAME));
-    p_mclag_cfg_table              = unique_ptr<Table>(new Table(p_config_db.get(), CFG_MCLAG_TABLE_NAME)); 
+    p_mclag_cfg_table              = unique_ptr<Table>(new Table(p_config_db.get(), CFG_MCLAG_TABLE_NAME));
     p_mclag_intf_cfg_table         = unique_ptr<Table>(new Table(p_config_db.get(), CFG_MCLAG_INTF_TABLE_NAME));
 
     p_mclag_tbl                    = unique_ptr<Table>(new Table(p_state_db.get(), STATE_MCLAG_TABLE_NAME));
     p_mclag_local_intf_tbl         = unique_ptr<Table>(new Table(p_state_db.get(), STATE_MCLAG_LOCAL_INTF_TABLE_NAME));
     p_mclag_remote_intf_tbl        = unique_ptr<Table>(new Table(p_state_db.get(), STATE_MCLAG_REMOTE_INTF_TABLE_NAME));
+    p_port_state_tbl               = unique_ptr<Table>(new Table(p_state_db.get(), STATE_PORT_TABLE_NAME));
 
+    p_mclag_app_fdb_tbl            = unique_ptr<Table>(new Table(p_appl_db.get(), APP_MCLAG_FDB_TABLE_NAME));
 
     p_intf_tbl      = unique_ptr<ProducerStateTable>(new ProducerStateTable(p_appl_db.get(), APP_INTF_TABLE_NAME));
     p_iso_grp_tbl   = unique_ptr<ProducerStateTable>(new ProducerStateTable(p_appl_db.get(), APP_ISOLATION_GROUP_TABLE_NAME));
@@ -1811,6 +2013,7 @@ MclagLink::MclagLink(Select *select, int port) :
     p_acl_rule_tbl  = unique_ptr<ProducerStateTable>(new ProducerStateTable(p_appl_db.get(), APP_ACL_RULE_TABLE_NAME));
     p_lag_tbl       = unique_ptr<ProducerStateTable>(new ProducerStateTable(p_appl_db.get(), APP_LAG_TABLE_NAME));
     p_port_tbl      = unique_ptr<ProducerStateTable>(new ProducerStateTable(p_appl_db.get(), APP_PORT_TABLE_NAME));
+    p_mclag_app_tbl = unique_ptr<ProducerStateTable>(new ProducerStateTable(p_appl_db.get(), APP_MCLAG_TABLE_NAME));
 
     p_state_fdb_tbl                   = NULL;
     p_state_vlan_mbr_subscriber_table = NULL;
@@ -1914,6 +2117,10 @@ uint64_t MclagLink::readData()
                 setFdbFlush();
                 break;
 
+            case MCLAG_MSG_TYPE_FLUSH_FDB_BY_PORT:
+                setFdbFlushByPort(msg, mclag_msg_data_len(hdr));
+                break;
+
             case MCLAG_MSG_TYPE_SET_INTF_MAC:
                 setIntfMac(msg);
                 break;
@@ -1934,6 +2141,12 @@ uint64_t MclagLink::readData()
             case MCLAG_MSG_TYPE_SET_ICCP_SYSTEM_ID:
                 mclagsyncdSetSystemId(msg, mclag_msg_data_len(hdr));
                 break;
+            case MCLAG_MSG_TYPE_SET_ICCP_PEER_LINK:
+		    mclagsyncdSetPeerLink(msg, mclag_msg_data_len(hdr));
+                    break;
+            case MCLAG_MSG_TYPE_DEL_ICCP_PEER_LINK:
+                    mclagsyncdDelPeerLink(msg, mclag_msg_data_len(hdr));
+                    break;
             case MCLAG_MSG_TYPE_DEL_ICCP_INFO:
                 mclagsyncdDelIccpInfo(msg);
                 break;

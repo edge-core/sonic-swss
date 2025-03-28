@@ -41,7 +41,8 @@ IntfMgr::IntfMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
         m_stateIntfTable(stateDb, STATE_INTERFACE_TABLE_NAME),
         m_appIntfTable(appDb, APP_INTF_TABLE_NAME),
         m_appIntfTableProducer(appDb, APP_INTF_TABLE_NAME),
-        m_neighTable(appDb, APP_NEIGH_TABLE_NAME)
+        m_neighTable(appDb, APP_NEIGH_TABLE_NAME),
+        m_cfgVlanTable(cfgDb, CFG_VLAN_TABLE_NAME)
 {
     auto subscriberStateTable = new swss::SubscriberStateTable(stateDb,
             STATE_PORT_TABLE_NAME, TableConsumable::DEFAULT_POP_BATCH_SIZE, 100);
@@ -493,6 +494,8 @@ std::string IntfMgr::setHostSubIntfAdminStatus(const string &alias, const string
     stringstream cmd;
     string res, cmd_str;
 
+    SWSS_LOG_INFO("subintf %s admin_status: %s, parent_admin_status %s", alias.c_str(), admin_status.c_str(), parent_admin_status.c_str());
+
     if (parent_admin_status == "up" || admin_status == "down")
     {
         SWSS_LOG_INFO("subintf %s admin_status: %s", alias.c_str(), admin_status.c_str());
@@ -742,13 +745,10 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
         }
         parentAlias = subIf.parentIntf();
         int subIntfId = subIf.subIntfIdx();
-        /*If long name format, subinterface Id is vlanid */
-        if (!subIf.isShortName())
-        {
-            vlanId = std::to_string(subIntfId);
-            FieldValueTuple vlanTuple("vlan", vlanId);
-            data.push_back(vlanTuple);
-        }
+        /*No matter long or short name format, subinterface Id is vlanid */
+        vlanId = std::to_string(subIntfId);
+        FieldValueTuple vlanTuple("vlan", vlanId);
+        data.push_back(vlanTuple);
     }
     bool is_lo = !alias.compare(0, strlen(LOOPBACK_PREFIX), LOOPBACK_PREFIX);
     string mac = "";
@@ -811,6 +811,18 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
 
     if (op == SET_COMMAND)
     {
+        string platform = getenv("platform") ? getenv("platform") : "";
+        if (platform == BRCM_PLATFORM_SUBSTRING && !parentAlias.empty())
+        {
+            vector<FieldValueTuple> temp;
+            string vlan_name = VLAN_PREFIX + vlanId;
+            if (m_cfgVlanTable.get(vlan_name, temp))
+            {
+                SWSS_LOG_ERROR("subport %s invaild config: vlan config already", alias.c_str());
+                return true;
+            }
+        }
+
         if (!isIntfStateOk(parentAlias.empty() ? alias : parentAlias))
         {
             SWSS_LOG_DEBUG("Interface is not ready, skipping %s", alias.c_str());
@@ -1015,6 +1027,13 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
     }
     else if (op == DEL_COMMAND)
     {
+        vector<FieldValueTuple> temp;
+        if (!m_stateIntfTable.get(alias, temp))
+        {
+            SWSS_LOG_INFO("skip: invaild config protection");
+            return true;
+        }
+
         /* make sure all ip addresses associated with interface are removed, otherwise these ip address would
            be set with global vrf and it may cause ip address conflict. */
         if (getIntfIpCount(alias))

@@ -748,6 +748,22 @@ bool PortHelper::parsePortDescription(PortConfig &port, const std::string &field
     return true;
 }
 
+bool PortHelper::parsePortFloodBlock(PortConfig &port, const std::string &field, const std::string &value) const
+{
+    SWSS_LOG_ENTER();
+
+    if (value.empty())
+    {
+        SWSS_LOG_ERROR("Failed to parse field(%s): empty string is prohibited", field.c_str());
+        return false;
+    }
+
+    port.flood_block.value = (value == "true") ? true : false;
+    port.flood_block.is_set = true;
+
+    return true;
+}
+
 bool PortHelper::parsePortConfig(PortConfig &port) const
 {
     SWSS_LOG_ENTER();
@@ -991,6 +1007,13 @@ bool PortHelper::parsePortConfig(PortConfig &port) const
         else if (field == PORT_DESCRIPTION)
         {
             if (!this->parsePortDescription(port, field, value))
+            {
+                return false;
+            }
+        }
+        else if (field == PORT_FLOOD_BLOCK)
+        {
+            if (!this->parsePortFloodBlock(port, field, value))
             {
                 return false;
             }

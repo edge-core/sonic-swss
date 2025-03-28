@@ -613,6 +613,21 @@ task_process_status handleSaiSetStatus(sai_api_t api, sai_status_t status, void 
 
     switch (api)
     {
+        case SAI_API_FDB:
+            switch (status)
+            {
+                case SAI_STATUS_SUCCESS:
+                    SWSS_LOG_WARN("SAI_STATUS_SUCCESS is not expected in handleSaiSetStatus");
+                    return task_success;
+                case SAI_STATUS_INVALID_PARAMETER:
+                case SAI_STATUS_ITEM_NOT_FOUND:
+                    return task_success;
+                default:
+                    SWSS_LOG_ERROR("Encountered failure in set operation, exiting orchagent, SAI API: %s, status: %s",
+                                sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
+                    exit(EXIT_FAILURE);
+            }
+            break;
         case SAI_API_PORT:
             switch (status)
             {

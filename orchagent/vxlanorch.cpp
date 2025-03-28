@@ -2002,6 +2002,12 @@ bool VxlanTunnelMapOrch::addOperation(const Request& request)
 
     tunnel_orch->addVlanMappedToVni(vni_id, vlan_id);
 
+    if (0 == vrf_orch->getL3VniVlan(vni_id))
+    {
+        SWSS_LOG_NOTICE("update l3vni %d, vlan %d", vni_id, vlan_id);
+        vrf_orch->updateL3VniVlan(vni_id, vlan_id);
+    }
+
     SWSS_LOG_NOTICE("Vxlan tunnel map entry '%s' for tunnel '%s' was created",
                    tunnel_map_entry_name.c_str(), tunnel_name.c_str());
 
@@ -2160,6 +2166,13 @@ bool VxlanVrfMapOrch::addOperation(const Request& request)
     {
         SWSS_LOG_ERROR("Vxlan map '%s' is already exist", full_map_entry_name.c_str());
         return true;
+    }
+
+    if (tunnel_orch->getVlanMappedToVni(vni_id) == 0)
+    {
+        SWSS_LOG_NOTICE("VRF VNI mapping '%s', vni %d to VLAN mapping must be set first",
+            full_map_entry_name.c_str(), vni_id);
+        return false;
     }
 
     auto tunnel_obj = tunnel_orch->getVxlanTunnel(tunnel_name);
