@@ -1730,6 +1730,12 @@ bool RouteOrch::addRoute(RouteBulkContext& ctx, const NextHopGroupKey &nextHops)
         srv6_nh = true;
     }
 
+    /* Sync the route entry */
+    sai_route_entry_t route_entry;
+    route_entry.vr_id = vrf_id;
+    route_entry.switch_id = gSwitchId;
+    copy(route_entry.destination, ipPrefix);
+
     auto it_route = m_syncdRoutes.at(vrf_id).find(ipPrefix);
 
     if (m_fgNhgOrch->isRouteFineGrained(vrf_id, ipPrefix, nextHops))
@@ -1808,6 +1814,25 @@ bool RouteOrch::addRoute(RouteBulkContext& ctx, const NextHopGroupKey &nextHops)
         }
         else
         {
+            /*
+             * Currently when interface route (local next hop) is available, ip route
+             * (ip as next hope) for this subnet is allowed to add in frr, but not take effect.
+             * But when interface route is not available like shut down the interface, the interface
+             * route is not deleted and the ip route is not applied.
+             * The fix here is to check and delete the interface route and make the ip route applied.
+             */
+            if((it_route != m_syncdRoutes.at(vrf_id).end()) &&
+               (it_route->second.nhg_key.getSize() == 1) &&
+               (it_route->second.nhg_key.hasIntfNextHop()) &&
+               (!gRouteBulker.bulk_entry_pending_removal(route_entry)))
+
+            {
+                removeRoute(ctx);
+                gRouteBulker.flush();
+                removeRoutePost(ctx);
+                it_route = m_syncdRoutes.at(vrf_id).find(ipPrefix);
+            }
+
             if (m_neighOrch->hasNextHop(nexthop))
             {
                 next_hop_id = m_neighOrch->getNextHopId(nexthop);
@@ -1931,12 +1956,6 @@ bool RouteOrch::addRoute(RouteBulkContext& ctx, const NextHopGroupKey &nextHops)
 
         next_hop_id = m_syncdNextHopGroups[nextHops].next_hop_group_id;
     }
-
-    /* Sync the route entry */
-    sai_route_entry_t route_entry;
-    route_entry.vr_id = vrf_id;
-    route_entry.switch_id = gSwitchId;
-    copy(route_entry.destination, ipPrefix);
 
     sai_attribute_t route_attr;
     auto& object_statuses = ctx.object_statuses;
