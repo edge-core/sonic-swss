@@ -404,10 +404,8 @@ void FdbOrch::update(sai_fdb_event_t        type,
                 {
                     SWSS_LOG_NOTICE("FdbOrch LEARN notification: mac %s is already in bv_id 0x%" PRIx64 "with same bp 0x%" PRIx64,
                             update.entry.mac.to_string().c_str(), entry->bv_id, existing_entry->second.bridge_port_id);
-                    // Continue to move the MAC as local.
-
-                    // Existing MAC entry is on same VLAN, Port with Origin MCLAG(remote), its possible after the local learn MAC in
-                    //the HW is updated to remote from FdbOrch, Update the MAC back to local in HW so that FdbOrch and HW is Sync and aging enabled.
+                    // Keep the static type allow port move.
+                    // Existing MAC entry is on same VLAN, Port with Origin MCLAG(remote), update the MAC to HW based on FdbOrch.
                     sai_status_t status;
                     sai_fdb_entry_t fdb_entry;
                     fdb_entry.switch_id = gSwitchId;
@@ -417,8 +415,11 @@ void FdbOrch::update(sai_fdb_event_t        type,
                     vector<sai_attribute_t> attrs;
 
                     attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
-                    attr.value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
-                    update.sai_fdb_type = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+                    attr.value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+                    attrs.push_back(attr);
+
+                    attr.id = SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE;
+                    attr.value.booldata = true;
                     attrs.push_back(attr);
 
                     attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
@@ -434,10 +435,6 @@ void FdbOrch::update(sai_fdb_event_t        type,
                                         itr.id, update.entry.mac.to_string().c_str(), entry->bv_id, update.port.m_alias.c_str(), status);
                         }
                     }
-                    update.add = true;
-                    update.type = "dynamic";
-                    storeFdbEntryState(update);
-                    notify(SUBJECT_TYPE_FDB_CHANGE, &update);
 
                     return;
                 }
