@@ -4324,6 +4324,26 @@ void PortsOrch::doPortTask(Consumer &consumer)
                         );
                     }
                 }
+/*
+                if (pCfg.flood_block.is_set)
+                {
+                    sai_attribute_t attr;
+                    attr.id = SAI_PORT_ATTR_FLOOD_BLOCK_ENABLE;
+                    attr.value.booldata = pCfg.flood_block.value;
+
+                    sai_status_t status = sai_port_api->set_port_attribute(p.m_port_id, &attr);
+
+                    if (status != SAI_STATUS_SUCCESS)
+                        SWSS_LOG_ERROR("[PortsOrch] Failed to set flood block!!!!, alias = [%s]", p.m_alias.c_str());
+                    else
+                        SWSS_LOG_NOTICE("[PortOrch] Sucess to set flood block!!!!, alias = [%s]", p.m_alias.c_str());
+
+                    if (pCfg.flood_block.value)
+                        m_portStateTable.hset(p.m_alias, "flood_block", "ok");
+                    else
+                        m_portStateTable.hdel(p.m_alias, "flood_block");
+                }
+*/
             }
         }
         else if (op == DEL_COMMAND)

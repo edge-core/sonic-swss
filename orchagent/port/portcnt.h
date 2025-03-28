@@ -202,6 +202,11 @@ public:
         bool is_set = false;
     } description; // Port description
 
+    struct {
+        bool value;
+        bool is_set = false;
+    } flood_block; // Port link training
+
     std::string key;
     std::string op;
 
