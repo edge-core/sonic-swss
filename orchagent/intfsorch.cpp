@@ -164,23 +164,16 @@ string IntfsOrch::getRouterIntfsAlias(const IpAddress &ip, const string &vrf_nam
 bool IntfsOrch::isIpInIntfSubnet(const IpAddress &ip, const string &alias, const string &vrf_name)
 {
     string ip_alias = getRouterIntfsAlias(ip, vrf_name);
-    string pairAlias;
 
     if (ip_alias.empty())
     {
         return false;
     }
-    if (!alias.compare(0, strlen(VLAN_PREFIX), VLAN_PREFIX))
-    {
-        pairAlias = SAG_PREFIX + alias.substr(strlen(VLAN_PREFIX));
-    }
-    else if (!alias.compare(0, strlen(SAG_PREFIX), SAG_PREFIX))
-    {
-        pairAlias = VLAN_PREFIX + alias.substr(strlen(SAG_PREFIX));
-    }
 
-    if (ip_alias == pairAlias || ip_alias == alias)
+    if (ip_alias == alias)
+    {
         return true;
+    }
 
     return false;
 }
