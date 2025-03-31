@@ -24,6 +24,8 @@ int main(int argc, char **argv)
 
     NetDispatcher::getInstance().registerMessageHandler(RTM_NEWNEIGH, &sync);
     NetDispatcher::getInstance().registerMessageHandler(RTM_DELNEIGH, &sync);
+    NetDispatcher::getInstance().registerMessageHandler(RTM_NEWLINK, &sync);
+    NetDispatcher::getInstance().registerMessageHandler(RTM_DELLINK, &sync);
 
     while (1)
     {
@@ -63,8 +65,10 @@ int main(int argc, char **argv)
             }
 
             netlink.registerGroup(RTNLGRP_NEIGH);
-            cout << "Listens to neigh messages..." << endl;
+            netlink.registerGroup(RTNLGRP_LINK);
+            cout << "Listens to neigh and link messages..." << endl;
             netlink.dumpRequest(RTM_GETNEIGH);
+            netlink.dumpRequest(RTM_GETLINK);
 
             s.addSelectable(&netlink);
             while (true)

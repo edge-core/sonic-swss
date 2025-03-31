@@ -22,6 +22,9 @@ extern Directory<Orch*> gDirectory;
 extern string gMySwitchType;
 extern int32_t gVoqMySwitchId;
 extern BfdOrch *gBfdOrch;
+extern sai_object_id_t gVirtualRouterId;
+
+#define DEFAULT_VRF         "default"
 
 const int neighorch_pri = 30;
 
@@ -30,11 +33,12 @@ map<sai_status_t, string> sai_error_reason =
     {SAI_STATUS_TABLE_FULL, "table full"}
 };
 
-NeighOrch::NeighOrch(DBConnector *appDb, string tableName, IntfsOrch *intfsOrch, FdbOrch *fdbOrch, PortsOrch *portsOrch, DBConnector *chassisAppDb) :
+NeighOrch::NeighOrch(DBConnector *appDb, string tableName, IntfsOrch *intfsOrch, FdbOrch *fdbOrch, PortsOrch *portsOrch, VRFOrch *vrfOrch, DBConnector *chassisAppDb) :
         Orch(appDb, tableName, neighorch_pri),
         m_intfsOrch(intfsOrch),
         m_fdbOrch(fdbOrch),
         m_portsOrch(portsOrch),
+        m_vrfOrch(vrfOrch),
         m_appNeighResolveProducer(appDb, APP_NEIGH_RESOLVE_TABLE_NAME)
 {
     SWSS_LOG_ENTER();
@@ -836,11 +840,26 @@ void NeighOrch::doTask(Consumer &consumer)
             }
 
             MacAddress mac_address;
+            string vrf_name = "";
             for (auto i = kfvFieldsValues(t).begin();
                  i  != kfvFieldsValues(t).end(); i++)
             {
                 if (fvField(*i) == "neigh")
                     mac_address = MacAddress(fvValue(*i));
+                if (fvField(*i) == "vrf")
+                {
+                    vrf_name = fvValue(*i);
+                }
+            }
+
+            if (!vrf_name.empty())
+            {
+                if (p.m_vr_id != (vrf_name == DEFAULT_VRF? gVirtualRouterId: m_vrfOrch->getVRFid(vrf_name)))
+                {
+                    SWSS_LOG_INFO("Failed to create neighbor on %s due to different vrf %s", alias.c_str(), vrf_name.c_str());
+                    it++;
+                    continue;
+                }
             }
 
             if ((ip_address.getAddrScope() != IpAddress::LINK_SCOPE)

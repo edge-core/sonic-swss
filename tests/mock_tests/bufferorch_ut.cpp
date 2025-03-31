@@ -282,7 +282,7 @@ namespace bufferorch_test
             gFdbOrch = new FdbOrch(m_app_db.get(), app_fdb_tables, stateDbFdb, stateMclagDbFdb, gPortsOrch);
 
             ASSERT_EQ(gNeighOrch, nullptr);
-            gNeighOrch = new NeighOrch(m_app_db.get(), APP_NEIGH_TABLE_NAME, gIntfsOrch, gFdbOrch, gPortsOrch, m_chassis_app_db.get());
+            gNeighOrch = new NeighOrch(m_app_db.get(), APP_NEIGH_TABLE_NAME, gIntfsOrch, gFdbOrch, gPortsOrch, gVrfOrch, m_chassis_app_db.get());
 
             vector<string> qos_tables = {
                 CFG_TC_TO_QUEUE_MAP_TABLE_NAME,
