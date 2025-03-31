@@ -506,6 +506,7 @@ bool IntfsOrch::setIntf(const string& alias, sai_object_id_t vrf_id, const IpPre
             intfs_entry.ref_count = 0;
             intfs_entry.proxy_arp = false;
             intfs_entry.vrf_id = vrf_id;
+            intfs_entry.remove_intf_hw_pending = false;
             m_syncdIntfses[alias] = intfs_entry;
             m_vrfOrch->increaseVrfRefCount(vrf_id);
         }
@@ -541,6 +542,21 @@ bool IntfsOrch::setIntf(const string& alias, sai_object_id_t vrf_id, const IpPre
             {
                 gPortsOrch->setPort(alias, port);
             }
+        }
+
+        if (!ip_prefix && (m_syncdIntfses[alias].vrf_id != vrf_id))
+        {
+            if (m_syncdIntfses[alias].ip_addresses.size() == 0)
+            {
+                removeIntf(alias, m_syncdIntfses[alias].vrf_id, nullptr);
+            }
+            return false;
+        }
+
+        if (m_syncdIntfses[alias].remove_intf_hw_pending)
+        {
+            SWSS_LOG_NOTICE("Router interface %s is under removing. Delay creating", alias.c_str());
+            return false;
         }
     }
 
@@ -1322,6 +1338,7 @@ bool IntfsOrch::removeRouterIntfs(Port &port)
 
     if (m_syncdIntfses[port.m_alias].ref_count > 0)
     {
+        m_syncdIntfses[port.m_alias].remove_intf_hw_pending = true;
         SWSS_LOG_NOTICE("Router interface %s is still referenced with ref count %d", port.m_alias.c_str(), m_syncdIntfses[port.m_alias].ref_count);
         return false;
     }

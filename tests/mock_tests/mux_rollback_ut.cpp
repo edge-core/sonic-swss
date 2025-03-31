@@ -257,7 +257,7 @@ namespace mux_rollback_test
             gDirectory.set(gFdbOrch);
             ut_orch_list.push_back((Orch **)&gFdbOrch);
 
-            gNeighOrch = new NeighOrch(m_app_db.get(), APP_NEIGH_TABLE_NAME, gIntfsOrch, gFdbOrch, gPortsOrch, m_chassis_app_db.get());
+            gNeighOrch = new NeighOrch(m_app_db.get(), APP_NEIGH_TABLE_NAME, gIntfsOrch, gFdbOrch, gPortsOrch, gVrfOrch, m_chassis_app_db.get());
             gDirectory.set(gNeighOrch);
             ut_orch_list.push_back((Orch **)&gNeighOrch);
 

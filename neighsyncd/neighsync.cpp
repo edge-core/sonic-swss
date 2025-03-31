@@ -23,6 +23,7 @@ using namespace swss;
 #define RESERVED_IPV4_LL    "169.254.0.1"
 #define SHORT_NAME_LAG_PREFIX "Po"
 #define SHORT_NAME_ETH_PREFIX "Eth"
+#define DEFAULT_VRF         "default"
 
 NeighSync::NeighSync(RedisPipeline *pipelineAppDB, DBConnector *stateDb, DBConnector *cfgDb) :
     m_neighTable(pipelineAppDB, APP_NEIGH_TABLE_NAME),
@@ -102,7 +103,7 @@ bool NeighSync::isRouterInterface(const std::string &intfName)
     return false;
 }
 
-void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
+void NeighSync::onMsgNbr(int nlmsg_type, struct nl_object *obj)
 {
     char ipStr[MAX_ADDR_SIZE + 1] = {0};
     char macStr[MAX_ADDR_SIZE + 1] = {0};
@@ -244,11 +245,30 @@ void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
         return;
     }
 
+    string vrfName = DEFAULT_VRF;
+    if (m_intf_master.find(intfName) != m_intf_master.end())
+    {
+        if (m_intf_master[intfName] != 0)
+            vrfName = LinkCache::getInstance().ifindexToName(m_intf_master[intfName]);
+    }
+    else
+    {
+        //m_intf_master may be empty after warm reboot, so get the VRF name through netlink cache directly
+        //to avoid this situation.
+        struct rtnl_link *link = LinkCache::getInstance().getLinkByName(intfName.c_str());
+
+        if (link && rtnl_link_get_master(link) != 0)
+            vrfName = LinkCache::getInstance().ifindexToName(rtnl_link_get_master(link));
+    }
+
     std::vector<FieldValueTuple> fvVector;
     FieldValueTuple f("family", family);
     FieldValueTuple nh("neigh", macStr);
+    FieldValueTuple vrf("vrf", vrfName);
+
     fvVector.push_back(nh);
     fvVector.push_back(f);
+    fvVector.push_back(vrf);
 
     // If warmstart is in progress, we take all netlink changes into the cache map
     if (m_AppRestartAssist->isWarmStartInProgress())
@@ -313,4 +333,45 @@ bool NeighSync::isLinkLocalEnabled(const string &port)
 
     SWSS_LOG_INFO("IPv6 Link local is not enabled on %s", port.c_str());
     return false;
+}
+
+void NeighSync::onMsgLink(int nlmsg_type, struct nl_object *obj)
+{
+    struct rtnl_link *link;
+    char *ifname = NULL;
+    char *nil = "NULL";
+
+    link = (struct rtnl_link *)obj;
+    ifname = rtnl_link_get_name(link);
+
+    SWSS_LOG_INFO("Op:%d dev %s", nlmsg_type, ifname? ifname: nil);
+    if (nlmsg_type == RTM_NEWLINK)
+    {
+        int master = rtnl_link_get_master(link);
+        m_intf_master[ifname]  =  master;
+    }
+    else
+    {
+        m_intf_master.erase(ifname);
+    }
+
+    return;
+}
+
+void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
+{
+    if ((nlmsg_type != RTM_NEWLINK) && (nlmsg_type != RTM_DELLINK) &&
+        (nlmsg_type != RTM_NEWNEIGH) && (nlmsg_type != RTM_DELNEIGH) && (nlmsg_type != RTM_GETNEIGH))
+    {
+        SWSS_LOG_DEBUG("netlink: unhandled event: %d", nlmsg_type);
+        return;
+    }
+    if ((nlmsg_type == RTM_NEWLINK) || (nlmsg_type == RTM_DELLINK))
+    {
+        onMsgLink(nlmsg_type, obj);
+    }
+    else
+    {
+        onMsgNbr(nlmsg_type, obj);
+    }
 }

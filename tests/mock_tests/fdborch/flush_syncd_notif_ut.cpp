@@ -114,6 +114,9 @@ namespace fdb_syncd_flush_test
                                                   stateMclagDbFdb, 
                                                   m_portsOrch.get());
 
+            ASSERT_EQ(gNeighOrch, nullptr);
+            gNeighOrch = new NeighOrch(m_app_db.get(), APP_NEIGH_TABLE_NAME, gIntfsOrch, m_fdborch.get(), m_portsOrch.get(), gVrfOrch, m_chassis_app_db.get());
+
             ASSERT_EQ(gMlagOrch, nullptr);
 
             vector<string> mlag_tables = {
@@ -128,6 +131,8 @@ namespace fdb_syncd_flush_test
             gCrmOrch = nullptr;
             delete gMlagOrch;
             gMlagOrch = nullptr;
+            delete gNeighOrch;
+            gNeighOrch = nullptr;
 
             gDirectory.m_values.clear();
             ut_helper::uninitSaiApi();

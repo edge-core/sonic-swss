@@ -44,6 +44,9 @@ private:
     bool isLinkLocalEnabled(const std::string &port);
     Table* getInterfaceTable(const std::string &intfName);
     bool isRouterInterface(const std::string &intfName);
+    void onMsgNbr(int nlmsg_type, struct nl_object *obj);
+    void onMsgLink(int nlmsg_type, struct nl_object *obj);
+    std::map<std::string, int> m_intf_master;
 };
 
 }
