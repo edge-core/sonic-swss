@@ -1671,7 +1671,19 @@ bool  VxlanTunnelOrch::delTunnelUser(const std::string remote_vtep, uint32_t vni
     vtep_ptr->deleteDynamicDIPTunnel(remote_vtep, usr);
     SWSS_LOG_NOTICE("diprefcnt for remote %s = %d",
                      remote_vtep.c_str(), vtep_ptr->getRemoteEndPointRefCnt(remote_vtep));
-
+    if (vtep_ptr->del_tnl_hw_pending && !vtep_ptr->isTunnelReferenced())
+    {
+        port_tunnel_name = getTunnelPortName(vtep_ptr->getSrcIP().to_string(), true);
+        gPortsOrch->getPort(port_tunnel_name,tunnelPort);
+        bool ret = gPortsOrch->removeBridgePort(tunnelPort);
+        if (!ret)
+        {
+            SWSS_LOG_ERROR("Remove Bridge port failed for source vtep = %s fdbcount = %d",
+                           port_tunnel_name.c_str(), tunnelPort.m_fdb_count);
+            return true;
+        }
+        gPortsOrch->removeTunnel(tunnelPort);
+    }
     vtep_ptr->deletePendingSIPTunnel();
 
     return true;
