@@ -1043,6 +1043,7 @@ void MclagLink::delDomainCfgDependentSelectables()
 
         delete p_state_vlan_mbr_subscriber_table;
         p_state_vlan_mbr_subscriber_table = NULL;
+        m_vlan_mbrship.clear();
     }
 }
 
