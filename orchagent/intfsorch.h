@@ -25,6 +25,7 @@ struct IntfsEntry
     int                 ref_count;
     sai_object_id_t     vrf_id;
     bool                proxy_arp;
+    bool                remove_intf_hw_pending;
 };
 
 typedef map<string, IntfsEntry> IntfsTable;
