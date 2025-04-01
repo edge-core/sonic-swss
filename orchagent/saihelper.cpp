@@ -758,6 +758,32 @@ task_process_status handleSaiRemoveStatus(sai_api_t api, sai_status_t status, vo
                     break;
             }
             break;
+        case SAI_API_FDB:
+            switch (status)
+            {
+                case SAI_STATUS_SUCCESS:
+                    SWSS_LOG_WARN("SAI_STATUS_SUCCESS is not expected in handleSaiRemoveStatus");
+                    return task_success;
+                case SAI_STATUS_INVALID_PARAMETER:
+                    /*
+                     *  In FDB deletion, there are scenarios where the flushbyES is called before removeFdbEntry
+                     *  If entry already deleted in AsicDb, the FDB SAI deletion would report the status of SAI_STATUS_INVALID_PARAMETER,
+                     *  and orchagent should ignore the error and retry until hardware callback update FDB.
+                     */
+                    return task_need_retry;
+                case SAI_STATUS_ITEM_NOT_FOUND:
+                    /*
+                     *  In FDB deletion, there are scenarios where the flushbyES is called before removeFdbEntry
+                     *  If entry already deleted in sai, the FDB SAI deletion would report the status of SAI_STATUS_ITEM_NOT_FOUND,
+                     *  and orchagent should ignore the error and retry until hardware callback update FDB.
+                     */
+                    return task_need_retry;
+                default:
+                    SWSS_LOG_ERROR("Encountered failure in remove operation, exiting orchagent, SAI API: %s, status: %s",
+                                sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
+                    exit(EXIT_FAILURE);
+            }
+            break;
         case SAI_API_BRIDGE:
             switch (status)
             {
