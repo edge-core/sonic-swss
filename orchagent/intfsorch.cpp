@@ -546,10 +546,7 @@ bool IntfsOrch::setIntf(const string& alias, sai_object_id_t vrf_id, const IpPre
 
         if (!ip_prefix && (m_syncdIntfses[alias].vrf_id != vrf_id))
         {
-            if (m_syncdIntfses[alias].ip_addresses.size() == 0)
-            {
-                removeIntf(alias, m_syncdIntfses[alias].vrf_id, nullptr);
-            }
+            removeIntf(alias, m_syncdIntfses[alias].vrf_id, nullptr);
             return false;
         }
 
@@ -655,6 +652,29 @@ bool IntfsOrch::removeIntf(const string& alias, sai_object_id_t vrf_id, const Ip
 
     if (!ip_prefix)
     {
+        if (m_syncdIntfses[alias].ip_addresses.size() != 0)
+        {
+            for (auto it = m_syncdIntfses[alias].ip_addresses.begin(); it != m_syncdIntfses[alias].ip_addresses.end(); )
+            {
+                removeIp2MeRoute(port.m_vr_id, *it);
+
+                if (gMySwitchType == "voq")
+                {
+                    if (gPortsOrch->isInbandPort(alias))
+                    {
+                        gNeighOrch->delInbandNeighbor(alias, it->getIp());
+                    }
+                }
+
+                if (port.m_type == Port::VLAN)
+                {
+                    removeDirectedBroadcast(port, *it);
+                }
+
+                it = m_syncdIntfses[alias].ip_addresses.erase(it);
+            }
+        }
+
         if (m_syncdIntfses[alias].ip_addresses.size() == 0 && removeRouterIntfs(port))
         {
             gPortsOrch->decreasePortRefCount(alias);
