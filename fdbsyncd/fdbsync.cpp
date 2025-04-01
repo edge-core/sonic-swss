@@ -453,7 +453,7 @@ void FdbSync::updateMclagRemoteMac (struct m_fdb_info *info)
     {
         macDelVxlanEntry(key, info);
         SWSS_LOG_NOTICE("[MCLAG] Local learn event deleting from VXLAN table DEL_KEY %s", key.c_str());
-        macDelVxlan(key, "");
+        macDelVxlan(key);
     }
 
     return;

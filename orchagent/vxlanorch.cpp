@@ -2177,6 +2177,23 @@ bool VxlanTunnelMapOrch::delOperation(const Request& request)
     return true;
 }
 
+bool VxlanTunnelMapOrch::isIntfConfigVlanVni(string alias)
+{
+    uint32_t vlan_id = 0;
+
+    if (!alias.compare(0, strlen(VLAN_PREFIX), VLAN_PREFIX))
+    {
+        vlan_id = std::stoi(alias.substr(strlen(VLAN_PREFIX)));
+    }
+
+    if (vlan_id)
+    {
+        return std::any_of(vxlan_tunnel_map_table_.begin(), vxlan_tunnel_map_table_.end(),
+                          [vlan_id](const auto& map_it) { return map_it.second.vlan_id == vlan_id; });
+    }
+    return false;
+}
+
 //------------------- VXLAN_VRF_MAP Table --------------------------//
 
 bool VxlanVrfMapOrch::addOperation(const Request& request)
