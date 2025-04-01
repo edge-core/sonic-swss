@@ -72,6 +72,7 @@ private:
                              std::string src_ip, std::string dst_ip, std::string vlan_id);
     int downVxlanNetdevice(std::string vxlan_dev_name);
     int deleteVxlanNetdevice(std::string vxlan_dev_name);
+    void resetVlanNetdevice(std::string vlan_dev_name);
     std::vector<std::string> parseNetDev(const std::string& stdout);
     void getAllVxlanNetDevices();
 
@@ -91,13 +92,13 @@ private:
 
     void clearAllVxlanDevices();
     void disableLearningForAllVxlanNetdevices();
-    void updateIntfIp2me(const std::string &alias);
-    void setIntfIp2me(const std::string &alias, const std::string &opCmd,
+    std::string genIntfIp2meCmds(const std::string &alias);
+    std::string getIntfIp2meCmd(const std::string &alias, const std::string &opCmd,
                             const IpPrefix &ipPrefix, const std::string &vrfName);
 
     ProducerStateTable m_appVxlanTunnelTableProducer, m_appVxlanTunnelMapTable,m_appEvpnNvoTable;
     Table m_cfgVxlanTunnelTable,m_cfgVnetTable,m_stateVrfTable,m_stateVxlanTable, m_appSwitchTable, m_appVxlanTunnelTable;
-    Table m_stateVlanTable, m_stateNeighSuppressVlanTable, m_stateVxlanTunnelTable, m_stateIntfTable;
+    Table m_stateVlanTable, m_stateNeighSuppressVlanTable, m_stateVxlanTunnelTable, m_stateIntfTable, m_appNeighTable;
 
     /*
     * Vxlan Tunnel Cache
@@ -121,6 +122,8 @@ private:
     bool m_in_reconcile;
     std::vector<std::string> m_appVxlanTunnelMapKeysRecon;
     std::map<std::string, std::string> m_vxlanNetDevices;
+
+    bool isNeighExist(std::string vlan_dev_name);
 };
 
 }
