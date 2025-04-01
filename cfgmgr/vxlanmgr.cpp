@@ -208,6 +208,7 @@ VxlanMgr::VxlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb,
         m_appVxlanTunnelMapTable(appDb, APP_VXLAN_TUNNEL_MAP_TABLE_NAME),
         m_appSwitchTable(appDb, APP_SWITCH_TABLE_NAME),
         m_appEvpnNvoTable(appDb, APP_VXLAN_EVPN_NVO_TABLE_NAME),
+        m_appNeighTable(appDb, APP_NEIGH_TABLE_NAME),
         m_cfgVxlanTunnelTable(cfgDb, CFG_VXLAN_TUNNEL_TABLE_NAME),
         m_cfgVnetTable(cfgDb, CFG_VNET_TABLE_NAME),
         m_stateVrfTable(stateDb, STATE_VRF_TABLE_NAME),
@@ -638,7 +639,11 @@ bool VxlanMgr::doVxlanTunnelMapCreateTask(const KeyOpFieldsValuesTuple & t)
     FieldValueTuple s("netdev", vxlan_dev_name);
     fvVector.push_back(s);
     m_stateNeighSuppressVlanTable.set(key,fvVector);
-    updateIntfIp2me(vlan);
+
+    if (isNeighExist(vlan))
+    {
+        resetVlanNetdevice(vlan);
+    }
     return true;
 }
 
@@ -688,7 +693,11 @@ bool VxlanMgr::doVxlanTunnelMapDeleteTask(const KeyOpFieldsValuesTuple & t)
     std::string key = "Vlan" + vxlan_dev_name.substr(found+1,vxlan_dev_name.length());
     SWSS_LOG_INFO("Delete Tunnel Map for %s -> %s ", key.c_str(), vxlan_dev_name.c_str());
     m_stateNeighSuppressVlanTable.del(key);
-    updateIntfIp2me(vlan);
+
+    if (isNeighExist(vlan))
+    {
+        resetVlanNetdevice(vlan);
+    }
     return true;
 }
 
@@ -810,7 +819,7 @@ bool VxlanMgr::isVlanStateOk(const std::string &vlanName)
     return false;
 }
 
-void VxlanMgr::setIntfIp2me(const std::string &alias, const std::string &opCmd,
+std::string VxlanMgr::getIntfIp2meCmd(const std::string &alias, const std::string &opCmd,
                         const IpPrefix &ipPrefix, const std::string &vrfName)
 {
     stringstream    cmd;
@@ -833,24 +842,22 @@ void VxlanMgr::setIntfIp2me(const std::string &alias, const std::string &opCmd,
             (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias)
             << " scope link vrf " << shellquote(vrfName));
     }
-    int ret = swss::exec(cmd.str(), res);
-    if (ret)
-    {
-        SWSS_LOG_WARN("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
-    }
+
+    return cmd.str();
 }
 
-void VxlanMgr::updateIntfIp2me(const std::string &alias)
+std::string VxlanMgr::genIntfIp2meCmds(const std::string &alias)
 {
     vector<FieldValueTuple> temp;
+    stringstream cmds;
     if (alias.compare(0, strlen(VLAN_PREFIX), VLAN_PREFIX))
     {
-        return;
+        return "";
     }
     if (!m_stateVlanTable.get(alias, temp))
     {
-        SWSS_LOG_DEBUG("%s is ready", alias.c_str());
-        return;
+        SWSS_LOG_DEBUG("%s is not ready", alias.c_str());
+        return "";
     }
 
     std::vector<std::string> keys;
@@ -884,9 +891,9 @@ void VxlanMgr::updateIntfIp2me(const std::string &alias)
                     }
                 }
             }
-            setIntfIp2me(alias, "append", ip_prefix, vrfName);
         }
     }
+    return cmds.str();
 }
 
 std::pair<bool, std::string> VxlanMgr::getVxlanRouterMacAddress()
@@ -1170,6 +1177,37 @@ int VxlanMgr::createVxlanNetdevice(std::string vxlanTunnelName, std::string vni_
     return swss::exec(cmds,res);
 }
 
+/* Force the neighbor cache to flush and extend the waiting period until the neighbor is confirmed as deleted.
+This ensures that the route can be removed and then re-added, allowing for the ECMP group to be recreated.
+Consequently, this process ensures that the ECMP group is accurately transferred from the underlay to the overlay network
+*/
+void VxlanMgr::resetVlanNetdevice(std::string vlan_dev_name)
+{
+    stringstream    cmds, reset_cmd;
+    std::string intfIp2meCmd;
+    reset_cmd << IP_CMD << " link set dev " << shellquote(vlan_dev_name) << " down && ";
+    reset_cmd << "sleep 3 && ";
+    reset_cmd << IP_CMD << " link set dev " << shellquote(vlan_dev_name) << " up ";
+
+    intfIp2meCmd = genIntfIp2meCmds(vlan_dev_name);
+
+    if (intfIp2meCmd.empty())
+    {
+        cmds << "bash -c \"" << reset_cmd.str() << "\" >/dev/null 2>&1 &";
+    } else {
+        cmds << "bash -c \"" << reset_cmd.str() << intfIp2meCmd << "\" >/dev/null 2>&1 &";
+    }
+
+    SWSS_LOG_INFO("Resetting vlan %s, Cmds: %s", vlan_dev_name.c_str(), cmds.str().c_str());
+
+    string res;
+    int ret = swss::exec(cmds.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_WARN("Command '%s' failed with rc %d", cmds.str().c_str(), ret);
+    }
+}
+
 int VxlanMgr::downVxlanNetdevice(std::string vxlan_dev_name)
 {
     int ret = 0;
@@ -1438,4 +1476,17 @@ bool VxlanMgr::isTunnelActive(std::string vxlanTunnelName)
     }
 
     return true;
+}
+
+bool VxlanMgr::isNeighExist(std::string vlan_dev_name)
+{
+    std::vector<std::string> keys;
+    m_appNeighTable.getKeys(keys);
+    for (const auto& key : keys) {
+        if (key.find(vlan_dev_name + ":") != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+
 }
