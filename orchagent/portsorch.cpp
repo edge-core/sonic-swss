@@ -258,7 +258,7 @@ static const vector<sai_queue_stat_t> queue_stat_ids =
 
 static const vector<sai_queue_stat_t> queueWatermarkStatIds =
 {
-    SAI_QUEUE_STAT_SHARED_WATERMARK_BYTES,
+    SAI_QUEUE_STAT_WATERMARK_BYTES,
 };
 
 static const vector<sai_ingress_priority_group_stat_t> ingressPriorityGroupWatermarkStatIds =
