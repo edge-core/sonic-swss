@@ -14,6 +14,7 @@ extern "C" {
 #define ACL_TABLE_TYPE         "TYPE"
 #define ACL_TABLE_PORTS        "PORTS"
 #define ACL_TABLE_SERVICES     "SERVICES"
+#define ACL_TABLE_ACTIONS      "ACTIONS"
 
 #define ACL_TABLE_TYPE_MATCHES      "MATCHES"
 #define ACL_TABLE_TYPE_BPOINT_TYPES "BIND_POINTS"

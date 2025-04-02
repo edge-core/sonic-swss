@@ -55,6 +55,7 @@ acl_rule_attr_lookup_t aclMatchLookup =
     { MATCH_L4_DST_PORT,       SAI_ACL_ENTRY_ATTR_FIELD_L4_DST_PORT },
     { MATCH_ETHER_TYPE,        SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE },
     { MATCH_VLAN_ID,           SAI_ACL_ENTRY_ATTR_FIELD_OUTER_VLAN_ID },
+    { MATCH_VLAN_PRI,          SAI_ACL_ENTRY_ATTR_FIELD_OUTER_VLAN_PRI },
     { MATCH_IP_PROTOCOL,       SAI_ACL_ENTRY_ATTR_FIELD_IP_PROTOCOL },
     { MATCH_NEXT_HEADER,       SAI_ACL_ENTRY_ATTR_FIELD_IPV6_NEXT_HEADER },
     { MATCH_TCP_FLAGS,         SAI_ACL_ENTRY_ATTR_FIELD_TCP_FLAGS },
@@ -443,10 +444,8 @@ static map<sai_acl_counter_attr_t, sai_acl_counter_attr_t> aclCounterLookup =
 
 static map<AclObjectStatus, string> aclObjectStatusLookup =
 {
-    {AclObjectStatus::ACTIVE, "Active"},
-    {AclObjectStatus::INACTIVE, "Inactive"},
-    {AclObjectStatus::PENDING_CREATION, "Pending creation"},
-    {AclObjectStatus::PENDING_REMOVAL, "Pending removal"}
+    {AclObjectStatus::SUCCESS, "SUCCESS"},
+    {AclObjectStatus::FAILURE, "FAILURE"}
 };
 
 static sai_acl_table_attr_t AclEntryFieldToAclTableField(sai_acl_entry_attr_t attr)
@@ -620,6 +619,10 @@ AclTableType AclTableTypeBuilder::build()
     return tableType;
 }
 
+AclTableTypeParser::AclTableTypeParser(AclOrch* pAclOrch) : m_pAclOrch(pAclOrch)
+{
+}
+
 bool AclTableTypeParser::parse(const std::string& key,
                                const vector<swss::FieldValueTuple>& fieldValues,
                                AclTableTypeBuilder& builder)
@@ -734,7 +737,15 @@ bool AclTableTypeParser::parseAclTableTypeActions(const std::string& value, AclT
         }
         SWSS_LOG_INFO("Added action %s", action.c_str());
 
-        builder.withAction(AclEntryActionToAclAction(saiActionAttr));
+        sai_acl_action_type_t saiActionType = AclEntryActionToAclAction(saiActionAttr);
+
+        if (!m_pAclOrch->isAclActionSupported(ACL_STAGE_INGRESS, saiActionType) &&
+            !m_pAclOrch->isAclActionSupported(ACL_STAGE_EGRESS, saiActionType))
+        {
+            return false;
+        }
+
+        builder.withAction(saiActionType);
     }
 
     return true;
@@ -802,6 +813,49 @@ bool AclRule::validateAddMatch(string attr_name, string attr_value)
     vector<sai_object_id_t> outPorts;
 
     matchData.enable = true;
+
+    if (m_pTable->stage == ACL_STAGE_EGRESS)
+    {
+        if (attr_name == MATCH_ETHER_TYPE)
+        {
+            if (to_uint<uint16_t>(attr_value) == 0x0800)
+            {
+                SWSS_LOG_INFO("Replace %s : %s with ip type", attr_name.c_str(), attr_value.c_str());
+                if (!processIpType(IP_TYPE_IPv4ANY, matchData.data.u32))
+                {
+                    SWSS_LOG_ERROR("Invalid IP type");
+                    return false;
+                }
+
+                matchData.mask.u32 = 0xFFFFFFFF;
+            }
+            else if (to_uint<uint16_t>(attr_value) == 0x86DD)
+            {
+                SWSS_LOG_INFO("Replace %s : %s with ip type", attr_name.c_str(), attr_value.c_str());
+                if (!processIpType(IP_TYPE_IPv6ANY, matchData.data.u32))
+                {
+                    SWSS_LOG_ERROR("Invalid IP type");
+                    return false;
+                }
+
+                matchData.mask.u32 = 0xFFFFFFFF;
+            }
+            else
+            {
+                SWSS_LOG_ERROR("%s is not supported on egress", MATCH_ETHER_TYPE);
+                return false;
+            }
+
+            return setMatch(aclMatchLookup[MATCH_IP_TYPE], matchData);
+        }
+
+        if ((attr_name == MATCH_L4_SRC_PORT_RANGE) || (attr_name == MATCH_L4_DST_PORT_RANGE))
+        {
+            // Add patch here to skip port_range field but still set the rule to chip
+            SWSS_LOG_NOTICE("Skip %s in egress ACL table %s", attr_name.c_str(), m_pTable->id.c_str());
+            return true;
+        }
+    }
 
     try
     {
@@ -884,15 +938,15 @@ bool AclRule::validateAddMatch(string attr_name, string attr_value)
             // Support both exact value match and value/mask match
             auto flag_data = tokenize(attr_value, '/');
 
-            matchData.data.u8 = to_uint<uint8_t>(flag_data[0], 0, 0x3F);
+            matchData.data.u8 = to_uint<uint8_t>(flag_data[0], 0, 0xFF);
 
             if (flag_data.size() == 2)
             {
-                matchData.mask.u8 = to_uint<uint8_t>(flag_data[1], 0, 0x3F);
+                matchData.mask.u8 = to_uint<uint8_t>(flag_data[1], 0, 0xFF);
             }
             else
             {
-                matchData.mask.u8 = 0x3F;
+                matchData.mask.u8 = 0xFF;
             }
         }
         else if (attr_name == MATCH_ETHER_TYPE || attr_name == MATCH_L4_SRC_PORT || attr_name == MATCH_L4_DST_PORT)
@@ -981,7 +1035,7 @@ bool AclRule::validateAddMatch(string attr_name, string attr_value)
 
             return m_pTable->validateAclRuleMatch(SAI_ACL_ENTRY_ATTR_FIELD_ACL_RANGE_TYPE, *this);
         }
-        else if (attr_name == MATCH_TC)
+        else if (attr_name == MATCH_TC || attr_name == MATCH_VLAN_PRI)
         {
             matchData.data.u8 = to_uint<uint8_t>(attr_value);
             matchData.mask.u8 = 0xFF;
@@ -1168,19 +1222,14 @@ bool AclRule::createRule()
     status = sai_acl_api->create_acl_entry(&m_ruleOid, gSwitchId, (uint32_t)rule_attrs.size(), rule_attrs.data());
     if (status != SAI_STATUS_SUCCESS)
     {
-        if (status == SAI_STATUS_ITEM_ALREADY_EXISTS)
-        {
-            SWSS_LOG_NOTICE("ACL rule %s already exists", m_id.c_str());
-            return true;
-        }
         SWSS_LOG_ERROR("Failed to create ACL rule %s, rv:%d",
                 m_id.c_str(), status);
         AclRange::remove(range_objects, range_object_list.count);
         decreaseNextHopRefCount();
     }
-
-    if (status == SAI_STATUS_SUCCESS)
+    else
     {
+        m_active = true;
         gCrmOrch->incCrmAclTableUsedCounter(CrmResourceType::CRM_ACL_ENTRY, m_pTable->getOid());
     }
 
@@ -1234,19 +1283,16 @@ bool AclRule::removeRule()
     auto status = sai_acl_api->remove_acl_entry(m_ruleOid);
     if (status != SAI_STATUS_SUCCESS)
     {
-        if (status == SAI_STATUS_ITEM_NOT_FOUND)
-        {
-            SWSS_LOG_NOTICE("ACL rule already deleted");
-            m_ruleOid = SAI_NULL_OBJECT_ID;
-            return true;
-        }
         SWSS_LOG_ERROR("Failed to delete ACL rule, status %s", sai_serialize_status(status).c_str());
-        return false;
     }
+
+    m_active = false;
 
     gCrmOrch->decCrmAclTableUsedCounter(CrmResourceType::CRM_ACL_ENTRY, m_pTable->getOid());
 
     m_ruleOid = SAI_NULL_OBJECT_ID;
+
+    removeRanges();
 
     decreaseNextHopRefCount();
 
@@ -1262,10 +1308,12 @@ bool AclRule::remove()
         return false;
     }
 
-    auto res = removeRanges();
-    res &= removeCounter();
+    if (this->hasCounter())
+    {
+        m_pAclOrch->deregisterFlexCounter(*this);
+    }
 
-    return res;
+    return removeCounter();
 }
 
 void AclRule::updateInPorts()
@@ -1964,9 +2012,49 @@ void AclRulePacket::onUpdate(SubjectType, void *)
     // Do nothing
 }
 
+bool AclRulePacket::createRule()
+{
+    SWSS_LOG_ENTER();
+
+    return activate();
+}
+
+bool AclRulePacket::removeRule()
+{
+    return deactivate();
+}
+
+bool AclRulePacket::activate()
+{
+    SWSS_LOG_ENTER();
+
+    if (!AclRule::createRule())
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool AclRulePacket::deactivate()
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_active)
+    {
+        return true;
+    }
+
+    if (!AclRule::removeRule())
+    {
+        return false;
+    }
+
+    return true;
+}
+
 AclRuleMirror::AclRuleMirror(AclOrch *aclOrch, MirrorOrch *mirror, string rule, string table) :
         AclRule(aclOrch, rule, table),
-        m_state(false),
         m_pMirrorOrch(mirror)
 {
 }
@@ -2074,13 +2162,6 @@ bool AclRuleMirror::activate()
         return false;
     }
 
-    if (!m_pMirrorOrch->increaseRefCount(m_sessionName))
-    {
-        SWSS_LOG_THROW("Failed to increase mirror session reference count for session %s", m_sessionName.c_str());
-    }
-
-    m_state = true;
-
     return true;
 
 }
@@ -2089,7 +2170,7 @@ bool AclRuleMirror::deactivate()
 {
     SWSS_LOG_ENTER();
 
-    if (!m_state)
+    if (!m_active)
     {
         return true;
     }
@@ -2098,13 +2179,6 @@ bool AclRuleMirror::deactivate()
     {
         return false;
     }
-
-    if (!m_pMirrorOrch->decreaseRefCount(m_sessionName))
-    {
-        SWSS_LOG_THROW("Failed to decrease mirror session reference count for session %s", m_sessionName.c_str());
-    }
-
-    m_state = false;
 
     return true;
 }
@@ -2267,6 +2341,51 @@ bool AclTable::validateAddType(const AclTableType &tableType)
 
     type = tableType;
 
+    for (const auto& action : tableType.getActions())
+    {
+        m_aclActions.insert(action);
+    }
+
+    const std::unordered_set<string> noneDataPlaneAclTableType = {
+        TABLE_TYPE_MIRROR,
+        TABLE_TYPE_MIRRORV6,
+        TABLE_TYPE_MIRROR_DSCP,
+        TABLE_TYPE_PFCWD,
+        TABLE_TYPE_CTRLPLANE,
+        TABLE_TYPE_DTEL_FLOW_WATCHLIST,
+        TABLE_TYPE_MCLAG,
+        TABLE_TYPE_MUX,
+        TABLE_TYPE_DROP
+    };
+
+    if (noneDataPlaneAclTableType.count(tableType.getName()) == 0)
+    {
+        const std::unordered_set <sai_acl_action_type_t> defaultAction = {
+            SAI_ACL_ACTION_TYPE_REDIRECT,
+            SAI_ACL_ACTION_TYPE_PACKET_ACTION,
+            SAI_ACL_ACTION_TYPE_NO_NAT
+        };
+
+        for (auto action : defaultAction)
+        {
+            if (m_pAclOrch->isAclActionSupported(stage, action))
+            {
+                m_aclActions.insert(action);
+            }
+        }
+
+        // Validate all actions is supported
+        for (auto action : m_aclActions)
+        {
+            if (!m_pAclOrch->isAclActionSupported(stage, action))
+            {
+                SWSS_LOG_ERROR("Action %s is not supported on table %s",
+                               sai_metadata_get_acl_action_type_name(action), id.c_str());
+                return false;
+            }
+        }
+    }
+
     return true;
 }
 
@@ -2393,11 +2512,11 @@ bool AclTable::validateAclRuleMatch(sai_acl_entry_attr_t matchId, const AclRule&
 
 bool AclTable::validateAclRuleAction(sai_acl_entry_attr_t actionId, const AclRule& rule) const
 {
-    // This means ACL table can hold rules with any action.
-    if (!type.getActions().empty())
+    // m_aclActions is empty means ACL table can hold rules with any action.
+    if (!m_aclActions.empty())
     {
         auto action = AclEntryActionToAclAction(actionId);
-        if (!type.getActions().count(action))
+        if (!m_aclActions.count(action))
         {
             SWSS_LOG_ERROR("Action %s is not supported on table %s",
                 sai_metadata_get_acl_action_type_name(action), id.c_str());
@@ -2414,8 +2533,29 @@ bool AclTable::create()
 
     sai_attribute_t attr;
     vector<sai_attribute_t> table_attrs;
-    vector<int32_t> action_types_list {type.getActions().begin(), type.getActions().end()};
+    vector<int32_t> action_types_list;
     vector<int32_t> bpoint_list {type.getBindPointTypes().begin(), type.getBindPointTypes().end()};
+
+    sai_acl_stage_t acl_stage;
+    attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
+    acl_stage = (stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
+    attr.value.s32 = acl_stage;
+    table_attrs.push_back(attr);
+
+    if (acl_stage == SAI_ACL_STAGE_EGRESS)
+    {
+        for (std::vector<int>::iterator it = bpoint_list.begin(); it != bpoint_list.end(); )
+        {
+            if (*it != SAI_ACL_BIND_POINT_TYPE_PORT)
+            {
+                it = bpoint_list.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
 
     attr.id = SAI_ACL_TABLE_ATTR_ACL_BIND_POINT_TYPE_LIST;
     attr.value.s32list.count = static_cast<uint32_t>(bpoint_list.size());
@@ -2424,22 +2564,38 @@ bool AclTable::create()
 
     for (const auto& matchPair: type.getMatches())
     {
+        if (acl_stage == SAI_ACL_STAGE_EGRESS)
+        {
+            auto attr_id = matchPair.second->toSaiAttribute().id;
+
+            if (attr_id == SAI_ACL_TABLE_ATTR_FIELD_ETHER_TYPE)
+            {
+                continue;
+            }
+            else if (attr_id == SAI_ACL_TABLE_ATTR_FIELD_ACL_RANGE_TYPE)
+            {
+                continue;
+            }
+        }
+
         table_attrs.push_back(matchPair.second->toSaiAttribute());
     }
 
-    if (!action_types_list.empty())
+    if (!m_aclActions.empty())
     {
+        action_types_list.assign( m_aclActions.cbegin(), m_aclActions.cend());
+
         attr.id= SAI_ACL_TABLE_ATTR_ACL_ACTION_TYPE_LIST;
         attr.value.s32list.count = static_cast<uint32_t>(action_types_list.size());
         attr.value.s32list.list = action_types_list.data();
         table_attrs.push_back(attr);
     }
 
-    sai_acl_stage_t acl_stage;
-    attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
-    acl_stage = (stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
-    attr.value.s32 = acl_stage;
-    table_attrs.push_back(attr);
+    // sai_acl_stage_t acl_stage;
+    // attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
+    // acl_stage = (stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
+    // attr.value.s32 = acl_stage;
+    // table_attrs.push_back(attr);
 
     sai_status_t status = sai_acl_api->create_acl_table(&m_oid, gSwitchId, (uint32_t)table_attrs.size(), table_attrs.data());
     if (status != SAI_STATUS_SUCCESS)
@@ -2449,6 +2605,14 @@ bool AclTable::create()
 
     for (const auto& bpointType: type.getBindPointTypes())
     {
+        if (acl_stage == SAI_ACL_STAGE_EGRESS)
+        {
+            if (bpointType != SAI_ACL_BIND_POINT_TYPE_PORT)
+            {
+                continue;
+            }
+        }
+
         gCrmOrch->incCrmAclUsedCounter(CrmResourceType::CRM_ACL_TABLE, acl_stage, bpointType);
     }
 
@@ -2505,6 +2669,13 @@ void AclTable::onUpdate(SubjectType type, void *cntx)
         }
     }
 
+}
+
+bool AclTable::addActions(const std::vector<sai_acl_action_type_t>& actions)
+{
+    m_aclActions.insert(actions.begin(), actions.end());
+
+    return true;
 }
 
 bool AclTable::bind(sai_object_id_t portOid)
@@ -2680,12 +2851,6 @@ bool AclTable::clear()
     for (auto& rulepair: rules)
     {
         auto& rule = *rulepair.second;
-
-        if (rule.hasCounter())
-        {
-            m_pAclOrch->deregisterFlexCounter(rule);
-        }
-
         bool suc = rule.remove();
         if (!suc)
         {
@@ -3067,6 +3232,7 @@ void AclOrch::init(vector<TableConnector>& connectors, PortsOrch *portOrch, Mirr
     SWSS_LOG_ENTER();
 
     // Clear ACL_TABLE and ACL_RULE status from STATE_DB
+    removeAllTableTypeStatus();
     removeAllAclTableStatus();
     removeAllAclRuleStatus();
 
@@ -3405,6 +3571,8 @@ void AclOrch::initDefaultTableTypes()
 
     // Placeholder for control plane tables
     addAclTableType(builder.withName(TABLE_TYPE_CTRLPLANE).build());
+
+    m_predefinedAclTableTypeCount = static_cast<int>(m_AclTableTypes.size());
 }
 
 void AclOrch::queryAclActionCapability()
@@ -3631,6 +3799,7 @@ AclOrch::AclOrch(vector<TableConnector>& connectors, DBConnector* stateDb, Switc
         m_aclStageCapabilityTable(stateDb, STATE_ACL_STAGE_CAPABILITY_TABLE_NAME),
         m_aclTableStateTable(stateDb, STATE_ACL_TABLE_TABLE_NAME),
         m_aclRuleStateTable(stateDb, STATE_ACL_RULE_TABLE_NAME),
+        m_aclTableTypeStateTable(stateDb, STATE_ACL_TABLE_TYPE_TABLE_NAME),
         m_switchOrch(switchOrch),
         m_mirrorOrch(mirrorOrch),
         m_neighOrch(neighOrch),
@@ -3689,7 +3858,17 @@ void AclOrch::update(SubjectType type, void *cntx)
         {
             for (auto& rule : table.second.rules)
             {
+                bool old_state = rule.second->isActive();
+
                 rule.second->onUpdate(type, cntx);
+
+                if (old_state != rule.second->isActive())
+                {
+                    setAclRuleStatus(table.second.getId(),
+                                     rule.second->getId(),
+                                     AclObjectStatus::SUCCESS,
+                                     rule.second->isActive());
+                }
             }
         }
     }
@@ -4005,6 +4184,14 @@ bool AclOrch::removeAclTable(string table_id)
         sai_acl_stage_t sai_stage = (stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
         for (const auto& bpointType: type.getBindPointTypes())
         {
+            if (sai_stage == SAI_ACL_STAGE_EGRESS)
+            {
+                if (bpointType != SAI_ACL_BIND_POINT_TYPE_PORT)
+                {
+                    continue;
+                }
+            }
+
             gCrmOrch->decCrmAclUsedCounter(CrmResourceType::CRM_ACL_TABLE, sai_stage, bpointType, table_oid);
         }
 
@@ -4427,6 +4614,16 @@ void AclOrch::doAclTableTask(Consumer &consumer)
                     // TODO: validate control plane ACL table has this attribute
                     continue;
                 }
+                else if (attr_name == ACL_TABLE_ACTIONS)
+                {
+                    if (!processAclTableActions(attr_value, newTable))
+                    {
+                        SWSS_LOG_ERROR("Failed to process ACL table %s actions",
+                                       table_id.c_str());
+                        bAllAttributesOk = false;
+                        break;
+                    }
+                }
                 else
                 {
                     SWSS_LOG_ERROR("Unknown table attribute '%s'", attr_name.c_str());
@@ -4443,8 +4640,9 @@ void AclOrch::doAclTableTask(Consumer &consumer)
             }
 
             newTable.validateAddType(*tableType);
-            // Add mandatory ACL action if not present
-            newTable.addMandatoryActions();
+
+            newTable.addStageMandatoryMatchFields();
+
             // validate and create/update ACL Table
             if (bAllAttributesOk && newTable.validate())
             {
@@ -4464,8 +4662,7 @@ void AclOrch::doAclTableTask(Consumer &consumer)
                     {
                         SWSS_LOG_NOTICE("Successfully updated existing ACL table %s",
                                         table_id.c_str());
-                        // Mark ACL table as ACTIVE
-                        setAclTableStatus(table_id, AclObjectStatus::ACTIVE);
+                        setAclTableStatus(table_id, AclObjectStatus::SUCCESS, newTable);
                         it = consumer.m_toSync.erase(it);
                     }
                     else
@@ -4479,40 +4676,32 @@ void AclOrch::doAclTableTask(Consumer &consumer)
                 {
                     if (addAclTable(newTable))
                     {
-                        // Mark ACL table as ACTIVE
-                        setAclTableStatus(table_id, AclObjectStatus::ACTIVE);
+                        setAclTableStatus(table_id, AclObjectStatus::SUCCESS, newTable);
                         it = consumer.m_toSync.erase(it);
                     }
                     else
                     {
-                        setAclTableStatus(table_id, AclObjectStatus::PENDING_CREATION);
-                        it++;
+                        setAclTableStatus(table_id, AclObjectStatus::FAILURE, newTable);
+                        SWSS_LOG_ERROR("Failed to create ACL table %s to hardware",
+                                       table_id.c_str());
+                        it = consumer.m_toSync.erase(it);
                     }
                 }
             }
             else
             {
                 it = consumer.m_toSync.erase(it);
-                // Mark the ACL table as inactive if the configuration is invalid
-                setAclTableStatus(table_id, AclObjectStatus::INACTIVE);
+                setAclTableStatus(table_id, AclObjectStatus::FAILURE, newTable);
                 SWSS_LOG_ERROR("Failed to create ACL table %s, invalid configuration",
                         table_id.c_str());
             }
         }
         else if (op == DEL_COMMAND)
         {
-            if (removeAclTable(table_id))
-            {
-                // Remove ACL table status from STATE_DB
-                removeAclTableStatus(table_id);
-                it = consumer.m_toSync.erase(it);
-            }
-            else
-            {
-                // Set the status of ACL_TABLE to pending removal if removeAclTable returns error
-                setAclTableStatus(table_id, AclObjectStatus::PENDING_REMOVAL);
-                it++;
-            }
+            removeAclTable(table_id);
+
+            removeAclTableStatus(table_id);
+            it = consumer.m_toSync.erase(it);
         }
         else
         {
@@ -4672,36 +4861,29 @@ void AclOrch::doAclRuleTask(Consumer &consumer)
             {
                 if (addAclRule(newRule, table_id))
                 {
-                    setAclRuleStatus(table_id, rule_id, AclObjectStatus::ACTIVE);
-                    it = consumer.m_toSync.erase(it);
+                    setAclRuleStatus(table_id, rule_id, AclObjectStatus::SUCCESS, newRule->isActive());
                 }
                 else
                 {
-                    setAclRuleStatus(table_id, rule_id, AclObjectStatus::PENDING_CREATION);
-                    it++;
+                    setAclRuleStatus(table_id, rule_id, AclObjectStatus::FAILURE);
+                    SWSS_LOG_ERROR("Failed to create ACL rule in hardware.");
                 }
+
+                it = consumer.m_toSync.erase(it);
             }
             else
             {
                 it = consumer.m_toSync.erase(it);
-                // Mark the rule inactive if the configuration is invalid
-                setAclRuleStatus(table_id, rule_id, AclObjectStatus::INACTIVE);
+                setAclRuleStatus(table_id, rule_id, AclObjectStatus::FAILURE);
                 SWSS_LOG_ERROR("Failed to create ACL rule. Rule configuration is invalid");
             }
         }
         else if (op == DEL_COMMAND)
         {
-            if (removeAclRule(table_id, rule_id))
-            {
-                removeAclRuleStatus(table_id, rule_id);
-                it = consumer.m_toSync.erase(it);
-            }
-            else
-            {
-                // Mark pending removal status if removeAclRule returns error
-                setAclRuleStatus(table_id, rule_id, AclObjectStatus::PENDING_REMOVAL);
-                it++;
-            }
+            removeAclRule(table_id, rule_id);
+
+            removeAclRuleStatus(table_id, rule_id);
+            it = consumer.m_toSync.erase(it);
         }
         else
         {
@@ -4724,21 +4906,45 @@ void AclOrch::doAclTableTypeTask(Consumer &consumer)
 
         if (op == SET_COMMAND)
         {
-            AclTableTypeBuilder builder;
-            if (!AclTableTypeParser().parse(key, kfvFieldsValues(keyOpFieldValues), builder))
+            if (getUserDefinedAclTableTypeCount() == NUM_USER_DEFINED_ACL_TABLE_TYPE)
             {
-                SWSS_LOG_ERROR("Failed to parse ACL table type configuration %s", key.c_str());
+                string msg = "Maximum number(" +
+                    std::to_string(NUM_USER_DEFINED_ACL_TABLE_TYPE) +
+                    ") of user defined ACL table type reached";
+
+                SWSS_LOG_ERROR("%s", msg.c_str());
+                setAclTableTypeStatus(key, AclObjectStatus::FAILURE, msg);
                 it = consumer.m_toSync.erase(it);
                 continue;
             }
 
-            addAclTableType(builder.build());
+            AclTableTypeBuilder builder;
+            if (!AclTableTypeParser(this).parse(key, kfvFieldsValues(keyOpFieldValues), builder))
+            {
+                SWSS_LOG_ERROR("Failed to parse ACL table type configuration %s", key.c_str());
+
+                setAclTableTypeStatus(key, AclObjectStatus::FAILURE, "Invalid configuration");
+                it = consumer.m_toSync.erase(it);
+                continue;
+            }
+
+            if (!addAclTableType(builder.build()))
+            {
+                SWSS_LOG_ERROR("Failed to add ACL table type configuration %s", key.c_str());
+
+                setAclTableTypeStatus(key, AclObjectStatus::FAILURE, "Invalid configuration");
+                it = consumer.m_toSync.erase(it);
+                continue;
+            }
+
             SWSS_LOG_NOTICE("Created ACL table type %s", key.c_str());
+            setAclTableTypeStatus(key, AclObjectStatus::SUCCESS);
         }
         else if (op == DEL_COMMAND)
         {
             removeAclTableType(key);
             SWSS_LOG_NOTICE("Removed ACL table type %s", key.c_str());
+            m_aclTableTypeStateTable.del(key);
         }
         else
         {
@@ -4778,6 +4984,28 @@ bool AclOrch::processAclTablePorts(string portList, AclTable &aclTable)
         aclTable.link(bind_port_id);
         aclTable.portSet.emplace(alias);
     }
+
+    return true;
+}
+
+bool AclOrch::processAclTableActions(const string &actionList, AclTable& aclTable)
+{
+    SWSS_LOG_ENTER();
+    auto actions = tokenize(actionList, ',');
+    std::vector<sai_acl_action_type_t> sai_actions;
+
+    for (const auto &action : actions)
+    {
+        auto it = aclL3ActionLookup.find(to_upper(action));
+        if (it == aclL3ActionLookup.end())
+        {
+            return false;
+        }
+
+        sai_actions.push_back(AclEntryActionToAclAction(it->second));
+    }
+
+    aclTable.addActions(sai_actions);
 
     return true;
 }
@@ -4830,7 +5058,7 @@ bool AclOrch::processAclTableStage(string stage, acl_stage_type_t &acl_stage)
 
 const AclTableType* AclOrch::getAclTableType(const string& tableTypeName) const
 {
-    auto it = m_AclTableTypes.find(to_upper(tableTypeName));
+    auto it = m_AclTableTypes.find(tableTypeName);
     if (it == m_AclTableTypes.end())
     {
         SWSS_LOG_INFO("Failed to find ACL table type %s", tableTypeName.c_str());
@@ -4919,7 +5147,15 @@ sai_status_t AclOrch::deleteUnbindAclTable(sai_object_id_t table_oid)
         return status;
     }
 
-    return sai_acl_api->remove_acl_table(table_oid);
+    status = sai_acl_api->remove_acl_table(table_oid);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        // Ignore the sai delete failed case
+        SWSS_LOG_ERROR("Failed to delete ACL table, status %s",
+                       sai_serialize_status(status).c_str());
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t AclOrch::bindAclTable(AclTable &aclTable, bool bind)
@@ -4951,6 +5187,7 @@ void AclOrch::createDTelWatchListTables()
 
     dtelWLTable.validateAddStage(ACL_STAGE_INGRESS);
     dtelWLTable.validateAddType(builder
+        .withName(TABLE_TYPE_DTEL_FLOW_WATCHLIST)
         .withBindPointType(SAI_ACL_BIND_POINT_TYPE_SWITCH)
         .withMatch(make_shared<AclTableMatch>(SAI_ACL_TABLE_ATTR_FIELD_ETHER_TYPE))
         .withMatch(make_shared<AclTableMatch>(SAI_ACL_TABLE_ATTR_FIELD_SRC_IP))
@@ -5060,52 +5297,109 @@ bool AclOrch::getAclBindPortId(Port &port, sai_object_id_t &port_id)
     return true;
 }
 
-// Set the status of ACL table in STATE_DB
-void AclOrch::setAclTableStatus(string table_name, AclObjectStatus status)
+void AclOrch::setAclTableTypeStatus(const string& table_type_name,
+                           AclObjectStatus status,
+                           const string& message)
 {
     vector<FieldValueTuple> fvVector;
     fvVector.emplace_back("status", aclObjectStatusLookup[status]);
+    fvVector.emplace_back("message", message);
+    m_aclTableTypeStateTable.set(table_type_name, fvVector);
+}
+
+void AclOrch::removeAclTableTypeStatus(const string& table_type_name)
+{
+    m_aclTableTypeStateTable.del(table_type_name);
+}
+
+void AclOrch::setAclTableStatus(const string& table_name,
+                                AclObjectStatus status,
+                                const AclTable& table)
+{
+    vector<FieldValueTuple> fvVector;
+    fvVector.emplace_back("status", aclObjectStatusLookup[status]);
+
+    if (status == AclObjectStatus::SUCCESS)
+    {
+        auto actions = table.getActions();
+
+        string delimiter;
+        ostringstream aclActionstream;
+
+        for (const auto& action : actions)
+        {
+            for (const auto& actionIter : aclL3ActionLookup)
+            {
+                auto saiAction = AclEntryActionToAclAction(actionIter.second);
+                if (action != saiAction)
+                {
+                    continue;
+                }
+
+                aclActionstream << delimiter << actionIter.first;
+                delimiter = comma;
+            }
+        }
+
+        if (aclActionstream.tellp() != 0)
+        {
+            fvVector.emplace_back(STATE_DB_ACL_ACTION_FIELD_ACTION_LIST, aclActionstream.str());
+        }
+    }
+
     m_aclTableStateTable.set(table_name, fvVector);
 }
 
-// Remove the status record of given ACL table from STATE_DB
-void AclOrch::removeAclTableStatus(string table_name)
+void AclOrch::removeAclTableStatus(const string& table_name)
 {
     m_aclTableStateTable.del(table_name);
 }
 
-// Set the status of ACL rule in STATE_DB
-void AclOrch::setAclRuleStatus(string table_name, string rule_name, AclObjectStatus status)
+void AclOrch::setAclRuleStatus(const string& table_name,
+                               const string& rule_name,
+                               AclObjectStatus status,
+                               bool active)
 {
     vector<FieldValueTuple> fvVector;
     fvVector.emplace_back("status", aclObjectStatusLookup[status]);
+    fvVector.emplace_back("active", active ? "true" : "false");
     m_aclRuleStateTable.set(table_name + string("|") + rule_name, fvVector);
 }
 
-// Remove the status record of given ACL rule from STATE_DB
-void AclOrch::removeAclRuleStatus(string table_name, string rule_name)
+void AclOrch::removeAclRuleStatus(const string& table_name,
+                                  const string& rule_name)
 {
     m_aclRuleStateTable.del(table_name + string("|") + rule_name);
 }
 
-// Remove all ACL table status from STATE_DB
+void AclOrch::removeAllTableTypeStatus()
+{
+    vector<string> keys;
+    m_aclTableTypeStateTable.getKeys(keys);
+
+    for (const auto& key : keys)
+    {
+        m_aclTableTypeStateTable.del(key);
+    }
+}
+
 void AclOrch::removeAllAclTableStatus()
 {
     vector<string> keys;
     m_aclTableStateTable.getKeys(keys);
 
-    for (auto key : keys)
+    for (const auto& key : keys)
     {
         m_aclTableStateTable.del(key);
     }
 }
 
-// Remove all ACL rule status from STATE_DB
 void AclOrch::removeAllAclRuleStatus()
 {
     vector<string> keys;
     m_aclRuleStateTable.getKeys(keys);
-    for (auto key : keys)
+
+    for (const auto& key : keys)
     {
         m_aclRuleStateTable.del(key);
     }
