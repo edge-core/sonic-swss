@@ -78,6 +78,16 @@ static int cmdUpVxlan(const swss::VxlanMgr::VxlanInfo & info, std::string & res)
     return swss::exec(cmd.str(), res);
 }
 
+static int cmdDownVxlan(const swss::VxlanMgr::VxlanInfo & info, std::string & res)
+{
+    // ip link set dev {{VXLAN}} down
+    ostringstream cmd;
+    cmd << IP_CMD " link set dev "
+        << shellquote(info.m_vxlan)
+        << " down";
+    return swss::exec(cmd.str(), res);
+}
+
 static int cmdCreateVxlanIf(const swss::VxlanMgr::VxlanInfo & info, std::string & res)
 {
     // ip link add {{VXLAN_IF}} type bridge
@@ -130,12 +140,31 @@ static int cmdUpVxlanIf(const swss::VxlanMgr::VxlanInfo & info, std::string & re
     return swss::exec(cmd.str(), res);
 }
 
+static int cmdDownVxlanIf(const swss::VxlanMgr::VxlanInfo & info, std::string & res)
+{
+    // ip link set dev {{VXLAN_IF}} down
+    ostringstream cmd;
+    cmd << IP_CMD " link set dev "
+        << shellquote(info.m_vxlanIf)
+        << " down";
+    return swss::exec(cmd.str(), res);
+}
+
 static int cmdDeleteVxlan(const swss::VxlanMgr::VxlanInfo & info, std::string & res)
 {
     // ip link del dev {{VXLAN}}
     ostringstream cmd;
     cmd << IP_CMD " link del dev "
         << shellquote(info.m_vxlan);
+    return swss::exec(cmd.str(), res);
+}
+
+static int cmdVxlanLearningOff(const swss::VxlanMgr::VxlanInfo & info, std::string & res)
+{
+    // bridge link set dev {{VXLAN}} learning off
+    ostringstream cmd;
+    cmd << BRIDGE_CMD << " link set dev "
+        << shellquote(info.m_vxlan) << " learning off";
     return swss::exec(cmd.str(), res);
 }
 
@@ -185,7 +214,8 @@ VxlanMgr::VxlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb,
         m_stateVxlanTable(stateDb, STATE_VXLAN_TABLE_NAME),
         m_stateVlanTable(stateDb, STATE_VLAN_TABLE_NAME),
         m_stateNeighSuppressVlanTable(stateDb, STATE_NEIGH_SUPPRESS_VLAN_TABLE_NAME),
-        m_stateVxlanTunnelTable(stateDb, STATE_VXLAN_TUNNEL_TABLE_NAME)
+        m_stateVxlanTunnelTable(stateDb, STATE_VXLAN_TUNNEL_TABLE_NAME),
+        m_stateIntfTable(stateDb, STATE_INTERFACE_TABLE_NAME)
 {
     getAllVxlanNetDevices();
 
@@ -608,7 +638,7 @@ bool VxlanMgr::doVxlanTunnelMapCreateTask(const KeyOpFieldsValuesTuple & t)
     FieldValueTuple s("netdev", vxlan_dev_name);
     fvVector.push_back(s);
     m_stateNeighSuppressVlanTable.set(key,fvVector);
-
+    updateIntfIp2me(vlan);
     return true;
 }
 
@@ -658,6 +688,7 @@ bool VxlanMgr::doVxlanTunnelMapDeleteTask(const KeyOpFieldsValuesTuple & t)
     std::string key = "Vlan" + vxlan_dev_name.substr(found+1,vxlan_dev_name.length());
     SWSS_LOG_INFO("Delete Tunnel Map for %s -> %s ", key.c_str(), vxlan_dev_name.c_str());
     m_stateNeighSuppressVlanTable.del(key);
+    updateIntfIp2me(vlan);
     return true;
 }
 
@@ -690,6 +721,7 @@ bool VxlanMgr::doVxlanEvpnNvoCreateTask(const KeyOpFieldsValuesTuple & t)
         }
         if (field == SOURCE_VTEP)
         {
+            disableLearningForAllVxlanNetdevices();
             m_EvpnNvoCache[EvpnNvoName] = value;
         }
     }
@@ -778,6 +810,85 @@ bool VxlanMgr::isVlanStateOk(const std::string &vlanName)
     return false;
 }
 
+void VxlanMgr::setIntfIp2me(const std::string &alias, const std::string &opCmd,
+                        const IpPrefix &ipPrefix, const std::string &vrfName)
+{
+    stringstream    cmd;
+    string          res;
+    string          ipPrefixStr = ipPrefix.getIp().to_string();
+
+    if (opCmd == "append")
+    {
+        if (vrfName == "")
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias));
+        else
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias) << " vrf " << shellquote(vrfName));
+    }
+    else
+    {
+        if (vrfName == "")
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias)
+            << " scope link");
+        else
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias)
+            << " scope link vrf " << shellquote(vrfName));
+    }
+    int ret = swss::exec(cmd.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_WARN("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+    }
+}
+
+void VxlanMgr::updateIntfIp2me(const std::string &alias)
+{
+    vector<FieldValueTuple> temp;
+    if (alias.compare(0, strlen(VLAN_PREFIX), VLAN_PREFIX))
+    {
+        return;
+    }
+    if (!m_stateVlanTable.get(alias, temp))
+    {
+        SWSS_LOG_DEBUG("%s is ready", alias.c_str());
+        return;
+    }
+
+    std::vector<std::string> keys;
+    m_stateIntfTable.getKeys(keys);
+    for (const auto& tmp_key : keys)
+    {
+        if (string(tmp_key).find(alias+'|') == string::npos)
+        {
+            continue;
+        }
+        vector<string> intf_keys = tokenize(tmp_key, '|');
+        IpPrefix ip_prefix;
+        if (intf_keys.size() > 1)
+        {
+            vector<FieldValueTuple> temp;
+            ip_prefix = tmp_key.substr(tmp_key.find('|')+1);
+            if ((ip_prefix.isV4() == true) && (ip_prefix.getIp().getAddrScope() == IpAddress::AddrScope::LINK_SCOPE))
+            {
+                continue;
+            }
+            string vrfName = "";
+            if (m_stateIntfTable.get(alias, temp))
+            {
+                for (const auto &idx : temp)
+                {
+                    const auto &field = fvField(idx);
+                    const auto &value = fvValue(idx);
+                    if (field == "vrf")
+                    {
+                        vrfName = value;
+                    }
+                }
+            }
+            setIntfIp2me(alias, "append", ip_prefix, vrfName);
+        }
+    }
+}
+
 std::pair<bool, std::string> VxlanMgr::getVxlanRouterMacAddress()
 {
     std::vector<FieldValueTuple> temp;
@@ -835,6 +946,7 @@ bool VxlanMgr::createVxlan(const VxlanInfo & info)
     ret = cmdCreateVxlanIf(info, res);
     if (ret != RET_SUCCESS)
     {
+        cmdDownVxlan(info, res);
         cmdDeleteVxlan(info, res);
         SWSS_LOG_WARN(
             "Fail to create vxlan interface %s",
@@ -846,7 +958,9 @@ bool VxlanMgr::createVxlan(const VxlanInfo & info)
     ret = cmdAddVxlanIntoVxlanIf(info, res);
     if ( ret != RET_SUCCESS )
     {
+        cmdDownVxlanIf(info, res);
         cmdDeleteVxlanIf(info, res);
+        cmdDownVxlan(info, res);
         cmdDeleteVxlan(info, res);
         SWSS_LOG_WARN(
             "Fail to add %s into %s",
@@ -860,7 +974,9 @@ bool VxlanMgr::createVxlan(const VxlanInfo & info)
     if ( ret != RET_SUCCESS )
     {
         cmdDeleteVxlanFromVxlanIf(info, res);
+        cmdDownVxlanIf(info, res);
         cmdDeleteVxlanIf(info, res);
+        cmdDownVxlan(info, res);
         cmdDeleteVxlan(info, res);
         SWSS_LOG_WARN(
             "Fail to set %s master %s",
@@ -876,7 +992,9 @@ bool VxlanMgr::createVxlan(const VxlanInfo & info)
     {
         cmdDetachVxlanIfFromVnet(info, res);
         cmdDeleteVxlanFromVxlanIf(info, res);
+        cmdDownVxlanIf(info, res);
         cmdDeleteVxlanIf(info, res);
+        cmdDownVxlan(info, res);
         cmdDeleteVxlan(info, res);
         SWSS_LOG_WARN(
             "Fail to up bridge %s",
@@ -899,7 +1017,9 @@ bool VxlanMgr::deleteVxlan(const VxlanInfo & info)
 
     cmdDetachVxlanIfFromVnet(info, res);
     cmdDeleteVxlanFromVxlanIf(info, res);
+    cmdDownVxlanIf(info, res);
     cmdDeleteVxlanIf(info, res);
+    cmdDownVxlan(info, res);
     cmdDeleteVxlan(info, res);
 
     m_stateVxlanTable.del(info.m_vxlan);
@@ -953,8 +1073,9 @@ int VxlanMgr::createVxlanNetdevice(std::string vxlanTunnelName, std::string vni_
 {
     std::string res, cmds;
     std::string link_add_cmd, link_set_master_cmd, link_up_cmd;
-    std::string bridge_add_cmd, bridge_untagged_add_cmd, bridge_del_vid_cmd;
+    std::string bridge_add_cmd, bridge_untagged_add_cmd, bridge_del_vid_cmd, bridge_learn_off_cmd;
     std::string vxlan_dev_name;
+    bool evpn_nvo = false;
 
     vxlan_dev_name = std::string("") + std::string(vxlanTunnelName) + "-" +
                      std::string(vlan_id);
@@ -988,11 +1109,20 @@ int VxlanMgr::createVxlanNetdevice(std::string vxlanTunnelName, std::string vni_
         SWSS_LOG_INFO("Creating VxlanNetDevice %s", vxlan_dev_name.c_str());
     }
 
+    std::map<std::string, std::string>::iterator it = m_EvpnNvoCache.begin();
+    if ((it != m_EvpnNvoCache.end()) && (it->second == vxlanTunnelName))
+    {
+        SWSS_LOG_INFO("EVPN NVO exists. Disabling learning on VxlanNetDevice %s",
+                        vxlan_dev_name.c_str());
+        evpn_nvo = true;
+    }
+
     // ip link add <vxlan_dev_name> type vxlan id <vni> local <src_ip> remote <dst_ip> 
     // dstport 4789
     // ip link set <vxlan_dev_name> master DOT1Q_BRIDGE_NAME
     // bridge vlan add vid <vlan_id> dev <vxlan_dev_name>
     // bridge vlan add vid <vlan_id> untagged pvid dev <vxlan_dev_name>
+    // bridge link set dev <vxlan_dev_name> learning off
     // ip link set <vxlan_dev_name> up
 
     link_add_cmd = std::string("") + IP_CMD + " link add " + vxlan_dev_name + 
@@ -1014,6 +1144,9 @@ int VxlanMgr::createVxlanNetdevice(std::string vxlanTunnelName, std::string vni_
 
     bridge_del_vid_cmd = std::string("") + BRIDGE_CMD + " vlan del vid 1 dev " + 
                          vxlan_dev_name;
+
+    bridge_learn_off_cmd = std::string("") + BRIDGE_CMD + " link set dev " +
+                           vxlan_dev_name + " learning off ";
     
     
     cmds = std::string("") + BASH_CMD + " -c \"" + 
@@ -1025,6 +1158,11 @@ int VxlanMgr::createVxlanNetdevice(std::string vxlanTunnelName, std::string vni_
     if ( vlan_id != "1")
     {
         cmds += bridge_del_vid_cmd + " && ";
+    }
+
+    if (evpn_nvo)
+    {
+        cmds += bridge_learn_off_cmd + " && ";
     }
 
     cmds += link_up_cmd + "\"";
@@ -1214,6 +1352,22 @@ void VxlanMgr::clearAllVxlanDevices()
             cmdDeleteVxlanIf(info, res);
         }
         it = m_vxlanNetDevices.erase(it);
+    }
+}
+
+void VxlanMgr::disableLearningForAllVxlanNetdevices()
+{
+    for (auto it = m_vxlanTunnelMapCache.begin(); it != m_vxlanTunnelMapCache.end(); it++)
+    {
+        std::string netdev_name = it->second.vxlan_dev_name;
+        VxlanInfo info;
+        std::string res;
+        if (!netdev_name.empty())
+        {
+            SWSS_LOG_INFO("Disable learning for NetDevice %s\n", netdev_name.c_str());
+            info.m_vxlan = netdev_name;
+            cmdVxlanLearningOff(info, res);
+        }
     }
 }
 

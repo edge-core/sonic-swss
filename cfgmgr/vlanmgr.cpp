@@ -8,11 +8,13 @@
 #include "shellcmd.h"
 #include "warm_restart.h"
 #include <swss/redisutility.h>
+#include "subintf.h"
 
 using namespace std;
 using namespace swss;
 
 #define DOT1Q_BRIDGE_NAME   "Bridge"
+#define DFLT_BR_AGE_TIME    "600"
 #define VLAN_PREFIX         "Vlan"
 #define LAG_PREFIX          "PortChannel"
 #define DEFAULT_VLAN_ID     "1"
@@ -31,9 +33,11 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
         m_stateVlanMemberTable(stateDb, STATE_VLAN_MEMBER_TABLE_NAME),
         m_appVlanTableProducer(appDb, APP_VLAN_TABLE_NAME),
         m_appVlanMemberTableProducer(appDb, APP_VLAN_MEMBER_TABLE_NAME),
+        m_cfgSubInterfaceTable(cfgDb, CFG_VLAN_SUB_INTF_TABLE_NAME),
         replayDone(false)
 {
     SWSS_LOG_ENTER();
+    int ret;
 
     if (WarmStart::isWarmStart())
     {
@@ -62,7 +66,7 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
           + IP_CMD + " link show " + DOT1Q_BRIDGE_NAME + " 2>/dev/null";
 
         std::string res;
-        int ret = swss::exec(cmds, res);
+        ret = swss::exec(cmds, res);
         if (ret == 0)
         {
             // Don't reset vlan aware bridge upon swss docker warm restart.
@@ -76,6 +80,8 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
     //               /sbin/ip link add Bridge up type bridge &&
     //               /sbin/ip link set Bridge mtu {{ mtu_size }} &&
     //               /sbin/ip link set Bridge address {{gMacAddress}} &&
+    //               /sbin/ip link set Bridge addrgenmode none &&
+    //               /sbin/ip address flush Bridge &&
     //               /sbin/bridge vlan del vid 1 dev Bridge self;
     //               /sbin/ip link del dummy 2>/dev/null;
     //               /sbin/ip link add dummy type dummy &&
@@ -87,20 +93,26 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
       + IP_CMD + " link add " + DOT1Q_BRIDGE_NAME + " up type bridge && "
       + IP_CMD + " link set " + DOT1Q_BRIDGE_NAME + " mtu " + DEFAULT_MTU_STR + " && "
       + IP_CMD + " link set " + DOT1Q_BRIDGE_NAME + " address " + gMacAddress.to_string() + " && "
+      + IP_CMD + " link set " + DOT1Q_BRIDGE_NAME + " addrgenmode none && "
+      + IP_CMD + " address flush " + DOT1Q_BRIDGE_NAME + " && "
       + BRIDGE_CMD + " vlan del vid " + DEFAULT_VLAN_ID + " dev " + DOT1Q_BRIDGE_NAME + " self; "
       + IP_CMD + " link del dev dummy 2>/dev/null; "
       + IP_CMD + " link add dummy type dummy && "
       + IP_CMD + " link set dummy master " + DOT1Q_BRIDGE_NAME + "\"";
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds, res);
+    ret = swss::exec(cmds, res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.c_str(), ret);
+    }
 
     // The generated command is:
     // /bin/echo 1 > /sys/class/net/Bridge/bridge/vlan_filtering
     const std::string echo_cmd = std::string("")
       + ECHO_CMD + " 1 > /sys/class/net/" + DOT1Q_BRIDGE_NAME + "/bridge/vlan_filtering";
 
-    int ret = swss::exec(echo_cmd, res);
+    ret = swss::exec(echo_cmd, res);
     /* echo will fail in virtual switch since /sys directory is read-only.
      * need to use ip command to setup the vlan_filtering which is not available in debian 8.
      * Once we move sonic to debian 9, we can use IP command by default
@@ -111,7 +123,11 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
         const std::string echo_cmd_backup = std::string("")
           + IP_CMD + " link set " + DOT1Q_BRIDGE_NAME + " type bridge vlan_filtering 1";
 
-        EXEC_WITH_ERROR_THROW(echo_cmd_backup, res);
+        int ret_2 = swss::exec(echo_cmd_backup, res);
+        if (ret_2)
+        {
+            SWSS_LOG_ERROR("Command '%s' failed with rc %d", echo_cmd_backup.c_str(), ret_2);
+        }
     }
 
     // not learn from link-local frames
@@ -122,6 +138,16 @@ VlanMgr::VlanMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
     ret = swss::exec(no_ll_learn_cmd, res);
     if (ret) {
         SWSS_LOG_ERROR("Command '%s' failed with rc %d", no_ll_learn_cmd.c_str(), ret);
+    }
+
+    // Initialize Linux dot1q bridge ageing time based on SWITCH_TABLE from APPL_DB
+    // The command should be generated as:
+    // /bin/bash -c "/sbin/brctl setageing Bridge 600"
+    const std::string brctl_cmd = std::string("")
+        + BRCTL_CMD + " setageing " + DOT1Q_BRIDGE_NAME + " " + DFLT_BR_AGE_TIME;
+    ret = swss::exec(brctl_cmd, res);
+    if (ret) {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", brctl_cmd.c_str(), ret);
     }
 }
 
@@ -142,7 +168,11 @@ bool VlanMgr::addHostVlan(int vlan_id)
                + " type vlan id " + std::to_string(vlan_id) + "\"";
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds, res);
+    int ret = swss::exec(cmds, res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.c_str(), ret);
+    }
 
     res.clear();
     const std::string echo_cmd = std::string("")
@@ -165,7 +195,11 @@ bool VlanMgr::removeHostVlan(int vlan_id)
       + BRIDGE_CMD + " vlan del vid " + std::to_string(vlan_id) + " dev " + DOT1Q_BRIDGE_NAME + " self\"";
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds, res);
+    int ret = swss::exec(cmds, res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.c_str(), ret);
+    }
 
     return true;
 }
@@ -180,8 +214,11 @@ bool VlanMgr::setHostVlanAdminState(int vlan_id, const string &admin_status)
     cmds << IP_CMD " link set " VLAN_PREFIX + std::to_string(vlan_id) + " " << shellquote(admin_status);
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds.str(), res);
-
+    int ret = swss::exec(cmds.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.str().c_str(), ret);
+    }
     return true;
 }
 
@@ -216,7 +253,11 @@ bool VlanMgr::setHostVlanMac(int vlan_id, const string &mac)
             IP_CMD " link set " DOT1Q_BRIDGE_NAME " address " << shellquote(mac);
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds.str(), res);
+    int ret = swss::exec(cmds.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.str().c_str(), ret);
+    }
 
     return true;
 }
@@ -224,6 +265,7 @@ bool VlanMgr::setHostVlanMac(int vlan_id, const string &mac)
 bool VlanMgr::addHostVlanMember(int vlan_id, const string &port_alias, const string& tagging_mode)
 {
     SWSS_LOG_ENTER();
+    string key_def_vlan = VLAN_PREFIX DEFAULT_VLAN_ID CONFIGDB_KEY_SEPARATOR + port_alias;
 
     std::string tagging_cmd;
     if (tagging_mode == "untagged" || tagging_mode == "priority_tagged")
@@ -236,13 +278,25 @@ bool VlanMgr::addHostVlanMember(int vlan_id, const string &port_alias, const str
     //               /sbin/bridge vlan del vid 1 dev {{ port_alias }} &&
     //               /sbin/bridge vlan add vid {{vlan_id}} dev {{port_alias}} {{tagging_mode}}"
     ostringstream cmds, inner;
-    inner << IP_CMD " link set " << shellquote(port_alias) << " master " DOT1Q_BRIDGE_NAME " && "
-      BRIDGE_CMD " vlan del vid " DEFAULT_VLAN_ID " dev " << shellquote(port_alias) << " && "
-      BRIDGE_CMD " vlan add vid " + std::to_string(vlan_id) + " dev " << shellquote(port_alias) << " " + tagging_cmd;
+    if (!isVlanMemberStateOk(key_def_vlan))
+    {
+        inner << IP_CMD " link set " << shellquote(port_alias) << " master " DOT1Q_BRIDGE_NAME " && "
+          BRIDGE_CMD " vlan del vid " DEFAULT_VLAN_ID " dev " << shellquote(port_alias) << " && "
+          BRIDGE_CMD " vlan add vid " + std::to_string(vlan_id) + " dev " << shellquote(port_alias) << " " + tagging_cmd;
+    }
+    else
+    {
+        inner << IP_CMD " link set " << shellquote(port_alias) << " master " DOT1Q_BRIDGE_NAME " && "
+          BRIDGE_CMD " vlan add vid " + std::to_string(vlan_id) + " dev " << shellquote(port_alias) << " " + tagging_cmd;
+    }
     cmds << BASH_CMD " -c " << shellquote(inner.str());
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds.str(), res);
+    int ret = swss::exec(cmds.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.str().c_str(), ret);
+    }
 
     return true;
 }
@@ -278,7 +332,11 @@ bool VlanMgr::removeHostVlanMember(int vlan_id, const string &port_alias)
     cmds << BASH_CMD " -c " << shellquote(inner.str());
 
     std::string res;
-    EXEC_WITH_ERROR_THROW(cmds.str(), res);
+    int ret = swss::exec(cmds.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmds.str().c_str(), ret);
+    }
 
     return true;
 }
@@ -286,6 +344,24 @@ bool VlanMgr::removeHostVlanMember(int vlan_id, const string &port_alias)
 bool VlanMgr::isVlanMacOk()
 {
     return !!gMacAddress;
+}
+bool VlanMgr::isSubportConfigVlan(const int vlan_id)
+{
+    std::vector<std::string> keys;
+    m_cfgSubInterfaceTable.getKeys(keys);
+    for (const auto& tmp_key : keys)
+    {
+        if (tmp_key.find(VLAN_SUB_INTERFACE_SEPARATOR) == string::npos)
+        {
+            continue;
+        }
+        subIntf subIf(tmp_key);
+        if (vlan_id && vlan_id == subIf.subIntfIdx())
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 void VlanMgr::doVlanTask(Consumer &consumer)
@@ -335,6 +411,13 @@ void VlanMgr::doVlanTask(Consumer &consumer)
             vector<FieldValueTuple> fvVector;
             string members;
 
+            string platform = getenv("platform") ? getenv("platform") : "";
+            if (platform == BRCM_PLATFORM_SUBSTRING && isSubportConfigVlan(vlan_id))
+            {
+                it = consumer.m_toSync.erase(it);
+                SWSS_LOG_ERROR("%s invaild config: subport config the vlan already", key.c_str());
+                continue;
+            }
             /*
              * If state is already set for this vlan, but it doesn't exist in m_vlans set,
              * just add it to m_vlans set and remove the request to skip disrupting Linux vlan.

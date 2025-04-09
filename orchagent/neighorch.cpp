@@ -22,14 +22,23 @@ extern Directory<Orch*> gDirectory;
 extern string gMySwitchType;
 extern int32_t gVoqMySwitchId;
 extern BfdOrch *gBfdOrch;
+extern sai_object_id_t gVirtualRouterId;
+
+#define DEFAULT_VRF         "default"
 
 const int neighorch_pri = 30;
 
-NeighOrch::NeighOrch(DBConnector *appDb, string tableName, IntfsOrch *intfsOrch, FdbOrch *fdbOrch, PortsOrch *portsOrch, DBConnector *chassisAppDb) :
+map<sai_status_t, string> sai_error_reason =
+{
+    {SAI_STATUS_TABLE_FULL, "table full"}
+};
+
+NeighOrch::NeighOrch(DBConnector *appDb, string tableName, IntfsOrch *intfsOrch, FdbOrch *fdbOrch, PortsOrch *portsOrch, VRFOrch *vrfOrch, DBConnector *chassisAppDb) :
         Orch(appDb, tableName, neighorch_pri),
         m_intfsOrch(intfsOrch),
         m_fdbOrch(fdbOrch),
         m_portsOrch(portsOrch),
+        m_vrfOrch(vrfOrch),
         m_appNeighResolveProducer(appDb, APP_NEIGH_RESOLVE_TABLE_NAME)
 {
     SWSS_LOG_ENTER();
@@ -37,10 +46,13 @@ NeighOrch::NeighOrch(DBConnector *appDb, string tableName, IntfsOrch *intfsOrch,
     m_fdbOrch->attach(this);
 
     // Some UTs instantiate NeighOrch but gBfdOrch is null, it is not null in orchagent
-    if (gBfdOrch) 
-    {  
+    if (gBfdOrch)
+    {
         gBfdOrch->attach(this);
     }
+
+    unique_ptr<DBConnector> stateDb;
+    stateDb = make_unique<DBConnector>("STATE_DB", 0);
 
     if(gMySwitchType == "voq")
     {
@@ -50,10 +62,10 @@ NeighOrch::NeighOrch(DBConnector *appDb, string tableName, IntfsOrch *intfsOrch,
         m_tableVoqSystemNeighTable = unique_ptr<Table>(new Table(chassisAppDb, CHASSIS_APP_SYSTEM_NEIGH_TABLE_NAME));
 
         //STATE DB connection for setting state of the remote neighbor SAI programming
-        unique_ptr<DBConnector> stateDb;
-        stateDb = make_unique<DBConnector>("STATE_DB", 0);
         m_stateSystemNeighTable = unique_ptr<Table>(new Table(stateDb.get(), STATE_SYSTEM_NEIGH_TABLE_NAME));
     }
+
+    m_stateNeighInvalidTable = unique_ptr<Table>(new Table(stateDb.get(), STATE_NEIGH_INVALID_TABLE_NAME));
 }
 
 NeighOrch::~NeighOrch()
@@ -518,6 +530,12 @@ bool NeighOrch::removeNextHop(const IpAddress &ipAddress, const string &alias)
     }
 
     assert(hasNextHop(nexthop));
+    if (m_syncdNextHops.find(nexthop) == m_syncdNextHops.end())
+    {
+        SWSS_LOG_ERROR("Fail to get nexthop: %s@%d@%s", nexthop.ip_address.to_string().c_str(),
+                nexthop.vni, nexthop.mac_address.to_string().c_str());
+        return true;
+    }
 
     gFgNhgOrch->invalidNextHopInNextHopGroup(nexthop);
 
@@ -606,6 +624,13 @@ bool NeighOrch::removeOverlayNextHop(const NextHopKey &nexthop)
     SWSS_LOG_ENTER();
 
     assert(hasNextHop(nexthop));
+    if (m_syncdNextHops.find(nexthop) == m_syncdNextHops.end())
+    {
+        SWSS_LOG_ERROR("Fail to get nexthop: %s@%d@%s", nexthop.ip_address.to_string().c_str(),
+                nexthop.vni, nexthop.mac_address.to_string().c_str());
+
+        return true;
+    }
 
     if (m_syncdNextHops[nexthop].ref_count > 0)
     {
@@ -643,12 +668,20 @@ sai_object_id_t NeighOrch::getNextHopId(const NextHopKey &nexthop)
     {
         return nhid;
     }
+
+    if (m_syncdNextHops.find(nexthop) == m_syncdNextHops.end())
+        return SAI_NULL_OBJECT_ID;
+
     return m_syncdNextHops[nexthop].next_hop_id;
 }
 
 int NeighOrch::getNextHopRefCount(const NextHopKey &nexthop)
 {
     assert(hasNextHop(nexthop));
+
+    if (m_syncdNextHops.find(nexthop) == m_syncdNextHops.end())
+        return 0;
+
     return m_syncdNextHops[nexthop].ref_count;
 }
 
@@ -763,7 +796,7 @@ void NeighOrch::doTask(Consumer &consumer)
 
         string alias = key.substr(0, found);
 
-        if (alias == "eth0" || alias == "lo" || alias == "docker0"
+        if (alias == "eth0" || alias == "lo" || alias == "docker0" || alias == "usb0"
             || ((op == SET_COMMAND) && m_intfsOrch->isInbandIntfInMgmtVrf(alias)))
         {
             it = consumer.m_toSync.erase(it);
@@ -807,11 +840,34 @@ void NeighOrch::doTask(Consumer &consumer)
             }
 
             MacAddress mac_address;
+            string vrf_name = "";
             for (auto i = kfvFieldsValues(t).begin();
                  i  != kfvFieldsValues(t).end(); i++)
             {
                 if (fvField(*i) == "neigh")
                     mac_address = MacAddress(fvValue(*i));
+                if (fvField(*i) == "vrf")
+                {
+                    vrf_name = fvValue(*i);
+                }
+            }
+
+            if (!vrf_name.empty())
+            {
+                if (p.m_vr_id != (vrf_name == DEFAULT_VRF? gVirtualRouterId: m_vrfOrch->getVRFid(vrf_name)))
+                {
+                    SWSS_LOG_INFO("Failed to create neighbor on %s due to different vrf %s", alias.c_str(), vrf_name.c_str());
+                    it++;
+                    continue;
+                }
+            }
+
+            if ((ip_address.getAddrScope() != IpAddress::LINK_SCOPE)
+                 && gIntfsOrch->isIpInIntfSubnet(ip_address, alias, vrf_name)== false)
+            {
+                SWSS_LOG_WARN("IP %s not in alias %s subnet", ip_address.to_string().c_str(), alias.c_str());
+                it = consumer.m_toSync.erase(it);
+                continue;
             }
 
             bool nbr_not_found = (m_syncdNeighbors.find(neighbor_entry) == m_syncdNeighbors.end());
@@ -882,9 +938,18 @@ void NeighOrch::doTask(Consumer &consumer)
                     it++;
                 }
             }
-            else
+            else {
+                // Remove neighbor from invalid entries if it matches
+                string state_key = alias + state_db_key_delimiter + ip_address.to_string();
+                vector<FieldValueTuple> invalid_entries;
+                if (m_stateNeighInvalidTable->get(state_key, invalid_entries)) {
+                    m_stateNeighInvalidTable->del(state_key);
+                    SWSS_LOG_NOTICE("Removed invalid neighbor %s on %s", ip_address.to_string().c_str(), alias.c_str());
+                }
+
                 /* Cannot locate the neighbor */
                 it = consumer.m_toSync.erase(it);
+            }
         }
         else
         {
@@ -948,25 +1013,27 @@ bool NeighOrch::addNeighbor(const NeighborEntry &neighborEntry, const MacAddress
     {
         status = sai_neighbor_api->create_neighbor_entry(&neighbor_entry,
                                    (uint32_t)neighbor_attrs.size(), neighbor_attrs.data());
-        if (status != SAI_STATUS_SUCCESS)
+        task_process_status handle_status = handleSaiCreateStatus(SAI_API_NEIGHBOR, status);
+        if (handle_status != task_success)
         {
-            if (status == SAI_STATUS_ITEM_ALREADY_EXISTS)
-            {
-                SWSS_LOG_ERROR("Entry exists: neighbor %s on %s, rv:%d",
-                           macAddress.to_string().c_str(), alias.c_str(), status);
-                /* Returning True so as to skip retry */
-                return true;
+            SWSS_LOG_ERROR("Failed to create neighbor %s on %s, rv:%d", macAddress.to_string().c_str(), alias.c_str(), status);
+            if (handle_status == task_invalid_entry) {
+                string state_key = alias + state_db_key_delimiter + ip_address.to_string();
+                vector<FieldValueTuple> fvVector;
+                FieldValueTuple mac("neigh", macAddress.to_string());
+                fvVector.push_back(mac);
+
+                FieldValueTuple family("family", ip_address.isV4() ? "IPv4" : "IPv6");
+                fvVector.push_back(family);
+
+                FieldValueTuple reason("reason", sai_error_reason.count(status) ? sai_error_reason[status]: "unknown");
+                fvVector.push_back(reason);
+                m_stateNeighInvalidTable->set(state_key, fvVector);
+            } else if (handle_status == task_ignore) {
+                SWSS_LOG_ERROR("Ignore to create neighbor %s on %s, rv:%d", macAddress.to_string().c_str(), alias.c_str(), status);
             }
-            else
-            {
-                SWSS_LOG_ERROR("Failed to create neighbor %s on %s, rv:%d",
-                           macAddress.to_string().c_str(), alias.c_str(), status);
-                task_process_status handle_status = handleSaiCreateStatus(SAI_API_NEIGHBOR, status);
-                if (handle_status != task_success)
-                {
-                    return parseHandleSaiStatusFailure(handle_status);
-                }
-            }
+
+            return parseHandleSaiStatusFailure(handle_status);
         }
         SWSS_LOG_NOTICE("Created neighbor ip %s, %s on %s", ip_address.to_string().c_str(),
                 macAddress.to_string().c_str(), alias.c_str());
@@ -1581,18 +1648,27 @@ bool NeighOrch::addInbandNeighbor(string alias, IpAddress ip_address)
     neighbor_attrs.push_back(attr);
 
     status = sai_neighbor_api->create_neighbor_entry(&neighbor_entry, static_cast<uint32_t>(neighbor_attrs.size()), neighbor_attrs.data());
-    if (status != SAI_STATUS_SUCCESS)
+    task_process_status handle_status = handleSaiCreateStatus(SAI_API_NEIGHBOR, status);
+    if (handle_status != task_success)
     {
-        if (status == SAI_STATUS_ITEM_ALREADY_EXISTS)
-        {
-            SWSS_LOG_ERROR("Entry exists: neighbor %s on %s, rv:%d", inband_mac.to_string().c_str(), alias.c_str(), status);
-            return true;
+        SWSS_LOG_ERROR("Failed to create neighbor %s on %s, rv:%d", inband_mac.to_string().c_str(), alias.c_str(), status);
+        if (handle_status == task_invalid_entry) {
+            string state_key = alias + state_db_key_delimiter + ip_address.to_string();
+            vector<FieldValueTuple> fvVector;
+            FieldValueTuple mac("neigh", inband_mac.to_string());
+            fvVector.push_back(mac);
+
+            FieldValueTuple family("family", ip_address.isV4() ? "IPv4" : "IPv6");
+            fvVector.push_back(family);
+
+            FieldValueTuple reason("reason", sai_error_reason.count(status) ? sai_error_reason[status]: "unknown");
+            fvVector.push_back(reason);
+            m_stateNeighInvalidTable->set(state_key, fvVector);
+        } else if (handle_status == task_ignore) {
+            SWSS_LOG_ERROR("Ignore to create neighbor %s on %s, rv:%d", inband_mac.to_string().c_str(), alias.c_str(), status);
         }
-        else
-        {
-            SWSS_LOG_ERROR("Failed to create neighbor %s on %s, rv:%d", inband_mac.to_string().c_str(), alias.c_str(), status);
-            return false;
-        }
+
+        return parseHandleSaiStatusFailure(handle_status);
     }
 
     SWSS_LOG_NOTICE("Created inband neighbor %s on %s", inband_mac.to_string().c_str(), alias.c_str());

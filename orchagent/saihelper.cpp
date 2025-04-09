@@ -557,7 +557,6 @@ task_process_status handleSaiCreateStatus(sai_api_t api, sai_status_t status, vo
                     break;
             }
             break;
-        case SAI_API_NEIGHBOR:
         case SAI_API_NEXT_HOP:
         case SAI_API_NEXT_HOP_GROUP:
             switch(status)
@@ -569,6 +568,30 @@ task_process_status handleSaiCreateStatus(sai_api_t api, sai_status_t status, vo
                     return task_success;
                 case SAI_STATUS_TABLE_FULL:
                     return task_need_retry;
+                default:
+                    SWSS_LOG_ERROR("Encountered failure in create operation, exiting orchagent, SAI API: %s, status: %s",
+                                sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
+                    handleSaiFailure(true);
+                    break;
+            }
+            break;
+        case SAI_API_NEIGHBOR:
+            switch (status)
+            {
+                case SAI_STATUS_SUCCESS:
+                    return task_success;
+                case SAI_STATUS_ITEM_ALREADY_EXISTS:
+                    /*
+                     *  In neighbor creation, the NEIGHBOR SAI creation would report the status of SAI_STATUS_ITEM_ALREADY_EXISTS,
+                     *  and orchagent should ignore the error and treat it as entry was explicitly created.
+                     */
+                    return task_ignore;
+                case SAI_STATUS_TABLE_FULL:
+                    /*
+                     * Neighbor entry may encounter hash collision and return table full, this will be handled by orchagent to recored the invalid entry.
+                     * We don't abort it in order to prevent the system crash.
+                     */
+                    return task_invalid_entry;
                 default:
                     SWSS_LOG_ERROR("Encountered failure in create operation, exiting orchagent, SAI API: %s, status: %s",
                                 sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
@@ -613,6 +636,21 @@ task_process_status handleSaiSetStatus(sai_api_t api, sai_status_t status, void 
 
     switch (api)
     {
+        case SAI_API_FDB:
+            switch (status)
+            {
+                case SAI_STATUS_SUCCESS:
+                    SWSS_LOG_WARN("SAI_STATUS_SUCCESS is not expected in handleSaiSetStatus");
+                    return task_success;
+                case SAI_STATUS_INVALID_PARAMETER:
+                case SAI_STATUS_ITEM_NOT_FOUND:
+                    return task_success;
+                default:
+                    SWSS_LOG_ERROR("Encountered failure in set operation, exiting orchagent, SAI API: %s, status: %s",
+                                sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
+                    exit(EXIT_FAILURE);
+            }
+            break;
         case SAI_API_PORT:
             switch (status)
             {
@@ -720,6 +758,20 @@ task_process_status handleSaiRemoveStatus(sai_api_t api, sai_status_t status, vo
                     break;
             }
             break;
+        case SAI_API_BRIDGE:
+            switch (status)
+            {
+                case SAI_STATUS_OBJECT_IN_USE:
+                    /*
+                     *  In Bridge deletion, there are scenarios where the fdb count is cleared but entry deletion in AsicDb not complete
+                     *  the SAI deletion would report the status of SAI_STATUS_OBJECT_IN_USE, in this case need retry to success deletion
+                     */
+                    return task_need_retry;
+                default:
+                    SWSS_LOG_ERROR("Encountered failure in remove operation, exiting orchagent, SAI API: %s, status: %s",
+                                sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
+                    exit(EXIT_FAILURE);
+            }
         default:
             switch (status)
             {

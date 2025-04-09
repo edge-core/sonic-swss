@@ -1538,6 +1538,7 @@ bool VxlanTunnelOrch::delOperation(const Request& request)
     SWSS_LOG_ENTER();
 
     const auto& tunnel_name = request.getKeyString(0);
+    EvpnNvoOrch* evpn_orch = gDirectory.get<EvpnNvoOrch*>();
 
     if (!isTunnelExists(tunnel_name))
     {
@@ -1550,6 +1551,26 @@ bool VxlanTunnelOrch::delOperation(const Request& request)
     {
         SWSS_LOG_WARN("VTEP %s not deleted as hw delete is pending", tunnel_name.c_str());
         return false;
+    }
+
+    if (vtep_ptr == evpn_orch->getEVPNVtep())
+    {
+        for (auto it = vxlan_tunnel_table_.begin(); it != vxlan_tunnel_table_.end(); ++it)
+        {
+            if ((it->second.get() != vtep_ptr) || (it->second->getDipTunnelCnt() != 0)  )
+            {
+                SWSS_LOG_WARN("VTEP %s not deleted as there is user tuunel still in used", tunnel_name.c_str());
+                return false;
+            }
+        }
+
+        if (0 != vxlan_vni_vlan_map_table_.size() )
+        {
+            SWSS_LOG_WARN("VTEP %s not deleted as there is vlan vni map still in used", tunnel_name.c_str());
+            return false;
+        }
+
+        evpn_orch->delEVPNVtep();
     }
 
     vxlan_tunnel_table_.erase(tunnel_name);
@@ -1671,7 +1692,19 @@ bool  VxlanTunnelOrch::delTunnelUser(const std::string remote_vtep, uint32_t vni
     vtep_ptr->deleteDynamicDIPTunnel(remote_vtep, usr);
     SWSS_LOG_NOTICE("diprefcnt for remote %s = %d",
                      remote_vtep.c_str(), vtep_ptr->getRemoteEndPointRefCnt(remote_vtep));
-
+    if (vtep_ptr->del_tnl_hw_pending && !vtep_ptr->isTunnelReferenced())
+    {
+        port_tunnel_name = getTunnelPortName(vtep_ptr->getSrcIP().to_string(), true);
+        gPortsOrch->getPort(port_tunnel_name,tunnelPort);
+        bool ret = gPortsOrch->removeBridgePort(tunnelPort);
+        if (!ret)
+        {
+            SWSS_LOG_ERROR("Remove Bridge port failed for source vtep = %s fdbcount = %d",
+                           port_tunnel_name.c_str(), tunnelPort.m_fdb_count);
+            return true;
+        }
+        gPortsOrch->removeTunnel(tunnelPort);
+    }
     vtep_ptr->deletePendingSIPTunnel();
 
     return true;
@@ -1798,6 +1831,35 @@ void VxlanTunnelOrch::updateDbTunnelOperStatus(string tunnel_portname,
     m_stateVxlanTable.set(tunnel_name, fvVector);
 }
 
+void VxlanTunnelOrch::getDbTunnelOperStatus(string tunnel_portname,
+                                               sai_port_oper_status_t& status)
+{
+    vector<FieldValueTuple> tuples;
+    std::string tunnel_name;
+
+    getTunnelNameFromPort(tunnel_portname, tunnel_name);
+    bool exist = m_stateVxlanTable.get(tunnel_name, tuples);
+    string operStatus;
+    if (exist)
+    {
+        for (auto i : tuples)
+        {
+            if (fvField(i) == "operstatus")
+            {
+                operStatus = fvValue(i);
+            }
+        }
+    }
+    if (operStatus == "up")
+    {
+        status = SAI_PORT_OPER_STATUS_UP;
+    }
+    else
+    {
+        status = SAI_PORT_OPER_STATUS_DOWN;
+    }
+}
+
 void VxlanTunnelOrch::addRemoveStateTableEntry(string tunnel_name, 
                                            IpAddress& sip, IpAddress& dip, 
                                            tunnel_creation_src_t src, bool add)
@@ -1857,8 +1919,8 @@ bool VxlanTunnelOrch::getTunnelPort(const std::string& vtep,Port& tunnelPort, bo
 bool VxlanTunnel::isTunnelReferenced()
 {
     VxlanTunnelOrch* tunnel_orch = gDirectory.get<VxlanTunnelOrch*>();
-    auto src_vtep = getSrcIP().to_string();
-    auto port_tunnel_name = tunnel_orch->getTunnelPortName(src_vtep, true);
+    auto src_vtep = getdstIP().isZero() ? getSrcIP().to_string(): getdstIP().to_string();
+    auto port_tunnel_name = tunnel_orch->getTunnelPortName(src_vtep, getdstIP().isZero() ? true: false);
     bool ret;
     Port tunnelPort;
     bool dip_tunnels_used = tunnel_orch->isDipTunnelsSupported();
@@ -1958,10 +2020,10 @@ bool VxlanTunnelMapOrch::addOperation(const Request& request)
         if (!tunnel_orch->isDipTunnelsSupported())
         {
             Port tunPort;
-            auto src_vtep = tunnel_obj->getSrcIP().to_string();
-            if (!tunnel_orch->getTunnelPort(src_vtep, tunPort, true))
+            auto src_vtep = tunnel_obj->getdstIP().isZero() ? tunnel_obj->getSrcIP().to_string(): tunnel_obj->getdstIP().to_string();
+            if (!tunnel_orch->getTunnelPort(src_vtep, tunPort, tunnel_obj->getdstIP().isZero() ? true: false))
             {
-                auto port_tunnel_name = tunnel_orch->getTunnelPortName(src_vtep, true);
+                auto port_tunnel_name = tunnel_orch->getTunnelPortName(src_vtep, tunnel_obj->getdstIP().isZero() ? true: false);
                 gPortsOrch->addTunnel(port_tunnel_name, tunnel_obj->getTunnelId(), false);
                 gPortsOrch->getPort(port_tunnel_name,tunPort);
                 gPortsOrch->addBridgePort(tunPort);
@@ -2001,6 +2063,12 @@ bool VxlanTunnelMapOrch::addOperation(const Request& request)
     }
 
     tunnel_orch->addVlanMappedToVni(vni_id, vlan_id);
+
+    if (0 == vrf_orch->getL3VniVlan(vni_id))
+    {
+        SWSS_LOG_NOTICE("update l3vni %d, vlan %d", vni_id, vlan_id);
+        vrf_orch->updateL3VniVlan(vni_id, vlan_id);
+    }
 
     SWSS_LOG_NOTICE("Vxlan tunnel map entry '%s' for tunnel '%s' was created",
                    tunnel_map_entry_name.c_str(), tunnel_name.c_str());
@@ -2063,8 +2131,8 @@ bool VxlanTunnelMapOrch::delOperation(const Request& request)
     if (tunnel_obj->vlan_vrf_vni_count == 0)
     {
       Port tunnelPort;
-      auto src_vtep = tunnel_obj->getSrcIP().to_string();
-      auto port_tunnel_name = tunnel_orch->getTunnelPortName(src_vtep, true);
+      auto src_vtep = tunnel_obj->getdstIP().isZero() ? tunnel_obj->getSrcIP().to_string(): tunnel_obj->getdstIP().to_string();
+      auto port_tunnel_name = tunnel_orch->getTunnelPortName(src_vtep, tunnel_obj->getdstIP().isZero() ? true : false);
       bool ret;
 
       // If there are Dynamic DIP Tunnels referring to this SIP Tunnel 
@@ -2160,6 +2228,13 @@ bool VxlanVrfMapOrch::addOperation(const Request& request)
     {
         SWSS_LOG_ERROR("Vxlan map '%s' is already exist", full_map_entry_name.c_str());
         return true;
+    }
+
+    if (tunnel_orch->getVlanMappedToVni(vni_id) == 0)
+    {
+        SWSS_LOG_NOTICE("VRF VNI mapping '%s', vni %d to VLAN mapping must be set first",
+            full_map_entry_name.c_str(), vni_id);
+        return false;
     }
 
     auto tunnel_obj = tunnel_orch->getVxlanTunnel(tunnel_name);
@@ -2387,11 +2462,25 @@ bool EvpnRemoteVnip2pOrch::addOperation(const Request& request)
     {
         SWSS_LOG_INFO("Vxlan tunnelPort exists: %s", remote_vtep.c_str());
 
+        EvpnNvoOrch* evpn_orch = gDirectory.get<EvpnNvoOrch*>();
+        auto vtep_ptr = evpn_orch->getEVPNVtep();
         if (gPortsOrch->isVlanMember(vlanPort, tunnelPort))
         {
-            SWSS_LOG_WARN("tunnelPort %s already member of vid %d", 
-                          remote_vtep.c_str(),vlan_id);
+            if (!vtep_ptr)
+            {
+                SWSS_LOG_WARN("Remote VNI add: VTEP not found. remote=%s vid=%d",
+                              remote_vtep.c_str(),vlan_id);
+                return true;
+            }
+            SWSS_LOG_WARN("tunnelPort %s already member of vid %d",
+                            remote_vtep.c_str(),vlan_id);
             vtep_ptr->increment_spurious_imr_add(remote_vtep);
+            return true;
+        }
+        else if (!vtep_ptr)
+        {
+            SWSS_LOG_WARN("Remote VNI add: Tunnel port is not vlan member and VTEP not found. remote=%s vid=%d",
+                              remote_vtep.c_str(),vlan_id);
             return true;
         }
     }
@@ -2680,6 +2769,10 @@ bool EvpnNvoOrch::delOperation(const Request& request)
 
     auto nvo_name = request.getKeyString(0);
 
+    VxlanTunnelOrch* tunnel_orch = gDirectory.get<VxlanTunnelOrch*>();
+    auto tunnel_size = tunnel_orch->getVxlanTunnelSize();
+    auto vni_vlan_map_size = tunnel_orch->getVniVlanMapTableSize();
+
     if (!source_vtep_ptr) 
     {
         SWSS_LOG_WARN("NVO Delete failed as VTEP Ptr is NULL");
@@ -2689,6 +2782,18 @@ bool EvpnNvoOrch::delOperation(const Request& request)
     if (source_vtep_ptr->del_tnl_hw_pending)
     {
         SWSS_LOG_WARN("NVO not deleted as hw delete is pending");
+        return false;
+    }
+
+    if (tunnel_size != 0)
+    {
+        SWSS_LOG_WARN("NVO not deleted as there is user tuunel still in used");
+        return false;
+    }
+
+    if (vni_vlan_map_size != 0)
+    {
+        SWSS_LOG_WARN("NVO not deleted as there is vni vlan map still in used");
         return false;
     }
 

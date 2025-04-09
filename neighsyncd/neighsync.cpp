@@ -14,12 +14,16 @@
 #include "neighsync.h"
 #include "warm_restart.h"
 #include <algorithm>
+#include <linux/neighbour.h>
 
 using namespace std;
 using namespace swss;
 
 #define VLAN_SUB_INTERFACE_SEPARATOR   "."
 #define RESERVED_IPV4_LL    "169.254.0.1"
+#define SHORT_NAME_LAG_PREFIX "Po"
+#define SHORT_NAME_ETH_PREFIX "Eth"
+#define DEFAULT_VRF         "default"
 
 NeighSync::NeighSync(RedisPipeline *pipelineAppDB, DBConnector *stateDb, DBConnector *cfgDb) :
     m_neighTable(pipelineAppDB, APP_NEIGH_TABLE_NAME),
@@ -61,13 +65,15 @@ bool NeighSync::isNeighRestoreDone()
 
 Table *NeighSync::getInterfaceTable(const std::string &intfName)
 {
-    if (intfName.find(FRONT_PANEL_PORT_PREFIX) != string::npos)
+    if (intfName.find(FRONT_PANEL_PORT_PREFIX) != string::npos ||
+	intfName.find(SHORT_NAME_ETH_PREFIX) != string::npos)
     {
         if (intfName.find(VLAN_SUB_INTERFACE_SEPARATOR) != string::npos)
             return &m_cfgSubInterfaceTable;
         return &m_cfgInterfaceTable;
     }
-    else if (intfName.find(PORTCHANNEL_PREFIX) != string::npos)
+    else if (intfName.find(PORTCHANNEL_PREFIX) != string::npos ||
+             intfName.find(SHORT_NAME_LAG_PREFIX) != string::npos)
     {
         if (intfName.find(VLAN_SUB_INTERFACE_SEPARATOR) != string::npos)
             return &m_cfgSubInterfaceTable;
@@ -97,7 +103,7 @@ bool NeighSync::isRouterInterface(const std::string &intfName)
     return false;
 }
 
-void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
+void NeighSync::onMsgNbr(int nlmsg_type, struct nl_object *obj)
 {
     char ipStr[MAX_ADDR_SIZE + 1] = {0};
     char macStr[MAX_ADDR_SIZE + 1] = {0};
@@ -125,6 +131,14 @@ void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
     intfName = key;
     key+= ":";
 
+    // only process Vlan/Ethernet/PortChannel interface, other types are skipped.
+    if ((intfName.find(VLAN_PREFIX) == string::npos) && (intfName.find(FRONT_PANEL_PORT_PREFIX) == string::npos) && (intfName.find(PORTCHANNEL_PREFIX) == string::npos)
+       && (intfName.find(SHORT_NAME_LAG_PREFIX) == string::npos) && (intfName.find(SHORT_NAME_ETH_PREFIX) == string::npos))
+    {
+        SWSS_LOG_INFO("Skip process interface %s", intfName.c_str());
+        return;
+    }
+
     nl_addr2str(rtnl_neigh_get_dst(neigh), ipStr, MAX_ADDR_SIZE);
 
     /* Ignore IPv4 link-local addresses as neighbors if subtype is dualtor */
@@ -141,18 +155,28 @@ void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
     {
         if ((isLinkLocalEnabled(intfName) == false) && (nlmsg_type != RTM_DELNEIGH))
         {
+            SWSS_LOG_INFO("LinkLocal address received, ignoring for %s", ipStr);
             return;
         }
     }
     /* Ignore IPv6 multicast link-local addresses as neighbors */
     if (family == IPV6_NAME && IN6_IS_ADDR_MC_LINKLOCAL(nl_addr_get_binary_addr(rtnl_neigh_get_dst(neigh))))
+    {
+        SWSS_LOG_INFO("Multicast LinkLocal address received, ignoring for %s", ipStr);
         return;
+    }
     key+= ipStr;
 
     int state = rtnl_neigh_get_state(neigh);
     if (state == NUD_NOARP)
     {
-        return;
+        /* For externally learned neighbors, e.g. VXLAN EVPN, we want to keep
+         * these neighbors. */
+        if (!(rtnl_neigh_get_flags(neigh) & NTF_EXT_LEARNED))
+        {
+            SWSS_LOG_INFO("NOARP address received, ignoring for %s", ipStr);
+            return;
+        }
     }
 
     bool delete_key = false;
@@ -221,11 +245,30 @@ void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
         return;
     }
 
+    string vrfName = DEFAULT_VRF;
+    if (m_intf_master.find(intfName) != m_intf_master.end())
+    {
+        if (m_intf_master[intfName] != 0)
+            vrfName = LinkCache::getInstance().ifindexToName(m_intf_master[intfName]);
+    }
+    else
+    {
+        //m_intf_master may be empty after warm reboot, so get the VRF name through netlink cache directly
+        //to avoid this situation.
+        struct rtnl_link *link = LinkCache::getInstance().getLinkByName(intfName.c_str());
+
+        if (link && rtnl_link_get_master(link) != 0)
+            vrfName = LinkCache::getInstance().ifindexToName(rtnl_link_get_master(link));
+    }
+
     std::vector<FieldValueTuple> fvVector;
     FieldValueTuple f("family", family);
     FieldValueTuple nh("neigh", macStr);
+    FieldValueTuple vrf("vrf", vrfName);
+
     fvVector.push_back(nh);
     fvVector.push_back(f);
+    fvVector.push_back(vrf);
 
     // If warmstart is in progress, we take all netlink changes into the cache map
     if (m_AppRestartAssist->isWarmStartInProgress())
@@ -290,4 +333,45 @@ bool NeighSync::isLinkLocalEnabled(const string &port)
 
     SWSS_LOG_INFO("IPv6 Link local is not enabled on %s", port.c_str());
     return false;
+}
+
+void NeighSync::onMsgLink(int nlmsg_type, struct nl_object *obj)
+{
+    struct rtnl_link *link;
+    char *ifname = NULL;
+    char *nil = "NULL";
+
+    link = (struct rtnl_link *)obj;
+    ifname = rtnl_link_get_name(link);
+
+    SWSS_LOG_INFO("Op:%d dev %s", nlmsg_type, ifname? ifname: nil);
+    if (nlmsg_type == RTM_NEWLINK)
+    {
+        int master = rtnl_link_get_master(link);
+        m_intf_master[ifname]  =  master;
+    }
+    else
+    {
+        m_intf_master.erase(ifname);
+    }
+
+    return;
+}
+
+void NeighSync::onMsg(int nlmsg_type, struct nl_object *obj)
+{
+    if ((nlmsg_type != RTM_NEWLINK) && (nlmsg_type != RTM_DELLINK) &&
+        (nlmsg_type != RTM_NEWNEIGH) && (nlmsg_type != RTM_DELNEIGH) && (nlmsg_type != RTM_GETNEIGH))
+    {
+        SWSS_LOG_DEBUG("netlink: unhandled event: %d", nlmsg_type);
+        return;
+    }
+    if ((nlmsg_type == RTM_NEWLINK) || (nlmsg_type == RTM_DELLINK))
+    {
+        onMsgLink(nlmsg_type, obj);
+    }
+    else
+    {
+        onMsgNbr(nlmsg_type, obj);
+    }
 }

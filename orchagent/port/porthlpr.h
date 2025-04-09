@@ -53,4 +53,5 @@ private:
     bool parsePortRole(PortConfig &port, const std::string &field, const std::string &value) const;
     bool parsePortAdminStatus(PortConfig &port, const std::string &field, const std::string &value) const;
     bool parsePortDescription(PortConfig &port, const std::string &field, const std::string &value) const;
+    bool parsePortFloodBlock(PortConfig &port, const std::string &field, const std::string &value) const;
 };

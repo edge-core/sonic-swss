@@ -186,6 +186,10 @@ public:
     {
         return src_ip_;
     }
+    const IpAddress getdstIP()
+    {
+        return dst_ip_;
+    }
 
     void updateNextHop(IpAddress& ipAddr, MacAddress macAddress, uint32_t vni, sai_object_id_t nhId);
     bool removeNextHop(IpAddress& ipAddr, MacAddress macAddress, uint32_t vni);
@@ -270,6 +274,11 @@ public:
         return vxlan_tunnel_table_.at(tunnelName).get();
     }
 
+    auto getVxlanTunnelSize()
+    {
+        return vxlan_tunnel_table_.size();
+    }
+
     bool addTunnel(const std::string tunnel_name,VxlanTunnel* tnlptr)
     {
        vxlan_tunnel_table_[tunnel_name] = (VxlanTunnel_T)tnlptr;
@@ -329,6 +338,7 @@ public:
     void getTunnelDIPFromPort(Port& tunnelPort, string& remote_vtep);
     void updateDbTunnelOperStatus(string tunnel_portname,
                                                sai_port_oper_status_t status);
+    void getDbTunnelOperStatus(string tunnel_portname, sai_port_oper_status_t& status);
     uint16_t getVlanMappedToVni(const uint32_t vni)
     {
         if (vxlan_vni_vlan_map_table_.find(vni) != std::end(vxlan_vni_vlan_map_table_))
@@ -339,6 +349,11 @@ public:
         {
             return 0;
         }
+    }
+
+    auto getVniVlanMapTableSize()
+    {
+        return vxlan_vni_vlan_map_table_.size();
     }
 
     void addVlanMappedToVni(uint32_t vni, uint16_t vlan_id)
@@ -536,6 +551,11 @@ public:
     VxlanTunnel* getEVPNVtep() 
     { 
         return source_vtep_ptr;
+    }
+
+    void delEVPNVtep()
+    {
+        source_vtep_ptr = NULL;
     }
 
 private:

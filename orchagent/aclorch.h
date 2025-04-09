@@ -34,6 +34,7 @@
 #define MATCH_IP_PROTOCOL       "IP_PROTOCOL"
 #define MATCH_NEXT_HEADER       "NEXT_HEADER"
 #define MATCH_VLAN_ID           "VLAN_ID"
+#define MATCH_VLAN_PRI          "VLAN_PRI"
 #define MATCH_TCP_FLAGS         "TCP_FLAGS"
 #define MATCH_IP_TYPE           "IP_TYPE"
 #define MATCH_DSCP              "DSCP"
@@ -45,6 +46,10 @@
 #define MATCH_ICMPV6_TYPE       "ICMPV6_TYPE"
 #define MATCH_ICMPV6_CODE       "ICMPV6_CODE"
 #define MATCH_TUNNEL_VNI        "TUNNEL_VNI"
+#define MATCH_INNER_SRC_IP      "INNER_SRC_IP"
+#define MATCH_INNER_DST_IP      "INNER_DST_IP"
+#define MATCH_INNER_SRC_IPV6    "INNER_SRC_IPV6"
+#define MATCH_INNER_DST_IPV6    "INNER_DST_IPV6"
 #define MATCH_INNER_ETHER_TYPE  "INNER_ETHER_TYPE"
 #define MATCH_INNER_IP_PROTOCOL "INNER_IP_PROTOCOL"
 #define MATCH_INNER_L4_SRC_PORT "INNER_L4_SRC_PORT"
@@ -101,12 +106,12 @@
 
 #define ACL_COUNTER_FLEX_COUNTER_GROUP "ACL_STAT_COUNTER"
 
-enum AclObjectStatus
+#define NUM_USER_DEFINED_ACL_TABLE_TYPE 4
+
+enum class AclObjectStatus
 {
-    ACTIVE = 0,
-    INACTIVE,
-    PENDING_CREATION,
-    PENDING_REMOVAL
+    SUCCESS = 0,
+    FAILURE
 };
 
 struct AclActionCapabilities
@@ -199,9 +204,13 @@ private:
     AclTableType m_tableType;
 };
 
+class AclOrch;
+
 class AclTableTypeParser
 {
 public:
+    AclTableTypeParser(AclOrch *pAclOrch);
+
     bool parse(
         const string& key,
         const vector<FieldValueTuple>& fieldValues,
@@ -210,9 +219,9 @@ private:
     bool parseAclTableTypeMatches(const string& value, AclTableTypeBuilder& builder);
     bool parseAclTableTypeActions(const string& value, AclTableTypeBuilder& builder);
     bool parseAclTableTypeBindPointTypes(const string& value, AclTableTypeBuilder& builder);
-};
 
-class AclOrch;
+    AclOrch* m_pAclOrch;
+};
 
 struct AclRangeConfig
 {
@@ -281,6 +290,7 @@ public:
     static shared_ptr<AclRule> makeShared(AclOrch *acl, MirrorOrch *mirror, DTelOrch *dtel, const string& rule, const string& table, const KeyOpFieldsValuesTuple&);
     virtual ~AclRule() {}
 
+    inline bool isActive() { return m_active; };
 protected:
     virtual bool createCounter();
     virtual bool createRule();
@@ -319,6 +329,7 @@ protected:
     vector<AclRangeConfig> m_rangeConfig;
     vector<AclRange*> m_ranges;
 
+    bool m_active = false;
 private:
     bool m_createCounter;
 };
@@ -332,6 +343,10 @@ public:
     bool validate();
     void onUpdate(SubjectType, void *) override;
 
+    bool createRule() override;
+    bool removeRule() override;
+    bool activate();
+    bool deactivate();
 protected:
     sai_object_id_t getRedirectObjectId(const string& redirect_param);
 };
@@ -351,7 +366,6 @@ public:
 
     bool update(const AclRule& updatedRule) override;
 protected:
-    bool m_state {false};
     string m_sessionName;
     MirrorOrch *m_pMirrorOrch {nullptr};
 };
@@ -435,6 +449,9 @@ public:
     // Update table subject to changes
     void onUpdate(SubjectType, void *);
 
+    bool addActions(const std::vector<sai_acl_action_type_t> &actions);
+    const std::unordered_set<sai_acl_action_type_t>& getActions() const { return m_aclActions; }
+
 public:
     string id;
     string description;
@@ -454,6 +471,8 @@ public:
 private:
     sai_object_id_t m_oid = SAI_NULL_OBJECT_ID;
     AclOrch *m_pAclOrch = nullptr;
+
+    std::unordered_set<sai_acl_action_type_t> m_aclActions;
 };
 
 class AclOrch : public Orch, public Observer
@@ -553,6 +572,7 @@ private:
     bool processAclTableStage(string stage, acl_stage_type_t &acl_stage);
     bool processAclTableType(string type, string &out_table_type);
     bool processAclTablePorts(string portList, AclTable &aclTable);
+    bool processAclTableActions(const string &actionList, AclTable& aclTable);
     bool validateAclTable(AclTable &aclTable);
     bool updateAclTablePorts(AclTable &newTable, AclTable &curTable);
     void getAddDeletePorts(AclTable    &newT,
@@ -564,19 +584,33 @@ private:
 
     string generateAclRuleIdentifierInCountersDb(const AclRule& rule) const;
 
-    void setAclTableStatus(string table_name, AclObjectStatus status);
-    void setAclRuleStatus(string table_name, string rule_name, AclObjectStatus status);
+    void setAclTableTypeStatus(const string& table_type_name,
+                               AclObjectStatus status,
+                               const string& message="");
+    void setAclTableStatus(const string& table_name, AclObjectStatus status, const AclTable& table);
+    void setAclRuleStatus(const string& table_name,
+                          const string& rule_name,
+                          AclObjectStatus status,
+                          bool active = false);
 
-    void removeAclTableStatus(string table_name);
-    void removeAclRuleStatus(string table_name, string rule_name);
+    void removeAclTableTypeStatus(const string& table_type_name);
+    void removeAclTableStatus(const string& table_name);
+    void removeAclRuleStatus(const string& table_name, const string& rule_name);
 
+    void removeAllTableTypeStatus();
     void removeAllAclTableStatus();
     void removeAllAclRuleStatus();
+
+    int getUserDefinedAclTableTypeCount() {
+        return static_cast<int>(m_AclTableTypes.size()) - m_predefinedAclTableTypeCount;
+    }
 
     map<sai_object_id_t, AclTable> m_AclTables;
     // TODO: Move all ACL tables into one map: name -> instance
     map<string, AclTable> m_ctrlAclTables;
     map<string, AclTableType> m_AclTableTypes;
+
+    int m_predefinedAclTableTypeCount = 0;
 
     static DBConnector m_countersDb;
     static Table m_countersTable;
@@ -585,6 +619,7 @@ private:
 
     Table m_aclTableStateTable;
     Table m_aclRuleStateTable;
+    Table m_aclTableTypeStateTable;
 
     map<acl_stage_type_t, string> m_mirrorTableId;
     map<acl_stage_type_t, string> m_mirrorV6TableId;

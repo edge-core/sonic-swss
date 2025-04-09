@@ -31,7 +31,7 @@ COMMON_ORCH_SOURCE = $(top_srcdir)/orchagent/orch.cpp \
 				$(top_srcdir)/orchagent/response_publisher.cpp \
 				$(top_srcdir)/lib/recorder.cpp
 
-vlanmgrd_SOURCES = vlanmgrd.cpp vlanmgr.cpp $(COMMON_ORCH_SOURCE) shellcmd.h
+vlanmgrd_SOURCES = vlanmgrd.cpp vlanmgr.cpp $(COMMON_ORCH_SOURCE) shellcmd.h $(top_srcdir)/lib/subintf.cpp
 vlanmgrd_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) $(CFLAGS_COMMON) $(CFLAGS_SAI) $(CFLAGS_ASAN)
 vlanmgrd_CPPFLAGS = $(DBGFLAGS) $(AM_CFLAGS) $(CFLAGS_COMMON) $(CFLAGS_SAI) $(CFLAGS_ASAN)
 vlanmgrd_LDADD = $(LDFLAGS_ASAN) $(COMMON_LIBS) $(SAIMETA_LIBS)

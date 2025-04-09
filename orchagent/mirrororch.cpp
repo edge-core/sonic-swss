@@ -269,6 +269,46 @@ bool MirrorOrch::decreaseRefCount(const string& name)
     return true;
 }
 
+task_process_status MirrorOrch::handleSaiCreateStatus(sai_api_t api, sai_status_t status, void* context)
+{
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        return task_process_status::task_success;
+    }
+
+    return task_process_status::task_failed;
+}
+
+task_process_status MirrorOrch::handleSaiSetStatus(sai_api_t api, sai_status_t status, void* context)
+{
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        return task_process_status::task_success;
+    }
+
+    return task_process_status::task_failed;
+}
+
+task_process_status MirrorOrch::handleSaiRemoveStatus(sai_api_t api, sai_status_t status, void* context)
+{
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        return task_process_status::task_success;
+    }
+
+    return task_process_status::task_failed;
+}
+
+task_process_status MirrorOrch::handleSaiGetStatus(sai_api_t api, sai_status_t status, void* context)
+{
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        return task_process_status::task_success;
+    }
+
+    return task_process_status::task_failed;
+}
+
 bool MirrorOrch::validateDstPort(const string& dstPort)
 {
     Port port;
@@ -814,6 +854,7 @@ bool MirrorOrch::setUnsetPortMirror(Port port,
     sai_attribute_t port_attr;
     port_attr.id = ingress ? SAI_PORT_ATTR_INGRESS_MIRROR_SESSION:
                            SAI_PORT_ATTR_EGRESS_MIRROR_SESSION;
+
     if (set)
     {
         port_attr.value.objlist.count = 1;
@@ -844,7 +885,7 @@ bool MirrorOrch::setUnsetPortMirror(Port port,
                 task_process_status handle_status =  handleSaiSetStatus(SAI_API_PORT, status);
                 if (handle_status != task_success)
                 {
-                    return parseHandleSaiStatusFailure(handle_status);
+                    return false;
                 }
             }
         }
@@ -859,7 +900,7 @@ bool MirrorOrch::setUnsetPortMirror(Port port,
             task_process_status handle_status =  handleSaiSetStatus(SAI_API_PORT, status);
             if (handle_status != task_success)
             {
-                return parseHandleSaiStatusFailure(handle_status);
+                return false;
             }
         }
     }
@@ -885,6 +926,12 @@ bool MirrorOrch::configurePortMirrorSession(const string& name, MirrorEntry& ses
                 {
                     SWSS_LOG_ERROR("Failed to configure mirror session %s port %s",
                         name.c_str(), port.m_alias.c_str());
+
+                    // Undo the configuration, undo only for 'set' case.
+                    if (set)
+                    {
+                        configurePortMirrorSession(name, session, !set);
+                    }
                     return false;
                 }
             }
@@ -894,6 +941,12 @@ bool MirrorOrch::configurePortMirrorSession(const string& name, MirrorEntry& ses
                 {
                     SWSS_LOG_ERROR("Failed to configure mirror session %s port %s",
                         name.c_str(), port.m_alias.c_str());
+
+                    // Undo the configuration, undo only for 'set' case.
+                    if (set)
+                    {
+                        configurePortMirrorSession(name, session, !set);
+                    }
                     return false;
                 }
             }
@@ -1070,7 +1123,12 @@ bool MirrorOrch::activateSession(const string& name, MirrorEntry& session)
         if (status == false)
         {
             SWSS_LOG_ERROR("Failed to activate port mirror session %s", name.c_str());
+
+            sai_mirror_api->remove_mirror_session(session.sessionId);
+
+            session.sessionId = SAI_NULL_OBJECT_ID;
             session.status = false;
+
             return false;
         }
     }

@@ -25,6 +25,7 @@ struct IntfsEntry
     int                 ref_count;
     sai_object_id_t     vrf_id;
     bool                proxy_arp;
+    bool                remove_intf_hw_pending;
 };
 
 typedef map<string, IntfsEntry> IntfsTable;
@@ -38,6 +39,7 @@ public:
     bool isPrefixSubnet(const IpPrefix&, const string&);
     bool isInbandIntfInMgmtVrf(const string& alias);
     string getRouterIntfsAlias(const IpAddress &ip, const string &vrf_name = "");
+    bool isIpInIntfSubnet(const IpAddress &ip, const string &alias, const string &vrf_name);
     string getRifRateFlexCounterTableKey(string key);
     void increaseRouterIntfsRefCount(const string&);
     void decreaseRouterIntfsRefCount(const string&);

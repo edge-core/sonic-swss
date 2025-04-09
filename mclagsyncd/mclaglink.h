@@ -78,6 +78,7 @@ namespace swss {
         char peer_ip[INET_ADDRSTRLEN];
         char peer_ifname[MAX_L_PORT_NAME];
         uint8_t  system_mac[ETHER_ADDR_LEN];
+        uint8_t  mclag_system_mac[ETHER_ADDR_LEN];
         int attr_bmap;
     };
 
@@ -167,6 +168,7 @@ namespace swss {
         std::string source_ip;
         std::string peer_ip;
         std::string peer_link;
+        std::string mclag_sys_id;
         int keepalive_interval;
         int session_timeout;
 
@@ -225,6 +227,9 @@ namespace swss {
             unique_ptr<Table> p_device_metadata_tbl;
             unique_ptr<Table> p_mclag_cfg_table;
             unique_ptr<Table> p_mclag_intf_cfg_table;
+            unique_ptr<Table> p_port_state_tbl;
+
+            unique_ptr<Table> p_mclag_app_fdb_tbl;
 
             unique_ptr<ProducerStateTable> p_port_tbl;
             unique_ptr<ProducerStateTable> p_intf_tbl;
@@ -232,6 +237,7 @@ namespace swss {
             unique_ptr<ProducerStateTable> p_acl_rule_tbl;
             unique_ptr<ProducerStateTable> p_lag_tbl;
             unique_ptr<ProducerStateTable> p_iso_grp_tbl;
+            unique_ptr<ProducerStateTable> p_mclag_app_tbl;
             unique_ptr<ProducerStateTable> p_fdb_tbl;
 
             SubscriberStateTable *p_mclag_intf_cfg_tbl;
@@ -246,7 +252,7 @@ namespace swss {
             int getFd() override;
             char* getSendMsgBuffer();
             int getConnSocket();
-            uint64_t readData() override; 
+            uint64_t readData() override;
 
             void mclagsyncdSendFdbEntries(std::deque<KeyOpFieldsValuesTuple> &entries);
 
@@ -255,6 +261,8 @@ namespace swss {
             void mclagsyncdSetIccpState(char *msg, size_t msg_size);
             void mclagsyncdSetIccpRole(char *msg, size_t msg_size);
             void mclagsyncdSetSystemId(char *msg, size_t msg_size);
+            void mclagsyncdSetPeerLink(char *msg, size_t msg_size);
+            void mclagsyncdDelPeerLink(char *msg, size_t msg_size);
             void mclagsyncdDelIccpInfo(char *msg);
             void mclagsyncdSetRemoteIfState(char *msg, size_t msg_size);
             void mclagsyncdDelRemoteIfInfo(char *msg, size_t msg_size);
@@ -276,6 +284,7 @@ namespace swss {
             void setPortMacLearnMode(char *msg);
             void setPortMacLearnNLAPI(char *msg);
             void setFdbFlush();
+            void setFdbFlushByPort(char *msg, size_t msg_len);
             void setIntfMac(char *msg);
             void setFdbEntry(char *msg, int msg_len);
 

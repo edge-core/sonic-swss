@@ -460,6 +460,21 @@ bool RouteOrch::invalidnexthopinNextHopGroup(const NextHopKey &nexthop, uint32_t
     return true;
 }
 
+void RouteOrch::trimComsumer(Consumer &consumer)
+{
+    auto it = consumer.m_toSync.begin(), prev_it = it++;
+    for (; it != consumer.m_toSync.end(); ++it)
+    {
+        if ((*prev_it).first == (*it).first)
+        {
+            if (kfvOp(prev_it->second) == DEL_COMMAND)
+                consumer.m_toSync.erase(prev_it);
+        }
+
+        prev_it = it;
+    }
+}
+
 void RouteOrch::doTask(Consumer& consumer)
 {
     SWSS_LOG_ENTER();
@@ -476,6 +491,12 @@ void RouteOrch::doTask(Consumer& consumer)
         doLabelTask(consumer);
         return;
     }
+
+    /*There are two entry E1 and E2 in consumer, which has same prefix but operation are DEL and SET, respectively.
+     *Under this situation, we need to remove the E1 before performing the next action to prevet that "out of range"
+     *error on m_syncdRoutes.
+     */
+    trimComsumer(consumer);
 
     /* Default handling is for APP_ROUTE_TABLE_NAME */
     auto it = consumer.m_toSync.begin();
@@ -727,7 +748,7 @@ void RouteOrch::doTask(Consumer& consumer)
                         * way is to create loopback interface and then create
                         * route pointing to it, so that we can traps packets to
                         * CPU */
-                        if (alias == "eth0" || alias == "docker0" ||
+                        if (alias == "eth0" || alias == "docker0" || alias == "usb0" ||
                             alias == "lo" || !alias.compare(0, strlen(LOOPBACK_PREFIX), LOOPBACK_PREFIX))
                         {
                             excp_intfs_flag = true;
@@ -1709,6 +1730,12 @@ bool RouteOrch::addRoute(RouteBulkContext& ctx, const NextHopGroupKey &nextHops)
         srv6_nh = true;
     }
 
+    /* Sync the route entry */
+    sai_route_entry_t route_entry;
+    route_entry.vr_id = vrf_id;
+    route_entry.switch_id = gSwitchId;
+    copy(route_entry.destination, ipPrefix);
+
     auto it_route = m_syncdRoutes.at(vrf_id).find(ipPrefix);
 
     if (m_fgNhgOrch->isRouteFineGrained(vrf_id, ipPrefix, nextHops))
@@ -1760,6 +1787,15 @@ bool RouteOrch::addRoute(RouteBulkContext& ctx, const NextHopGroupKey &nextHops)
                 return true;
             }
 
+            Port port;
+            /* Cannot locate interface */
+            if (!gPortsOrch->getPort(nexthop.alias, port))
+            {
+                SWSS_LOG_INFO("Failed to get interface %s",
+                        nexthop.alias.c_str());
+                return false;
+            }
+
             next_hop_id = m_intfsOrch->getRouterIntfsId(nexthop.alias);
             /* rif is not created yet */
             if (next_hop_id == SAI_NULL_OBJECT_ID)
@@ -1768,9 +1804,35 @@ bool RouteOrch::addRoute(RouteBulkContext& ctx, const NextHopGroupKey &nextHops)
                         nextHops.to_string().c_str(), ipPrefix.to_string().c_str());
                 return false;
             }
+
+            if (vrf_id != port.m_vr_id)
+            {
+                SWSS_LOG_INFO("Interface in Next hop %s for %s belongs to different vrf",
+                        nextHops.to_string().c_str(), ipPrefix.to_string().c_str());
+                return false;
+            }
         }
         else
         {
+            /*
+             * Currently when interface route (local next hop) is available, ip route
+             * (ip as next hope) for this subnet is allowed to add in frr, but not take effect.
+             * But when interface route is not available like shut down the interface, the interface
+             * route is not deleted and the ip route is not applied.
+             * The fix here is to check and delete the interface route and make the ip route applied.
+             */
+            if((it_route != m_syncdRoutes.at(vrf_id).end()) &&
+               (it_route->second.nhg_key.getSize() == 1) &&
+               (it_route->second.nhg_key.hasIntfNextHop()) &&
+               (!gRouteBulker.bulk_entry_pending_removal(route_entry)))
+
+            {
+                removeRoute(ctx);
+                gRouteBulker.flush();
+                removeRoutePost(ctx);
+                it_route = m_syncdRoutes.at(vrf_id).find(ipPrefix);
+            }
+
             if (m_neighOrch->hasNextHop(nexthop))
             {
                 next_hop_id = m_neighOrch->getNextHopId(nexthop);
@@ -1894,12 +1956,6 @@ bool RouteOrch::addRoute(RouteBulkContext& ctx, const NextHopGroupKey &nextHops)
 
         next_hop_id = m_syncdNextHopGroups[nextHops].next_hop_group_id;
     }
-
-    /* Sync the route entry */
-    sai_route_entry_t route_entry;
-    route_entry.vr_id = vrf_id;
-    route_entry.switch_id = gSwitchId;
-    copy(route_entry.destination, ipPrefix);
 
     sai_attribute_t route_attr;
     auto& object_statuses = ctx.object_statuses;

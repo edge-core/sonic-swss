@@ -6,6 +6,7 @@
 #include "portsorch.h"
 #include "fdborch.h"
 #include "crmorch.h"
+#include "mlagorch.h"
 #undef private
 
 #define ETH0 "Ethernet0"
@@ -14,6 +15,7 @@
 
 extern redisReply *mockReply;
 extern CrmOrch*  gCrmOrch;
+extern MlagOrch *gMlagOrch;
 
 /*
 Test Fixture 
@@ -111,11 +113,27 @@ namespace fdb_syncd_flush_test
                                                   stateDbFdb,
                                                   stateMclagDbFdb, 
                                                   m_portsOrch.get());
+
+            ASSERT_EQ(gNeighOrch, nullptr);
+            gNeighOrch = new NeighOrch(m_app_db.get(), APP_NEIGH_TABLE_NAME, gIntfsOrch, m_fdborch.get(), m_portsOrch.get(), gVrfOrch, m_chassis_app_db.get());
+
+            ASSERT_EQ(gMlagOrch, nullptr);
+
+            vector<string> mlag_tables = {
+                { CFG_MCLAG_TABLE_NAME },
+                { CFG_MCLAG_INTF_TABLE_NAME }
+            };
+            gMlagOrch = new MlagOrch(m_config_db.get(), mlag_tables);
         }
 
         virtual void TearDown() override {
             delete gCrmOrch;
             gCrmOrch = nullptr;
+            delete gMlagOrch;
+            gMlagOrch = nullptr;
+            delete gNeighOrch;
+            gNeighOrch = nullptr;
+
             gDirectory.m_values.clear();
             ut_helper::uninitSaiApi();
         }

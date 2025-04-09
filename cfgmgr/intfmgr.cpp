@@ -39,8 +39,10 @@ IntfMgr::IntfMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
         m_stateVlanTable(stateDb, STATE_VLAN_TABLE_NAME),
         m_stateVrfTable(stateDb, STATE_VRF_TABLE_NAME),
         m_stateIntfTable(stateDb, STATE_INTERFACE_TABLE_NAME),
+        m_appIntfTable(appDb, APP_INTF_TABLE_NAME),
         m_appIntfTableProducer(appDb, APP_INTF_TABLE_NAME),
-        m_neighTable(appDb, APP_NEIGH_TABLE_NAME)
+        m_neighTable(appDb, APP_NEIGH_TABLE_NAME),
+        m_cfgVlanTable(cfgDb, CFG_VLAN_TABLE_NAME)
 {
     auto subscriberStateTable = new swss::SubscriberStateTable(stateDb,
             STATE_PORT_TABLE_NAME, TableConsumable::DEFAULT_POP_BATCH_SIZE, 100);
@@ -129,6 +131,36 @@ void IntfMgr::setIntfIp(const string &alias, const string &opCmd,
         {
             SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
         }
+    }
+}
+
+void IntfMgr::setIntfIp2me(const string &alias, const string &opCmd,
+                        const IpPrefix &ipPrefix, const string &vrfName)
+{
+    stringstream    cmd;
+    string          res;
+    string          ipPrefixStr = ipPrefix.getIp().to_string();
+
+    if (opCmd == "append")
+    {
+        if (vrfName == "")
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias));
+        else
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias) << " vrf " << shellquote(vrfName));
+    }
+    else
+    {
+        if (vrfName == "")
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias)
+            << " scope link");
+        else
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias)
+            << " scope link vrf " << shellquote(vrfName));
+    }
+    int ret = swss::exec(cmd.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_WARN("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
     }
 }
 
@@ -492,6 +524,8 @@ std::string IntfMgr::setHostSubIntfAdminStatus(const string &alias, const string
     stringstream cmd;
     string res, cmd_str;
 
+    SWSS_LOG_INFO("subintf %s admin_status: %s, parent_admin_status %s", alias.c_str(), admin_status.c_str(), parent_admin_status.c_str());
+
     if (parent_admin_status == "up" || admin_status == "down")
     {
         SWSS_LOG_INFO("subintf %s admin_status: %s", alias.c_str(), admin_status.c_str());
@@ -741,13 +775,10 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
         }
         parentAlias = subIf.parentIntf();
         int subIntfId = subIf.subIntfIdx();
-        /*If long name format, subinterface Id is vlanid */
-        if (!subIf.isShortName())
-        {
-            vlanId = std::to_string(subIntfId);
-            FieldValueTuple vlanTuple("vlan", vlanId);
-            data.push_back(vlanTuple);
-        }
+        /*No matter long or short name format, subinterface Id is vlanid */
+        vlanId = std::to_string(subIntfId);
+        FieldValueTuple vlanTuple("vlan", vlanId);
+        data.push_back(vlanTuple);
     }
     bool is_lo = !alias.compare(0, strlen(LOOPBACK_PREFIX), LOOPBACK_PREFIX);
     string mac = "";
@@ -810,6 +841,18 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
 
     if (op == SET_COMMAND)
     {
+        string platform = getenv("platform") ? getenv("platform") : "";
+        if (platform == BRCM_PLATFORM_SUBSTRING && !parentAlias.empty())
+        {
+            vector<FieldValueTuple> temp;
+            string vlan_name = VLAN_PREFIX + vlanId;
+            if (m_cfgVlanTable.get(vlan_name, temp))
+            {
+                SWSS_LOG_ERROR("subport %s invaild config: vlan config already", alias.c_str());
+                return true;
+            }
+        }
+
         if (!isIntfStateOk(parentAlias.empty() ? alias : parentAlias))
         {
             SWSS_LOG_DEBUG("Interface is not ready, skipping %s", alias.c_str());
@@ -1014,6 +1057,13 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
     }
     else if (op == DEL_COMMAND)
     {
+        vector<FieldValueTuple> temp;
+        if (!m_stateIntfTable.get(alias, temp))
+        {
+            SWSS_LOG_INFO("skip: invaild config protection");
+            return true;
+        }
+
         /* make sure all ip addresses associated with interface are removed, otherwise these ip address would
            be set with global vrf and it may cause ip address conflict. */
         if (getIntfIpCount(alias))
@@ -1093,10 +1143,44 @@ bool IntfMgr::doIntfAddrTask(const vector<string>& keys,
             fvVector.push_back(f);
             m_appIntfTableProducer.set(appKey, fvVector);
             m_stateIntfTable.hset(keys[0] + state_db_key_delimiter + keys[1], "state", "ok");
+            string vrfName = "";
+            vector<FieldValueTuple> temp;
+            if (m_stateIntfTable.get(alias, temp))
+            {
+                for (auto idx : temp)
+                {
+                    const auto &field = fvField(idx);
+                    const auto &value = fvValue(idx);
+                    if (field == "vrf")
+                    {
+                        vrfName = value;
+                    }
+                }
+            }
+            if (!(WarmStart::isWarmStart() && WarmStart::isSwssWarmStartEnable()))
+                setIntfIp2me(alias, "append", ip_prefix, vrfName);
         }
     }
     else if (op == DEL_COMMAND)
     {
+        if ((ip_prefix.isV4() == false) || (ip_prefix.getIp().getAddrScope() != IpAddress::AddrScope::LINK_SCOPE))
+        {
+            vector<FieldValueTuple> temp;
+            string vrfName = "";
+            if (m_stateIntfTable.get(alias, temp))
+            {
+                for (auto idx : temp)
+                {
+                    const auto &field = fvField(idx);
+                    const auto &value = fvValue(idx);
+                    if (field == "vrf")
+                    {
+                        vrfName = value;
+                    }
+                }
+            }
+            setIntfIp2me(alias, "del", ip_prefix, vrfName);
+        }
         setIntfIp(alias, "del", ip_prefix);
 
         // Don't send ipv4 link local config to AppDB and Orchagent
@@ -1104,6 +1188,20 @@ bool IntfMgr::doIntfAddrTask(const vector<string>& keys,
         {
             m_appIntfTableProducer.del(appKey);
             m_stateIntfTable.del(keys[0] + state_db_key_delimiter + keys[1]);
+        }
+
+        // If there is no IPv6 address set on the interface, flush the IPv6 neighbor
+        string ifname(keys[0]);
+        if (getIntfAddrCount(ifname, IPV6_NAME) == 0)
+        {
+            stringstream cmd;
+            string res;
+            cmd << "ip -6 neigh flush dev " << ifname;
+            int ret = swss::exec(cmd.str(), res);
+            if (ret)
+            {
+                SWSS_LOG_ERROR("Command '%s' failed with rc %d, res:%s", cmd.str().c_str(), ret, res.c_str());
+            }
         }
     }
     else
@@ -1216,4 +1314,36 @@ bool IntfMgr::enableIpv6Flag(const string &alias)
     int ret = swss::exec(cmd.str(), temp_res);
     SWSS_LOG_INFO("disable_ipv6 flag is set to 0 for iface: %s, cmd: %s, ret: %d", alias.c_str(), cmd.str().c_str(), ret);
     return (ret == 0) ? true : false;
+}
+
+int IntfMgr::getIntfAddrCount(const string &ifName, const string &ipType)
+{
+    // Check ipType is valid, empty for both type
+    if (!ipType.empty() && ipType != IPV4_NAME && ipType != IPV6_NAME)
+    {
+        throw std::invalid_argument("Invalid ipType. It must be either 'IPv4' or 'IPv6'.");
+    }
+
+    int count = 0;
+    vector<string> intf_keys;
+    m_appIntfTable.getKeys(intf_keys);
+
+    for (const auto &key : intf_keys)
+    {
+        // Search for keys that contain the IP prefix. e.g. "<ifName>:<ip_prefix>"
+        if (key.size() > ifName.size() + 1 && key.compare(0, ifName.size() + 1, ifName + ":") == 0)
+        {
+            string family;
+            string ip_prefix = key.substr(ifName.size() + 1); // Extract IP prefix
+
+            m_appIntfTable.hget(key, "family", family);
+
+            if (ipType.empty() || ipType == family)
+            {
+                count++;
+            }
+        }
+    }
+
+    return count;
 }

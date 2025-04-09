@@ -46,7 +46,7 @@ struct NeighborUpdate
 class NeighOrch : public Orch, public Subject, public Observer
 {
 public:
-    NeighOrch(DBConnector *db, string tableName, IntfsOrch *intfsOrch, FdbOrch *fdbOrch, PortsOrch *portsOrch, DBConnector *chassisAppDb);
+    NeighOrch(DBConnector *db, string tableName, IntfsOrch *intfsOrch, FdbOrch *fdbOrch, PortsOrch *portsOrch, VRFOrch *vrf_orch, DBConnector *chassisAppDb);
     ~NeighOrch();
 
     bool hasNextHop(const NextHopKey&);
@@ -86,6 +86,7 @@ private:
     PortsOrch *m_portsOrch;
     IntfsOrch *m_intfsOrch;
     FdbOrch *m_fdbOrch;
+    VRFOrch *m_vrfOrch;
     ProducerStateTable m_appNeighResolveProducer;
 
     NeighborTable m_syncdNeighbors;
@@ -108,6 +109,7 @@ private:
 
     unique_ptr<Table> m_tableVoqSystemNeighTable;
     unique_ptr<Table> m_stateSystemNeighTable;
+    unique_ptr<Table> m_stateNeighInvalidTable;
     bool getSystemPortNeighEncapIndex(string &alias, IpAddress &ip, uint32_t &encap_index);
     bool addVoqEncapIndex(string &alias, IpAddress &ip, vector<sai_attribute_t> &neighbor_attrs);
     void voqSyncAddNeigh(string &alias, IpAddress &ip_address, const MacAddress &mac, sai_neighbor_entry_t &neighbor_entry);

@@ -729,7 +729,7 @@ void RouteSync::onRouteMsg(int nlmsg_type, struct nl_object *obj, char *vrf)
          * An FRR behavior change from 7.2 to 7.5 makes FRR update default route to eth0 in interface
          * up/down events. Skipping routes to eth0 or docker0 to avoid such behavior
          */
-        if (alias == "eth0" || alias == "docker0")
+        if (alias == "eth0" || alias == "docker0" || alias == "usb0")
         {
             SWSS_LOG_DEBUG("Skip routes to eth0 or docker0: %s %s %s",
                     destipprefix, gw_list.c_str(), intf_list.c_str());

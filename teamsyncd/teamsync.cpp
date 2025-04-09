@@ -162,10 +162,15 @@ void TeamSync::addLag(const string &lagName, int ifindex, bool admin_state,
     if (m_teamSelectables.find(lagName) != m_teamSelectables.end())
     {
         auto tsync = m_teamSelectables[lagName];
-        if (tsync->admin_state == admin_state && tsync->mtu == mtu)
+        if (tsync->admin_state == admin_state && tsync->mtu == mtu && tsync->lag_oper_status == oper_state)
             return;
         tsync->admin_state = admin_state;
         tsync->mtu = mtu;
+        if (tsync->lag_oper_status != oper_state)
+        {
+            tsync->lag_oper_status = oper_state;
+            tsync->operUpdate();
+        }
         lag_update = false;
     }
 
@@ -337,7 +342,8 @@ int TeamSync::TeamPortSync::onChange()
         }
 
         team_get_port_enabled(m_team, ifindex, &enabled);
-        tmp_lag_members[string(ifname)] = enabled;
+        // If lag oper status not up, all lag members should not be enabled
+        tmp_lag_members[string(ifname)] = lag_oper_status && enabled;
     }
 
     /* Compare old and new LAG members and set/del accordingly */
@@ -371,6 +377,11 @@ int TeamSync::TeamPortSync::onChange()
     /* Replace the old LAG members with the new ones */
     m_lagMembers = tmp_lag_members;
     return 0;
+}
+
+int TeamSync::TeamPortSync::operUpdate()
+{
+    return this->onChange();
 }
 
 int TeamSync::TeamPortSync::teamdHandler(struct team_handle *team, void *arg,

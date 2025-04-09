@@ -211,7 +211,7 @@ namespace routeorch_test
             gFdbOrch = new FdbOrch(m_app_db.get(), app_fdb_tables, stateDbFdb, stateMclagDbFdb, gPortsOrch);
 
             ASSERT_EQ(gNeighOrch, nullptr);
-            gNeighOrch = new NeighOrch(m_app_db.get(), APP_NEIGH_TABLE_NAME, gIntfsOrch, gFdbOrch, gPortsOrch, m_chassis_app_db.get());
+            gNeighOrch = new NeighOrch(m_app_db.get(), APP_NEIGH_TABLE_NAME, gIntfsOrch, gFdbOrch, gPortsOrch, gVrfOrch, m_chassis_app_db.get());
 
             TunnelDecapOrch *tunnel_decap_orch = new TunnelDecapOrch(m_app_db.get(), APP_TUNNEL_DECAP_TABLE_NAME);
             vector<string> mux_tables = {
@@ -360,8 +360,8 @@ namespace routeorch_test
 
         static_cast<Orch *>(gRouteOrch)->doTask();
         // Make sure both create and set has been called
-        ASSERT_EQ(current_create_count + 1, create_route_count);
-        ASSERT_EQ(current_remove_count + 1, remove_route_count);
+        ASSERT_EQ(current_create_count, create_route_count);
+        ASSERT_EQ(current_remove_count, remove_route_count);
         ASSERT_EQ(current_set_count, set_route_count);
 
         entries.clear();
@@ -397,9 +397,9 @@ namespace routeorch_test
 
         static_cast<Orch *>(gRouteOrch)->doTask();
         // Make sure both create and remove has been called
-        ASSERT_EQ(current_create_count + 1, create_route_count);
-        ASSERT_EQ(current_remove_count + 1, remove_route_count);
-        ASSERT_EQ(current_set_count, set_route_count);
+        ASSERT_EQ(current_create_count, create_route_count);
+        ASSERT_EQ(current_remove_count, remove_route_count);
+        ASSERT_EQ(current_set_count + 1, set_route_count);
     }
 
     TEST_F(RouteOrchTest, RouteOrchTestDelSetDefaultRoute)

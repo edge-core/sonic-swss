@@ -7,6 +7,7 @@
 #include "exec.h"
 #include "shellcmd.h"
 #include <swss/redisutility.h>
+#include <regex>
 
 using namespace std;
 using namespace swss;
@@ -18,7 +19,9 @@ PortMgr::PortMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
         m_cfgLagMemberTable(cfgDb, CFG_LAG_MEMBER_TABLE_NAME),
         m_statePortTable(stateDb, STATE_PORT_TABLE_NAME),
         m_appSendToIngressPortTable(appDb, APP_SEND_TO_INGRESS_PORT_TABLE_NAME),
-        m_appPortTable(appDb, APP_PORT_TABLE_NAME)
+        m_appPortTable(appDb, APP_PORT_TABLE_NAME),
+        m_stateIntfTable(stateDb, STATE_INTERFACE_TABLE_NAME),
+        m_appIntfTable(appDb, APP_INTF_TABLE_NAME)
 {
 }
 
@@ -122,6 +125,36 @@ bool PortMgr::setPortAdminStatus(const string &alias, const bool up)
         throw runtime_error(cmd_str + " : " + res);
     }
     return true;
+}
+
+void PortMgr::setIntfIp2me(const string &alias, const string &opCmd,
+                        const IpPrefix &ipPrefix, const string &vrfName)
+{
+    stringstream    cmd;
+    string          res;
+    string          ipPrefixStr = ipPrefix.getIp().to_string();
+
+    if (opCmd == "append")
+    {
+        if (vrfName == "")
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias));
+        else
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias) << " vrf " << shellquote(vrfName));
+    }
+    else
+    {
+        if (vrfName == "")
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias)
+            << " scope link");
+        else
+            (cmd << IP_CMD << " route " << shellquote(opCmd) << " " << shellquote(ipPrefixStr) << " dev " << shellquote(alias)
+            << " scope link vrf " << shellquote(vrfName));
+    }
+    int ret = swss::exec(cmd.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_WARN("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+    }
 }
 
 bool PortMgr::isPortStateOk(const string &alias)
@@ -281,6 +314,39 @@ void PortMgr::doTask(Consumer &consumer)
             {
                 setPortAdminStatus(alias, admin_status == "up");
                 SWSS_LOG_NOTICE("Configure %s admin status to %s", alias.c_str(), admin_status.c_str());
+                if (admin_status == "up")
+                {
+                    std::vector<std::string> keys;
+                    m_appIntfTable.getKeys(keys);
+                    std::regex pattern("\\b" + alias + "\\b");
+                    for (const auto& tmp_key : keys)
+                    {
+                        if (std::regex_search(tmp_key, pattern))
+                        {
+                            vector<string> intf_keys = tokenize(tmp_key, ':');
+                            IpPrefix ip_prefix;
+                            if (intf_keys.size() > 1)
+                            {
+                                vector<FieldValueTuple> temp;
+                                ip_prefix = tmp_key.substr(tmp_key.find(':')+1);
+                                string vrfName = "";
+                                if (m_stateIntfTable.get(alias, temp))
+                                {
+                                    for (auto idx : temp)
+                                    {
+                                        const auto &field = fvField(idx);
+                                        const auto &value = fvValue(idx);
+                                        if (field == "vrf")
+                                        {
+                                            vrfName = value;
+                                        }
+                                    }
+                                }
+                                setIntfIp2me(alias, "append", ip_prefix, vrfName);
+                            }
+                        }
+                    }
+                }
             }
         }
         else if (op == DEL_COMMAND)

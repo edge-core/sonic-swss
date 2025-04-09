@@ -477,7 +477,7 @@ void SwitchOrch::doAppSwitchTableTask(Consumer &consumer)
                     break;
                 }
                 if (unsupported_attr){
-                    SWSS_LOG_ERROR("Unsupported Attribute %s", attribute.c_str());
+                    SWSS_LOG_WARN("Unsupported Attribute %s", attribute.c_str());
                     // Continue to set the rest of the attributes, even if current attribute is unsupported
                     continue;
                 }

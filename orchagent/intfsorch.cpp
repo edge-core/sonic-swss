@@ -161,6 +161,24 @@ string IntfsOrch::getRouterIntfsAlias(const IpAddress &ip, const string &vrf_nam
     return string();
 }
 
+bool IntfsOrch::isIpInIntfSubnet(const IpAddress &ip, const string &alias, const string &vrf_name)
+{
+    string ip_alias = getRouterIntfsAlias(ip, vrf_name);
+
+    if (ip_alias.empty())
+    {
+        return false;
+    }
+
+    if (ip_alias == alias)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+
 bool IntfsOrch::isInbandIntfInMgmtVrf(const string& alias)
 {
     if (m_syncdIntfses.find(alias) == m_syncdIntfses.end())
@@ -488,6 +506,7 @@ bool IntfsOrch::setIntf(const string& alias, sai_object_id_t vrf_id, const IpPre
             intfs_entry.ref_count = 0;
             intfs_entry.proxy_arp = false;
             intfs_entry.vrf_id = vrf_id;
+            intfs_entry.remove_intf_hw_pending = false;
             m_syncdIntfses[alias] = intfs_entry;
             m_vrfOrch->increaseVrfRefCount(vrf_id);
         }
@@ -523,6 +542,18 @@ bool IntfsOrch::setIntf(const string& alias, sai_object_id_t vrf_id, const IpPre
             {
                 gPortsOrch->setPort(alias, port);
             }
+        }
+
+        if (!ip_prefix && (m_syncdIntfses[alias].vrf_id != vrf_id))
+        {
+            removeIntf(alias, m_syncdIntfses[alias].vrf_id, nullptr);
+            return false;
+        }
+
+        if (m_syncdIntfses[alias].remove_intf_hw_pending)
+        {
+            SWSS_LOG_NOTICE("Router interface %s is under removing. Delay creating", alias.c_str());
+            return false;
         }
     }
 
@@ -621,6 +652,29 @@ bool IntfsOrch::removeIntf(const string& alias, sai_object_id_t vrf_id, const Ip
 
     if (!ip_prefix)
     {
+        if (m_syncdIntfses[alias].ip_addresses.size() != 0)
+        {
+            for (auto it = m_syncdIntfses[alias].ip_addresses.begin(); it != m_syncdIntfses[alias].ip_addresses.end(); )
+            {
+                removeIp2MeRoute(port.m_vr_id, *it);
+
+                if (gMySwitchType == "voq")
+                {
+                    if (gPortsOrch->isInbandPort(alias))
+                    {
+                        gNeighOrch->delInbandNeighbor(alias, it->getIp());
+                    }
+                }
+
+                if (port.m_type == Port::VLAN)
+                {
+                    removeDirectedBroadcast(port, *it);
+                }
+
+                it = m_syncdIntfses[alias].ip_addresses.erase(it);
+            }
+        }
+
         if (m_syncdIntfses[alias].ip_addresses.size() == 0 && removeRouterIntfs(port))
         {
             gPortsOrch->decreasePortRefCount(alias);
@@ -798,7 +852,7 @@ void IntfsOrch::doTask(Consumer &consumer)
             }
         }
 
-        if (alias == "eth0" || alias == "docker0")
+        if (alias == "eth0" || alias == "docker0" || alias == "usb0")
         {
             it = consumer.m_toSync.erase(it);
             continue;
@@ -1135,6 +1189,25 @@ bool IntfsOrch::addRouterIntfs(sai_object_id_t vrf_id, Port &port, string loopba
         return true;
     }
 
+    if (port.m_lag_member_id)
+    {
+        SWSS_LOG_WARN("It's portchannel member %s", port.m_alias.c_str());
+        return false;
+    }
+
+    if (!gPortsOrch->isPortVlanMembersEmpty(port))
+    {
+        SWSS_LOG_WARN("It's vlan member %s", port.m_alias.c_str());
+        return false;
+    }
+
+    if ((port.m_type == Port::PHY || port.m_type == Port::LAG)
+        && port.m_bridge_port_id != SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_NOTICE("Wait %s remove bridge port", port.m_alias.c_str());
+        return false;
+    }
+
     /* Create router interface if the router interface doesn't exist */
     sai_attribute_t attr;
     vector<sai_attribute_t> attrs;
@@ -1285,6 +1358,7 @@ bool IntfsOrch::removeRouterIntfs(Port &port)
 
     if (m_syncdIntfses[port.m_alias].ref_count > 0)
     {
+        m_syncdIntfses[port.m_alias].remove_intf_hw_pending = true;
         SWSS_LOG_NOTICE("Router interface %s is still referenced with ref count %d", port.m_alias.c_str(), m_syncdIntfses[port.m_alias].ref_count);
         return false;
     }
