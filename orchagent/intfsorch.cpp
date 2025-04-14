@@ -1341,7 +1341,7 @@ bool IntfsOrch::addRouterIntfs(sai_object_id_t vrf_id, Port &port, string loopba
     gPortsOrch->setPort(port.m_alias, port);
     m_rifsToAdd.push_back(port);
 
-    SWSS_LOG_NOTICE("Create router interface %s MTU %u", port.m_alias.c_str(), port.m_mtu);
+    SWSS_LOG_NOTICE("Create router interface %s 0x%llx MTU %u", port.m_alias.c_str(), (unsigned long long)port.m_rif_id, port.m_mtu);
 
     if(gMySwitchType == "voq")
     {
@@ -1359,7 +1359,7 @@ bool IntfsOrch::removeRouterIntfs(Port &port)
     if (m_syncdIntfses[port.m_alias].ref_count > 0)
     {
         m_syncdIntfses[port.m_alias].remove_intf_hw_pending = true;
-        SWSS_LOG_NOTICE("Router interface %s is still referenced with ref count %d", port.m_alias.c_str(), m_syncdIntfses[port.m_alias].ref_count);
+        SWSS_LOG_NOTICE("Router interface %s 0x%llx is still referenced with ref count %d", port.m_alias.c_str(), (unsigned long long)port.m_rif_id, m_syncdIntfses[port.m_alias].ref_count);
         return false;
     }
 
