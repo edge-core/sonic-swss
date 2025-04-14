@@ -429,6 +429,7 @@ public:
     bool isVniVlanMapExists(uint32_t vni_id, std::string& vniVlanMapName, sai_object_id_t *tnl_map_entry_id, uint32_t *vlan_id);
 
     void updateTnlMapId(std::string vniVlanMapName, sai_object_id_t tunnel_map_id);
+    bool isIntfConfigVlanVni(string alias);
 private:
     virtual bool addOperation(const Request& request);
     virtual bool delOperation(const Request& request);

@@ -648,10 +648,15 @@ void FdbOrch::update(sai_fdb_event_t        type,
             SWSS_LOG_ERROR("FdbOrch MOVE notification: Failed to get port by bridge port ID 0x%" PRIx64, existing_entry->second.bridge_port_id);
             return;
         }
-	else if (existing_entry->second.origin == FDB_ORIGIN_MCLAG_ADVERTIZED &&
+        else if (existing_entry->second.origin == FDB_ORIGIN_MCLAG_ADVERTIZED &&
                  existing_entry->second.type == "static")
         {
             SWSS_LOG_NOTICE("Ignore MOVE event, MCLAG fdb entry, type is static");
+            return;
+        }
+        else if (update.port.m_alias == port_old.m_alias)
+        {
+            SWSS_LOG_NOTICE("Received MOVE event, new and old port is the same: %s", port_old.m_alias.c_str());
             return;
         }
 
@@ -736,6 +741,36 @@ void FdbOrch::update(sai_fdb_event_t        type,
         }
         update.port.m_fdb_count++;
         m_portsOrch->setPort(update.port.m_alias, update.port);
+
+        if (existing_entry->second.origin == FDB_ORIGIN_MCLAG_ADVERTIZED || existing_entry->second.origin == FDB_ORIGIN_VXLAN_ADVERTIZED)
+        {
+            sai_status_t status;
+            sai_fdb_entry_t fdb_entry;
+            fdb_entry.switch_id = gSwitchId;
+            memcpy(fdb_entry.mac_address, entry->mac_address, sizeof(sai_mac_t));
+            fdb_entry.bv_id = entry->bv_id;
+            sai_attribute_t attr;
+            vector<sai_attribute_t> attrs;
+
+            attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+            attr.value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+            attrs.push_back(attr);
+
+            attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+            attr.value.oid = bridge_port_id;
+            attrs.push_back(attr);
+
+            for(auto itr : attrs)
+            {
+                status = sai_fdb_api->set_fdb_entry_attribute(&fdb_entry, &itr);
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("macUpdate-Failed for MCLAG mac attr.id=0x%x for FDB %s in 0x%" PRIx64 "on %s, rv:%d",
+                                itr.id, update.entry.mac.to_string().c_str(), entry->bv_id, update.port.m_alias.c_str(), status);
+                }
+            }
+        }
+
         update.sai_fdb_type = SAI_FDB_ENTRY_TYPE_DYNAMIC;
         storeFdbEntryState(update);
 
@@ -1391,14 +1426,20 @@ void FdbOrch::updateVlanMember(const VlanMemberUpdate& update)
     {
         for (const auto& fdb: fdb_list)
         {
-            // try to insert an FDB entry. If the FDB entry is not ready to be inserted yet,
-            // it would be added back to the saved_fdb_entries structure by addFDBEntry()
             if(fdb.vlanId == update.vlan.m_vlan_info.vlan_id)
             {
                 FdbEntry entry;
                 entry.mac = fdb.mac;
                 entry.bv_id = update.vlan.m_vlan_info.vlan_oid;
-                (void)addFdbEntry(entry, port_name, fdb.fdbData);
+                 if (!addFdbEntry(entry, port_name, fdb.fdbData))
+                 {
+                    //Since the source of updateVlanMember comes from saved_db and not from another producer,
+                    // if the addFdbEntry function returns false indicating the need for retry,
+                    //it is necessary to save the source saved_db again to ensure that the false entry can be retried.
+                    saved_fdb_entries[port_name].push_back(fdb);
+                    SWSS_LOG_NOTICE("Failed to addFdbEntry: push back saved fdb, MAC: %s vlan %s",
+                                    entry.mac.to_string().c_str(), update.vlan.m_alias.c_str());
+                 }
             }
             else
             {
@@ -1938,7 +1979,7 @@ bool FdbOrch::removeFdbEntry(const FdbEntry& entry, FdbOrigin origin)
         SWSS_LOG_ERROR("FdbOrch RemoveFDBEntry: Failed to remove FDB entry. mac=%s, bv_id=0x%" PRIx64,
                        entry.mac.to_string().c_str(), entry.bv_id);
         task_process_status handle_status = handleSaiRemoveStatus(SAI_API_FDB, status); //FIXME: it should be based on status. Some could be retried. some not
-        if (handle_status != task_success)
+        if (handle_status != task_success && status != SAI_STATUS_ITEM_NOT_FOUND)
         {
             return parseHandleSaiStatusFailure(handle_status);
         }
@@ -2044,5 +2085,26 @@ void FdbOrch::notifyTunnelOrch(Port& port)
       return;
 
     tunnel_orch->deleteTunnelPort(port);
+}
+
+int FdbOrch::getFdbCountByPortVlan(string vlan_name, string port_name)
+{
+    int count = 0;
+    Port port, vlan;
+
+    if (!m_portsOrch->getPort(vlan_name, vlan) || !m_portsOrch->getPort(port_name, port)
+        || port.m_fdb_count == 0)
+        return 0;
+
+    SWSS_LOG_INFO("port m_bridge_port_id 0x%lx vlan 0x%lx", port.m_bridge_port_id, vlan.m_vlan_info.vlan_oid);
+
+    for (auto fdb = m_entries.begin(); fdb != m_entries.end(); fdb++)
+    {
+        if(fdb->second.bridge_port_id == port.m_bridge_port_id && fdb->first.bv_id == vlan.m_vlan_info.vlan_oid)
+        {
+            count++;
+        }
+    }
+    return count;
 }
 

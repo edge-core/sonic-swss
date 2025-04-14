@@ -105,6 +105,7 @@ public:
                          sai_object_id_t vlan_oid);
     void flushFdbByVlan(const string &);
     void notifyObserversFDBFlush(Port &p, sai_object_id_t&);
+    int getFdbCountByPortVlan(string vlan_name, string port_name);
 
 private:
     PortsOrch *m_portsOrch;
