@@ -586,6 +586,8 @@ task_process_status handleSaiCreateStatus(sai_api_t api, sai_status_t status, vo
                      *  and orchagent should ignore the error and treat it as entry was explicitly created.
                      */
                     return task_ignore;
+                case SAI_STATUS_INSUFFICIENT_RESOURCES:
+                case SAI_STATUS_INVALID_PARAMETER:
                 case SAI_STATUS_TABLE_FULL:
                     /*
                      * Neighbor entry may encounter hash collision and return table full, this will be handled by orchagent to recored the invalid entry.
@@ -595,6 +597,34 @@ task_process_status handleSaiCreateStatus(sai_api_t api, sai_status_t status, vo
                 default:
                     SWSS_LOG_ERROR("Encountered failure in create operation, exiting orchagent, SAI API: %s, status: %s",
                                 sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
+                    handleSaiFailure(true);
+                    break;
+            }
+            break;
+        case SAI_API_VLAN:
+            switch (status)
+            {
+                case SAI_STATUS_INVALID_PARAMETER:
+                    SWSS_LOG_ERROR("Encountered SAI_STATUS_INVALID_PARAMETE in create operation, task failed, SAI API: %s, status: %s",
+                            sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
+                    return task_failed;
+                default:
+                    SWSS_LOG_ERROR("Encountered failure in create operation, exiting orchagent, SAI API: %s, status: %s",
+                            sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
+                    handleSaiFailure(true);
+                    break;
+            }
+            break;
+        case SAI_API_BRIDGE:
+            switch (status)
+            {
+                case SAI_STATUS_INVALID_PARAMETER:
+                    SWSS_LOG_ERROR("Encountered SAI_STATUS_INVALID_PARAMETE in create operation, task failed, SAI API: %s, status: %s",
+                            sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
+                    return task_failed;
+                default:
+                    SWSS_LOG_ERROR("Encountered failure in create operation, exiting orchagent, SAI API: %s, status: %s",
+                            sai_serialize_api(api).c_str(), sai_serialize_status(status).c_str());
                     handleSaiFailure(true);
                     break;
             }
@@ -746,6 +776,9 @@ task_process_status handleSaiRemoveStatus(sai_api_t api, sai_status_t status, vo
         case SAI_API_NEXT_HOP_GROUP:
             switch (status)
             {
+                case SAI_STATUS_INVALID_PARAMETER:
+                case SAI_STATUS_OBJECT_IN_USE:
+                    return task_need_retry;
                 case SAI_STATUS_SUCCESS:
                     SWSS_LOG_WARN("SAI_STATUS_SUCCESS is not expected in handleSaiRemoveStatus");
                     return task_success;
