@@ -94,6 +94,7 @@ void cleanup()
 
         natmgr->cleanupMangleIpTables();
         natmgr->cleanupPoolIpTable();
+        natmgr->setFullConeDnatIptablesRule(DELETE);
     }
 }
 
