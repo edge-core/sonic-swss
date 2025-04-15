@@ -42,7 +42,7 @@ struct NatEntryValue
 {
     IpAddress      translated_ip;      // Translated IP address
     string         nat_type;           // Nat Type - SNAT or DNAT
-    string         entry_type;         // Entry type - Static or Dynamic 
+    string         entry_type;         // Entry type - Static or Dynamic
     time_t         activeTime;         // Timestamp in secs when the entry was last seen as active
     time_t         ageOutTime;         // Timestamp in secs when the entry expires
     bool           addedToHw;          // Boolean to represent added to hardware
@@ -96,7 +96,7 @@ struct TwiceNatEntryValue
 {
     IpAddress      translated_src_ip;
     IpAddress      translated_dst_ip;
-    string         entry_type;         // Entry type - Static or Dynamic 
+    string         entry_type;         // Entry type - Static or Dynamic
     time_t         activeTime;         // Timestamp in secs when the entry was last seen as active
     time_t         ageOutTime;         // Timestamp in secs when the entry expires
     bool           addedToHw;          // Boolean to represent added to hardware
@@ -134,7 +134,7 @@ struct TwiceNaptEntryValue
 
     bool operator<(const TwiceNaptEntryValue& other) const
     {
-        return tie(translated_src_ip, translated_src_l4_port, translated_dst_ip, translated_dst_l4_port, entry_type) < 
+        return tie(translated_src_ip, translated_src_l4_port, translated_dst_ip, translated_dst_l4_port, entry_type) <
                tie(other.translated_src_ip, other.translated_src_l4_port, other.translated_dst_ip, other.translated_dst_l4_port, other.entry_type);
     }
 };
@@ -153,14 +153,14 @@ typedef std::map<TwiceNatEntryKey, TwiceNatEntryValue> TwiceNatEntry;
 
 typedef std::map<TwiceNaptEntryKey, TwiceNaptEntryValue> TwiceNaptEntry;
 
-/* Cache of DNAT entries that are dependent on the 
+/* Cache of DNAT entries that are dependent on the
  * nexthop resolution of the translated destination ip address.
  */
 typedef std::set<NaptEntryKey> DnaptCache;
 typedef std::set<TwiceNatEntryKey> TwiceNatCache;
 typedef std::set<TwiceNaptEntryKey> TwiceNaptCache;
 
-// Cache of DNAT Pool destIp 
+// Cache of DNAT Pool destIp
 typedef std::set<IpAddress> DnatPoolEntry;
 
 struct DnatEntries
@@ -191,10 +191,19 @@ public:
     bool debugdumpCLI(KeyOpFieldsValuesTuple t);
     void debugdumpALL();
 
+    // Handling SAI status
+    task_process_status handleSaiCreateStatus(sai_api_t api, sai_status_t status, void* context = nullptr);
+    task_process_status handleSaiSetStatus(sai_api_t api, sai_status_t status, void* context = nullptr);
+    task_process_status handleSaiRemoveStatus(sai_api_t api, sai_status_t status, void* context = nullptr);
+    task_process_status handleSaiGetStatus(sai_api_t api, sai_status_t status, void* context = nullptr);
+
     NeighOrch *m_neighOrch;
     RouteOrch *m_routeOrch;
 
 private:
+    static constexpr auto keySeparator = ':';
+    static constexpr auto keyNextHopUpdateEvent = "NEXTHOP";
+    static constexpr auto keyNeighborUpdateEvent = "NEIGHBOR";
 
     NatEntry                m_natEntries;
     NaptEntry               m_naptEntries;
@@ -212,6 +221,7 @@ private:
     Table                   m_naptQueryTable;
     Table                   m_twiceNatQueryTable;
     Table                   m_twiceNaptQueryTable;
+    ProducerStateTable      m_updateEventTable;
     NotificationConsumer   *m_flushNotificationsConsumer;
     NotificationConsumer   *m_cleanupNotificationConsumer;
     mutex                   m_natMutex;
@@ -245,6 +255,7 @@ private:
     void doTask(Consumer& consumer);
     void doTask(SelectableTimer &timer);
     void doTask(NotificationConsumer& consumer);
+    void doUpdateTableTask(Consumer& consumer);
     void doNatTableTask(Consumer& consumer);
     void doNaptTableTask(Consumer& consumer);
     void doTwiceNatTableTask(Consumer& consumer);
@@ -262,9 +273,14 @@ private:
     bool addTwiceNaptEntry(const TwiceNaptEntryKey &key, const TwiceNaptEntryValue &value);
     bool removeTwiceNaptEntry(const TwiceNaptEntryKey &key);
 
-    void updateNextHop(const NextHopUpdate& update);
-    void updateNeighbor(const NeighborUpdate& update);
-    bool isNextHopResolved(const NextHopUpdate &update);
+    void updateNextHop(const IpAddress &ip_address,
+                       const std::vector<FieldValueTuple>& fieldValues);
+    void updateNeighbor(const IpAddress &ip_address,
+                        const std::vector<FieldValueTuple>& fieldValues);
+    bool isNextHopResolved(const IpAddress &ip_address, const IpPrefix &ip_prefix,
+                           const NextHopGroupKey &nexthopGroup);
+    bool isNhCacheResolved(const IpAddress& private_ip);
+    bool addPendingStaticEntry();
     void addNhCacheDnatEntries(const IpAddress &nhIp, bool add);
     void addDnatToNhCache(const IpAddress &translatedIp, const IpAddress &dstIp);
     void removeDnatFromNhCache(const IpAddress &translatedIp, const IpAddress &dstIp);

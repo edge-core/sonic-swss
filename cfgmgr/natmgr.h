@@ -251,6 +251,7 @@ public:
     void removeStaticNatIptables(const std::string port = NONE_STRING);
     void removeStaticNaptIptables(const std::string port = NONE_STRING);
     void removeDynamicNatRules(const std::string port = NONE_STRING, const std::string ipPrefix = NONE_STRING);
+    bool setFullConeDnatIptablesRule(const std::string &opCmd);
 
 private:
     /* Declare APPL_DB, CFG_DB and STATE_DB tables */
@@ -366,7 +367,6 @@ private:
     bool isGlobalIpMatching(const std::string &intf_keys, const std::string &global_ip);
     bool getIpEnabledIntf(const std::string &global_ip, std::string &interface);
     void setNaptPoolIpTable(const std::string &opCmd, const std::string &nat_ip, const std::string &nat_port);
-    bool setFullConeDnatIptablesRule(const std::string &opCmd);
     bool setMangleIptablesRules(const std::string &opCmd, const std::string &interface, const std::string &nat_zone);
     bool setStaticNatIptablesRules(const std::string &opCmd, const std::string &interface, const std::string &external_ip, const std::string &internal_ip, const std::string &nat_type);
     bool setStaticNaptIptablesRules(const std::string &opCmd, const std::string &interface, const std::string &prototype, const std::string &external_ip, 

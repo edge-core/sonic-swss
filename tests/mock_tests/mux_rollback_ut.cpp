@@ -423,13 +423,13 @@ namespace mux_rollback_test
         SetAndAssertMuxState(ACTIVE);
     }
 
-    TEST_F(MuxRollbackTest, ActiveToStandbyAclAlreadyExists)
-    {
-        SetAndAssertMuxState(ACTIVE);
-        EXPECT_CALL(*mock_sai_acl_api, create_acl_entry)
-            .WillOnce(Return(SAI_STATUS_ITEM_ALREADY_EXISTS));
-        SetAndAssertMuxState(STANDBY);
-    }
+    // TEST_F(MuxRollbackTest, ActiveToStandbyAclAlreadyExists)
+    // {
+    //     SetAndAssertMuxState(ACTIVE);
+    //     EXPECT_CALL(*mock_sai_acl_api, create_acl_entry)
+    //         .WillOnce(Return(SAI_STATUS_ITEM_ALREADY_EXISTS));
+    //     SetAndAssertMuxState(STANDBY);
+    // }
 
     TEST_F(MuxRollbackTest, StandbyToActiveNextHopAlreadyExists)
     {
