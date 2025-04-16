@@ -498,26 +498,29 @@ void VlanMgr::updateVlanMemberNftRule(int vlan_id, const std::string port_alias,
     }
     else
     {
-        // only remove ebtable rules when the port is not member of any VLAN
-        if (m_nftVlanMbrSetElement[vlan_id].size())
+        if (m_nftVlanMbrSetElement.find(vlan_id) != m_nftVlanMbrSetElement.end())
         {
-            // remove nftables rules
-            if (setNftRule(NFT_ARP_CHAIN, port_alias, false, vlan_id)
-                && setNftRule(NFT_VLAN_ARP_CHAIN, port_alias, false, vlan_id)
-                && setNftRule(NFT_ND_CHAIN, port_alias, false, vlan_id))
+            // only remove ebtable rules when the port is not member of any VLAN
+            if (m_nftVlanMbrSetElement[vlan_id].size())
             {
-                updateNftVlanMbrSetElement(vlan_id, port_alias, "delete");
+                // remove nftables rules
+                if (setNftRule(NFT_ARP_CHAIN, port_alias, false, vlan_id)
+                    && setNftRule(NFT_VLAN_ARP_CHAIN, port_alias, false, vlan_id)
+                    && setNftRule(NFT_ND_CHAIN, port_alias, false, vlan_id))
+                {
+                    updateNftVlanMbrSetElement(vlan_id, port_alias, "delete");
+                }
+                else
+                {
+                    SWSS_LOG_INFO("failed to delete nftable rules");
+                }
             }
-            else
-            {
-                SWSS_LOG_INFO("failed to delete nftable rules");
-            }
-        }
 
-        if (m_nftVlanMbrSetElement[vlan_id].size() == 0)
-        {
-            m_neighborSuppressMap.erase(port_alias);
-            updateNftVlanMbrSet(vlan_id, false);
+            if (m_nftVlanMbrSetElement[vlan_id].size() == 0)
+            {
+                m_neighborSuppressMap.erase(port_alias);
+                updateNftVlanMbrSet(vlan_id, false);
+            }
         }
     }
 }
