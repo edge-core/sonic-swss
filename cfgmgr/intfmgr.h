@@ -33,9 +33,9 @@ public:
     using Orch::doTask;
 
 private:
-    ProducerStateTable m_appIntfTableProducer;
-    Table m_cfgIntfTable, m_cfgVlanIntfTable, m_cfgLagIntfTable, m_cfgLoopbackIntfTable, m_cfgVlanTable;
-    Table m_statePortTable, m_stateLagTable, m_stateVlanTable, m_stateVrfTable, m_stateIntfTable, m_appIntfTable;
+    ProducerStateTable m_appIntfTableProducer, m_appSagTableProducer;
+    Table m_cfgIntfTable, m_cfgVlanIntfTable, m_cfgLagIntfTable, m_cfgLoopbackIntfTable, m_cfgVlanTable, m_cfgSagTable;
+    Table m_statePortTable, m_stateLagTable, m_stateVlanTable, m_stateVrfTable, m_stateIntfTable, m_appIntfTable, m_appLagTable;
     Table m_neighTable;
 
     SubIntfMap m_subIntfList;
@@ -49,11 +49,13 @@ private:
     void setIntfMac(const std::string &alias, const std::string &macAddr);
     bool setIntfMpls(const std::string &alias, const std::string &mpls);
     void setIntfIp2me(const std::string &alias, const std::string &opCmd, const IpPrefix &ipPrefix, const std::string &vrfName);
+    void setIntfState(const std::string &alias, bool isUp);
 
     bool doIntfGeneralTask(const std::vector<std::string>& keys, std::vector<FieldValueTuple> data, const std::string& op);
     bool doIntfAddrTask(const std::vector<std::string>& keys, const std::vector<FieldValueTuple>& data, const std::string& op);
     void doTask(Consumer &consumer);
     void doPortTableTask(const std::string& key, std::vector<FieldValueTuple> data, std::string op);
+    void doSagTask(const std::vector<std::string>& keys, const std::vector<FieldValueTuple>& data, const std::string& op);
 
     bool isIntfStateOk(const std::string &alias);
     bool isIntfCreated(const std::string &alias);
@@ -68,7 +70,7 @@ private:
 
     std::string getIntfAdminStatus(const std::string &alias);
     std::string getIntfMtu(const std::string &alias);
-    void addHostSubIntf(const std::string&intf, const std::string &subIntf, const std::string &vlan);
+    void addHostSubIntf(const std::string&intf, const std::string &subIntf, const std::string &vlan, const std::string &mac);
     std::string setHostSubIntfMtu(const std::string &alias, const std::string &mtu, const std::string &parent_mtu);
     std::string setHostSubIntfAdminStatus(const std::string &alias, const std::string &admin_status, const std::string &parent_admin_status);
     void removeHostSubIntf(const std::string &subIntf);
@@ -83,6 +85,7 @@ private:
 
     void updateSubIntfAdminStatus(const std::string &alias, const std::string &admin);
     void updateSubIntfMtu(const std::string &alias, const std::string &mtu);
+    void updateSagMac(const std::string &macAddr);
     bool enableIpv6Flag(const std::string&);
 
     bool m_replayDone {false};

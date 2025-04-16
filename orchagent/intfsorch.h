@@ -24,6 +24,7 @@ struct IntfsEntry
     std::set<IpPrefix>  ip_addresses;
     int                 ref_count;
     sai_object_id_t     vrf_id;
+    MacAddress          mac;
     bool                proxy_arp;
     bool                remove_intf_hw_pending;
 };
@@ -33,7 +34,8 @@ typedef map<string, IntfsEntry> IntfsTable;
 class IntfsOrch : public Orch
 {
 public:
-    IntfsOrch(DBConnector *db, string tableName, VRFOrch *vrf_orch, DBConnector *chassisAppDb);
+    IntfsOrch(DBConnector *db, vector<table_name_with_pri_t> tableNames, VRFOrch *vrf_orch, DBConnector *chassisAppDb);
+    static const int intfsorch_pri;
 
     sai_object_id_t getRouterIntfsId(const string&);
     bool isPrefixSubnet(const IpPrefix&, const string&);
@@ -82,8 +84,10 @@ private:
     VRFOrch *m_vrfOrch;
     IntfsTable m_syncdIntfses;
     map<string, string> m_vnetInfses;
+    MacAddress m_sagMac;
     void doTask(Consumer &consumer);
     void doTask(SelectableTimer &timer);
+    void doSagTask(std::vector<FieldValueTuple> data, const std::string& op);
 
     shared_ptr<DBConnector> m_counter_db;
     shared_ptr<DBConnector> m_flex_db;
