@@ -199,7 +199,7 @@ bool OrchDaemon::init()
         { APP_SAG_TABLE_NAME,   IntfsOrch::intfsorch_pri}
     };
 
-    gIntfsOrch = new IntfsOrch(m_applDb, intf_tables, vrf_orch, m_chassisAppDb);
+    gIntfsOrch = new IntfsOrch(m_applDb, m_stateDb, intf_tables, vrf_orch, m_chassisAppDb);
     gNeighOrch = new NeighOrch(m_applDb, APP_NEIGH_TABLE_NAME, gIntfsOrch, gFdbOrch, gPortsOrch, vrf_orch, m_chassisAppDb);
 
     const int fgnhgorch_pri = 15;

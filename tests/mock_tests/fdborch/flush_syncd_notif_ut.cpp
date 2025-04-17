@@ -119,6 +119,9 @@ namespace fdb_syncd_flush_test
                 { APP_SAG_TABLE_NAME,   IntfsOrch::intfsorch_pri}
             };
 
+            ASSERT_EQ(gIntfsOrch, nullptr);
+            gIntfsOrch = new IntfsOrch(m_app_db.get(), m_state_db.get(), intf_tables, gVrfOrch, m_chassis_app_db.get());
+
             ASSERT_EQ(gNeighOrch, nullptr);
             gNeighOrch = new NeighOrch(m_app_db.get(), APP_NEIGH_TABLE_NAME, gIntfsOrch, m_fdborch.get(), m_portsOrch.get(), gVrfOrch, m_chassis_app_db.get());
 
@@ -136,6 +139,8 @@ namespace fdb_syncd_flush_test
             gCrmOrch = nullptr;
             delete gMlagOrch;
             gMlagOrch = nullptr;
+            delete gIntfsOrch;
+            gIntfsOrch = nullptr;
             delete gNeighOrch;
             gNeighOrch = nullptr;
 

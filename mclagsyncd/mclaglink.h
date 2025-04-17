@@ -102,6 +102,12 @@ namespace swss {
         char mclag_iface[MAX_L_PORT_NAME];
     };
 
+    struct sag_info
+    {
+        int op_type;/*add/del sag */
+        char sag_ifname[MAX_L_PORT_NAME];
+        uint8_t sag_mac[ETHER_ADDR_LEN];
+    };
 
     struct mclag_fdb
     {
@@ -245,6 +251,7 @@ namespace swss {
 
             SubscriberStateTable *p_state_fdb_tbl;
             SubscriberStateTable *p_state_vlan_mbr_subscriber_table;
+            SubscriberStateTable *p_state_sag_subscriber_table;
 
             std::map<mclagDomainEntry, mclagDomainData> m_mclag_domains;
 
@@ -321,6 +328,11 @@ namespace swss {
                 return p_state_vlan_mbr_subscriber_table;
             }
 
+            SubscriberStateTable *getStateSagTable()
+            {
+                return p_state_sag_subscriber_table;
+            }
+
             SubscriberStateTable *getMclagIntfCfgTable()
             {
                 return p_mclag_intf_cfg_tbl;
@@ -334,9 +346,11 @@ namespace swss {
 
             void processMclagDomainCfg(std::deque<KeyOpFieldsValuesTuple> &entries);
             void processVlanMemberTableUpdates(std::deque<KeyOpFieldsValuesTuple> &entries);
+            void processSagTableUpdates(std::deque<KeyOpFieldsValuesTuple> &entries);
 
             void processStateFdb(SubscriberStateTable *stateFdbTbl);
             void processStateVlanMember(SubscriberStateTable *stateVlanMemberTbl);
+            void processStateSag(SubscriberStateTable *stateSagTbl);
 
             void mclagsyncdSendMclagIfaceCfg(std::deque<KeyOpFieldsValuesTuple> &entries);
             void mclagsyncdSendMclagUniqueIpCfg(std::deque<KeyOpFieldsValuesTuple> &entries);

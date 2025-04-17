@@ -58,8 +58,8 @@ static const vector<sai_router_interface_stat_t> rifStatIds =
     SAI_ROUTER_INTERFACE_STAT_OUT_ERROR_OCTETS,
 };
 
-IntfsOrch::IntfsOrch(DBConnector *db, vector<table_name_with_pri_t> tableNames, VRFOrch *vrf_orch, DBConnector *chassisAppDb) :
-        Orch(db, tableNames), m_vrfOrch(vrf_orch)
+IntfsOrch::IntfsOrch(DBConnector *db, DBConnector *stateDb, vector<table_name_with_pri_t> tableNames, VRFOrch *vrf_orch, DBConnector *chassisAppDb) :
+        Orch(db, tableNames), m_vrfOrch(vrf_orch), m_appIntfTable(db, APP_INTF_TABLE_NAME), m_stateSagTable(stateDb, STATE_SAG_TABLE_NAME)
 {
     SWSS_LOG_ENTER();
 
@@ -1082,6 +1082,21 @@ void IntfsOrch::doTask(Consumer &consumer)
                                                         mac.to_string().c_str(), alias.c_str());
                     }
                 }
+            }
+
+            string value;
+            if (m_appIntfTable.hget(kfvKey(t), "static_anycast_gateway", value) && value == "true")
+            {
+                if (update_mac)
+                {
+                    vector<FieldValueTuple> fvVector;
+                    fvVector.emplace_back("mac", mac.to_string());
+                    m_stateSagTable.set(alias, fvVector);
+                }
+            }
+            else if (m_appIntfTable.hget(kfvKey(t), "static_anycast_gateway", value) && value == "false")
+            {
+                m_stateSagTable.del(alias);
             }
 
             if (!proxy_arp.empty())
