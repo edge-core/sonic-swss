@@ -34,7 +34,7 @@ typedef map<string, IntfsEntry> IntfsTable;
 class IntfsOrch : public Orch
 {
 public:
-    IntfsOrch(DBConnector *db, vector<table_name_with_pri_t> tableNames, VRFOrch *vrf_orch, DBConnector *chassisAppDb);
+    IntfsOrch(DBConnector *db, DBConnector *stateDb, vector<table_name_with_pri_t> tableNames, VRFOrch *vrf_orch, DBConnector *chassisAppDb);
     static const int intfsorch_pri;
 
     sai_object_id_t getRouterIntfsId(const string&);
@@ -97,6 +97,7 @@ private:
     unique_ptr<Table> m_vidToRidTable;
     unique_ptr<ProducerTable> m_flexCounterTable;
     unique_ptr<ProducerTable> m_flexCounterGroupTable;
+    Table m_appIntfTable, m_stateSagTable;
 
     std::set<std::string> m_removingIntfses;
 

@@ -108,6 +108,11 @@ int main(int argc, char **argv)
                     SWSS_LOG_INFO(" MCLAGSYNCD Matching vlan Member selectable");
                     mclag.processStateVlanMember((SubscriberStateTable *)temps);
                 }
+                else if (temps == (Selectable *)mclag.getStateSagTable())
+                {
+                    SWSS_LOG_INFO(" MCLAGSYNCD Matching sag selectable");
+                    mclag.processStateSag((SubscriberStateTable *)temps);
+                }
                 else
                 {
                     pipeline.flush();

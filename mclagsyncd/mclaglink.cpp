@@ -976,6 +976,9 @@ void MclagLink::addDomainCfgDependentSelectables()
     p_state_vlan_mbr_subscriber_table = new SubscriberStateTable(p_state_db.get(), STATE_VLAN_MEMBER_TABLE_NAME);
     SWSS_LOG_INFO(" MCLAGSYNCD create state vlan member table");
 
+    p_state_sag_subscriber_table = new SubscriberStateTable(p_state_db.get(), STATE_SAG_TABLE_NAME);
+    SWSS_LOG_INFO(" MCLAGSYNCD create state sag table");
+
     p_mclag_intf_cfg_tbl      = new SubscriberStateTable(p_config_db.get(), CFG_MCLAG_INTF_TABLE_NAME);
     SWSS_LOG_INFO(" MCLAGSYNCD create cfg mclag intf table");
 
@@ -993,6 +996,12 @@ void MclagLink::addDomainCfgDependentSelectables()
     {
         m_select->addSelectable(p_state_vlan_mbr_subscriber_table);
         SWSS_LOG_NOTICE(" MCLAGSYNCD Add p_state_vlan_mbr_subscriber_table  to selectable");
+    }
+
+    if (p_state_sag_subscriber_table)
+    {
+        m_select->addSelectable(p_state_sag_subscriber_table);
+        SWSS_LOG_NOTICE(" MCLAGSYNCD Add p_state_sag_subscriber_table to selectable");
     }
 
     //add mclag interface table to selectable
@@ -1044,6 +1053,15 @@ void MclagLink::delDomainCfgDependentSelectables()
         delete p_state_vlan_mbr_subscriber_table;
         p_state_vlan_mbr_subscriber_table = NULL;
         m_vlan_mbrship.clear();
+    }
+
+    if (p_state_sag_subscriber_table)
+    {
+        m_select->removeSelectable(p_state_sag_subscriber_table);
+        SWSS_LOG_INFO(" MCLAGSYNCD remove p_state_sag_subscriber_table selectable");
+
+        delete p_state_sag_subscriber_table;
+        p_state_sag_subscriber_table = NULL;
     }
 }
 
@@ -1346,6 +1364,92 @@ void MclagLink::processVlanMemberTableUpdates(std::deque<KeyOpFieldsValuesTuple>
     return;
 }
 
+void MclagLink::processSagTableUpdates(std::deque<KeyOpFieldsValuesTuple> &entries)
+{
+    struct sag_info sag_info;
+    mclag_msg_hdr_t *msg_hdr = NULL;
+    size_t infor_len = sizeof(mclag_msg_hdr_t);
+    uint8_t sag_mac[ETHER_ADDR_LEN];
+    int count = 0;
+
+    ssize_t write = 0;
+    char *infor_start = getSendMsgBuffer();
+
+    /* Nothing popped */
+    if (entries.empty())
+    {
+        return;
+    }
+
+    for (auto entry: entries)
+    {
+        std::string key = kfvKey(entry);
+        std::string op = kfvOp(entry);
+        vector<FieldValueTuple> values;
+        memset(&sag_info, 0, sizeof(sag_info));
+        count++;
+        SWSS_LOG_DEBUG("%s: sag_name:%s ", __FUNCTION__, key.c_str());
+
+        if(op == "SET")
+        {
+            sag_info.op_type = MCLAG_CFG_OPER_ADD;
+        }
+        else
+        {
+            sag_info.op_type = MCLAG_CFG_OPER_DEL;
+        }
+        memcpy(sag_info.sag_ifname, key.c_str(), key.size());
+
+        for (auto i : kfvFieldsValues(entry))
+        {
+            if (fvField(i) == "mac")
+            {
+                MacAddress::parseMacString(fvValue(i), sag_mac);
+                memcpy(sag_info.sag_mac, sag_mac, ETHER_ADDR_LEN);
+            }
+        }
+
+        if (MCLAG_MAX_SEND_MSG_LEN - infor_len < (sizeof(struct sag_info)) )
+        {
+            msg_hdr = reinterpret_cast<mclag_msg_hdr_t *>(static_cast<void *>(infor_start));
+            msg_hdr->version = 1;
+            msg_hdr->msg_len = (unsigned short)infor_len;
+            msg_hdr->msg_type = MCLAG_SYNCD_MSG_TYPE_STATE_SAG;
+
+            SWSS_LOG_NOTICE("mclagsycnd send msg to iccpd, msg_len =%d, msg_type =%d count : %d", msg_hdr->msg_len, msg_hdr->msg_type, (count -1));
+            write = ::write(getConnSocket(), infor_start, msg_hdr->msg_len);
+
+            count = 0;
+            if (write <= 0)
+            {
+                SWSS_LOG_ERROR("mclagsycnd to ICCPD, SAG state updates send, buffer full; write to m_connection_socket failed");
+            }
+
+            infor_len = sizeof(mclag_msg_hdr_t);
+        }
+        memcpy((char*)(infor_start + infor_len), (char*)&sag_info,    sizeof(struct sag_info));
+        infor_len += sizeof(struct sag_info) ;
+    }
+
+    /*no config info notification reqd */
+    if (infor_len <= sizeof(mclag_msg_hdr_t))
+        return;
+
+    msg_hdr = reinterpret_cast<mclag_msg_hdr_t *>(static_cast<void *>(infor_start));
+    msg_hdr->version  = 1;
+    msg_hdr->msg_len  = (unsigned short)infor_len;
+    msg_hdr->msg_type = MCLAG_SYNCD_MSG_TYPE_STATE_SAG;
+
+    SWSS_LOG_NOTICE("mclagsycnd send msg to iccpd, SAG state updates; msg_len =%d, msg_type =%d count : %d ver:%d ", msg_hdr->msg_len, msg_hdr->msg_type, msg_hdr->version, count);
+    write = ::write(getConnSocket(), infor_start, msg_hdr->msg_len);
+
+
+    if (write <= 0)
+    {
+        SWSS_LOG_ERROR("mclagsycnd to ICCPD, SAG state updates send; write to m_connection_socket failed");
+    }
+    return;
+}
 
 /* Enable/Disable traffic distribution mode for LAG member port */
 void MclagLink::mclagsyncdSetTrafficDisable(
@@ -1581,6 +1685,14 @@ void MclagLink::processStateVlanMember(SubscriberStateTable *stateVlanMemberTbl)
     std::deque<KeyOpFieldsValuesTuple> entries;
     stateVlanMemberTbl->pops(entries);
     processVlanMemberTableUpdates(entries);
+}
+
+void MclagLink::processStateSag(SubscriberStateTable *stateSagTbl)
+{
+    SWSS_LOG_INFO("MCLAGSYNCD: Process State Sag events ");
+    std::deque<KeyOpFieldsValuesTuple> entries;
+    stateSagTbl->pops(entries);
+    processSagTableUpdates(entries);
 }
 
 /* Set the peer link field in the STATE_MCLAG_TABLE */
@@ -2018,6 +2130,7 @@ MclagLink::MclagLink(Select *select, int port) :
 
     p_state_fdb_tbl                   = NULL;
     p_state_vlan_mbr_subscriber_table = NULL;
+    p_state_sag_subscriber_table      = NULL;
     p_mclag_intf_cfg_tbl              = NULL;
     p_mclag_unique_ip_cfg_tbl         = NULL;
 }
@@ -2036,6 +2149,9 @@ MclagLink::~MclagLink()
 
     if (p_state_vlan_mbr_subscriber_table) 
         delete p_state_vlan_mbr_subscriber_table;
+
+    if (p_state_sag_subscriber_table)
+        delete p_state_sag_subscriber_table;
 
     if (p_mclag_unique_ip_cfg_tbl) 
         delete p_mclag_unique_ip_cfg_tbl;
