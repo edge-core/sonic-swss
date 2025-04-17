@@ -82,6 +82,14 @@ class TestSag(object):
         assert exit_code == 0
         assert mac in result
 
+    def check_kernel_fdb(self, dvs, mac, vlan, exist):
+        (exit_code, result) = dvs.runcmd(['sh', '-c', "bridge fdb show vlan {}".format(vlan)])
+        assert exit_code == 0
+        if exist:
+            assert mac in result
+        else:
+            assert mac not in result
+
     def check_kernel_intf_ipv6_addr(self, dvs, interface, addr):
         (exit_code, result) = dvs.runcmd(["sh", "-c", "ip -6 address show {}".format(interface)])
         assert exit_code == 0
@@ -158,6 +166,7 @@ class TestSag(object):
 
         self.check_app_db_intf(fvs, mac, "true")
         self.check_kernel_intf_mac(dvs, vlan_intf, mac)
+        self.check_kernel_fdb(dvs, mac, vlan, True)
 
         ipv6_ll = self.generate_ipv6_link_local_addr(mac, 64)
         self.check_kernel_intf_ipv6_addr(dvs, vlan_intf, str(ipv6_ll))
@@ -173,6 +182,7 @@ class TestSag(object):
 
         self.check_app_db_intf(fvs, default_mac, "false")
         self.check_kernel_intf_mac(dvs, vlan_intf, system_mac)
+        self.check_kernel_fdb(dvs, mac, vlan, False)
 
         ipv6_ll = self.generate_ipv6_link_local_addr(system_mac, 64)
         self.check_kernel_intf_ipv6_addr(dvs, vlan_intf, str(ipv6_ll))
@@ -224,6 +234,7 @@ class TestSag(object):
 
         self.check_app_db_intf(fvs, mac, "true")
         self.check_kernel_intf_mac(dvs, vlan_intf, mac)
+        self.check_kernel_fdb(dvs, mac, vlan, True)
 
         ipv6_ll = self.generate_ipv6_link_local_addr(mac, 64)
         self.check_kernel_intf_ipv6_addr(dvs, vlan_intf, str(ipv6_ll))
@@ -244,6 +255,7 @@ class TestSag(object):
 
         self.check_app_db_intf(fvs, default_mac, "true")
         self.check_kernel_intf_mac(dvs, vlan_intf, system_mac)
+        self.check_kernel_fdb(dvs, mac, vlan, False)
 
         ipv6_ll = self.generate_ipv6_link_local_addr(system_mac, 64)
         self.check_kernel_intf_ipv6_addr(dvs, vlan_intf, str(ipv6_ll))
@@ -294,6 +306,7 @@ class TestSag(object):
 
         self.check_app_db_intf(fvs, mac, "true")
         self.check_kernel_intf_mac(dvs, vlan_intf, mac)
+        self.check_kernel_fdb(dvs, mac, vlan, True)
 
         ipv6_ll = self.generate_ipv6_link_local_addr(mac, 64)
         self.check_kernel_intf_ipv6_addr(dvs, vlan_intf, str(ipv6_ll))
@@ -309,6 +322,7 @@ class TestSag(object):
 
         self.check_app_db_intf(fvs, default_mac, "false")
         self.check_kernel_intf_mac(dvs, vlan_intf, system_mac)
+        self.check_kernel_fdb(dvs, mac, vlan, False)
 
         ipv6_ll = self.generate_ipv6_link_local_addr(system_mac, 64)
         self.check_kernel_intf_ipv6_addr(dvs, vlan_intf, str(ipv6_ll))

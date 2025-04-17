@@ -182,6 +182,36 @@ void IntfMgr::setIntfMac(const string &alias, const string &mac_str)
     }
 }
 
+void IntfMgr::addFdbEntry(const std::string &alias, const string &macAddr)
+{
+    string vlanPrefix = VLAN_PREFIX;
+    string vlanId = alias.substr(alias.find(vlanPrefix) + vlanPrefix.length());
+    stringstream cmd;
+    string res;
+
+    // The mac may be learned from other device, if use fdb add will return file exist error
+    cmd << BRIDGE_CMD << " fdb replace " << shellquote(macAddr) << " dev Bridge vlan " << shellquote(vlanId);
+    int ret = swss::exec(cmd.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+    }
+}
+
+void IntfMgr::delFdbEntry(const std::string &alias, const string &macAddr)
+{
+    string vlanPrefix = VLAN_PREFIX;
+    string vlanId = alias.substr(alias.find(vlanPrefix) + vlanPrefix.length());
+    stringstream cmd;
+    string res;
+    cmd << BRIDGE_CMD << " fdb del " << shellquote(macAddr) << " dev Bridge vlan " << shellquote(vlanId);
+    int ret = swss::exec(cmd.str(), res);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+    }
+}
+
 void IntfMgr::setIntfVrf(const string &alias, const string &vrfName)
 {
     stringstream cmd;
@@ -1077,7 +1107,8 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
                         setIntfMac(alias, gwmac);
 
                         setIntfState(alias, true);
-
+                        addFdbEntry(alias, gwmac);
+                        m_sagMac = MacAddress(gwmac);
                         FieldValueTuple fvTuple("mac_addr", gwmac);
                         data.push_back(fvTuple);
                     }
@@ -1087,7 +1118,10 @@ bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
                     setIntfState(alias, false);
                     setIntfMac(alias, gMacAddress.to_string());
                     setIntfState(alias, true);
-
+                    if (m_sagMac != gMacAddress)
+                    {
+                        delFdbEntry(alias, m_sagMac.to_string());
+                    }
                     FieldValueTuple fvTuple("mac_addr", MacAddress().to_string());
                     data.push_back(fvTuple);
                 } else {
@@ -1471,8 +1505,13 @@ void IntfMgr::updateSagMac(const std::string &macAddr)
                 if (macAddr != gMacAddress.to_string())
                 {
                     entryMac = macAddr;
+                    addFdbEntry(key, macAddr);
                 }
-
+                else
+                {
+                    delFdbEntry(key, m_sagMac.to_string());
+                }
+                m_sagMac = MacAddress(macAddr);
                 FieldValueTuple fvTuple("mac_addr", entryMac);
                 vlanIntFv.push_back(fvTuple);
                 m_appIntfTableProducer.set(key, vlanIntFv);

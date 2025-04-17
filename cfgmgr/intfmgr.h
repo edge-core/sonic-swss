@@ -43,10 +43,13 @@ private:
     std::set<std::string> m_pendingReplayIntfList;
     std::set<std::string> m_ipv6LinkLocalModeList;
     std::string mySwitchType;
+    MacAddress m_sagMac;
 
     void setIntfIp(const std::string &alias, const std::string &opCmd, const IpPrefix &ipPrefix);
     void setIntfVrf(const std::string &alias, const std::string &vrfName);
     void setIntfMac(const std::string &alias, const std::string &macAddr);
+    void addFdbEntry(const std::string &alias, const std::string &macAddr);
+    void delFdbEntry(const std::string &alias, const std::string &macAddr);
     bool setIntfMpls(const std::string &alias, const std::string &mpls);
     void setIntfIp2me(const std::string &alias, const std::string &opCmd, const IpPrefix &ipPrefix, const std::string &vrfName);
     void setIntfState(const std::string &alias, bool isUp);
