@@ -1359,6 +1359,9 @@ void FdbOrch::updatePortOperState(const PortOperStateUpdate& update)
     {
         swss::Port p = update.port;
 
+        if (p.m_bridge_port_id != SAI_NULL_OBJECT_ID)
+            flushFDBEntries(p.m_bridge_port_id, SAI_NULL_OBJECT_ID);
+
         if (gMlagOrch->isIslInterface(update.port.m_alias) || gMlagOrch->isMlagInterface(update.port.m_alias))
         {
             SWSS_LOG_NOTICE("MCLAG member or peerlink change to down!");
