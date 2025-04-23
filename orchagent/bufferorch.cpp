@@ -1,6 +1,5 @@
 #include "tokenize.h"
 #include "bufferorch.h"
-#include "directory.h"
 #include "logger.h"
 #include "sai_serialize.h"
 #include "warm_restart.h"
@@ -17,7 +16,6 @@ extern sai_switch_api_t *sai_switch_api;
 extern sai_buffer_api_t *sai_buffer_api;
 
 extern PortsOrch *gPortsOrch;
-extern Directory<Orch*> gDirectory;
 extern sai_object_id_t gSwitchId;
 extern string gMySwitchType;
 extern string gMyHostName;
@@ -1036,22 +1034,6 @@ task_process_status BufferOrch::processQueue(KeyOpFieldsValuesTuple &tuple)
                         return handle_status;
                     }
                 }
-                // create/remove a port queue counter for the queue buffer
-                else
-                {
-                    auto flexCounterOrch = gDirectory.get<FlexCounterOrch*>();
-                    auto queues = tokens[1];
-                    if (op == SET_COMMAND &&
-                        (flexCounterOrch->getQueueCountersState() || flexCounterOrch->getQueueWatermarkCountersState()))
-                    {
-                        gPortsOrch->createPortBufferQueueCounters(port, queues);
-                    }
-                    else if (op == DEL_COMMAND &&
-                             (flexCounterOrch->getQueueCountersState() || flexCounterOrch->getQueueWatermarkCountersState()))
-                    {
-                        gPortsOrch->removePortBufferQueueCounters(port, queues);
-                    }
-                }
             }
 
             /* when we apply buffer configuration we need to increase the ref counter of this port
@@ -1062,23 +1044,23 @@ task_process_status BufferOrch::processQueue(KeyOpFieldsValuesTuple &tuple)
              * so we added a map that will help us to know what was the last command for this port and priority -
              * if the last command was set command then it is a modify command and we dont need to increase the buffer counter
              * all other cases (no last command exist or del command was the last command) it means that we need to increase the ref counter */
-            if (op == SET_COMMAND)
+            if (op == SET_COMMAND) 
             {
-                if (queue_port_flags[port_name][ind] != SET_COMMAND)
+                if (queue_port_flags[port_name][ind] != SET_COMMAND) 
                 {
                     /* if the last operation was not "set" then it's create and not modify - need to increase ref counter */
                     gPortsOrch->increasePortRefCount(port_name);
                 }
-            }
+            } 
             else if (op == DEL_COMMAND)
             {
-                if (queue_port_flags[port_name][ind] == SET_COMMAND)
+                if (queue_port_flags[port_name][ind] == SET_COMMAND) 
 		{
                     /* we need to decrease ref counter only if the last operation was "SET_COMMAND" */
                     gPortsOrch->decreasePortRefCount(port_name);
                 }
-            }
-            else
+            } 
+            else 
             {
                 SWSS_LOG_ERROR("operation value is not SET or DEL (op = %s)", op.c_str());
                 return task_process_status::task_invalid_entry;
@@ -1154,7 +1136,7 @@ task_process_status BufferOrch::processPriorityGroup(KeyOpFieldsValuesTuple &tup
     if (op == SET_COMMAND)
     {
         ref_resolve_status  resolve_result = resolveFieldRefValue(m_buffer_type_maps, buffer_profile_field_name,
-                                             buffer_to_ref_table_map.at(buffer_profile_field_name), tuple,
+                                             buffer_to_ref_table_map.at(buffer_profile_field_name), tuple, 
                                              sai_buffer_profile, buffer_profile_name);
         if (ref_resolve_status::success != resolve_result)
         {
@@ -1235,22 +1217,6 @@ task_process_status BufferOrch::processPriorityGroup(KeyOpFieldsValuesTuple &tup
                             return handle_status;
                         }
                     }
-                    // create or remove a port PG counter for the PG buffer
-                    else
-                    {
-                        auto flexCounterOrch = gDirectory.get<FlexCounterOrch*>();
-                        auto pgs = tokens[1];
-                        if (op == SET_COMMAND &&
-                            (flexCounterOrch->getPgCountersState() || flexCounterOrch->getPgWatermarkCountersState()))
-                        {
-                            gPortsOrch->createPortBufferPgCounters(port, pgs);
-                        }
-                        else if (op == DEL_COMMAND &&
-                                 (flexCounterOrch->getPgCountersState() || flexCounterOrch->getPgWatermarkCountersState()))
-                        {
-                            gPortsOrch->removePortBufferPgCounters(port, pgs);
-                        }
-                    }
                 }
             }
 
@@ -1262,23 +1228,23 @@ task_process_status BufferOrch::processPriorityGroup(KeyOpFieldsValuesTuple &tup
              * so we added a map that will help us to know what was the last command for this port and priority -
              * if the last command was set command then it is a modify command and we dont need to increase the buffer counter
              * all other cases (no last command exist or del command was the last command) it means that we need to increase the ref counter */
-            if (op == SET_COMMAND)
+            if (op == SET_COMMAND) 
             {
-                if (pg_port_flags[port_name][ind] != SET_COMMAND)
+                if (pg_port_flags[port_name][ind] != SET_COMMAND) 
                 {
                     /* if the last operation was not "set" then it's create and not modify - need to increase ref counter */
                     gPortsOrch->increasePortRefCount(port_name);
                 }
-            }
+            } 
             else if (op == DEL_COMMAND)
             {
-                if (pg_port_flags[port_name][ind] == SET_COMMAND)
+                if (pg_port_flags[port_name][ind] == SET_COMMAND) 
                 {
                     /* we need to decrease ref counter only if the last operation was "SET_COMMAND" */
                     gPortsOrch->decreasePortRefCount(port_name);
                 }
-            }
-            else
+            } 
+            else 
             {
                 SWSS_LOG_ERROR("operation value is not SET or DEL (op = %s)", op.c_str());
                 return task_process_status::task_invalid_entry;
