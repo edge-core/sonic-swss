@@ -34,6 +34,12 @@
 typedef std::vector<sai_uint32_t> PortSupportedSpeeds;
 typedef std::set<sai_port_fec_mode_t> PortSupportedFecModes;
 
+enum class PortObjectStatus
+{
+    SUCCESS = 0,
+    FAILURE
+};
+
 static const map<sai_port_oper_status_t, string> oper_status_strings =
 {
     { SAI_PORT_OPER_STATUS_UNKNOWN,     "unknown" },
@@ -243,6 +249,8 @@ private:
     unique_ptr<ProducerTable> m_flexCounterTable;
     unique_ptr<ProducerTable> m_flexCounterGroupTable;
     Table m_portStateTable;
+    Table m_portPfcStateTable;
+    Table m_portPfcAsymStateTable;
 
     std::string getQueueWatermarkFlexCounterTableKey(std::string s);
     std::string getPriorityGroupWatermarkFlexCounterTableKey(std::string s);
@@ -503,5 +511,13 @@ private:
 
     // Port OA helper
     PortHelper m_portHlpr;
+
+    void setPfcStatus(const string& table_name,
+                      uint8_t pfc_enable,
+                      PortObjectStatus status);
+
+    void setPfcAsymStatus(const string& table_name,
+                          PortObjectStatus status,
+                          const string& asym_status="");
 };
 #endif /* SWSS_PORTSORCH_H */

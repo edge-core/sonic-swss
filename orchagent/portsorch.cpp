@@ -278,6 +278,13 @@ static char* hostif_vlan_tag[] = {
     [SAI_HOSTIF_VLAN_TAG_ORIGINAL]  = "SAI_HOSTIF_VLAN_TAG_ORIGINAL"
 };
 
+static map<PortObjectStatus, string> portObjectStatusLookup =
+{
+    {PortObjectStatus::SUCCESS, "SUCCESS"},
+    {PortObjectStatus::FAILURE, "FAILURE"}
+};
+
+
 // functions ----------------------------------------------------------------------------------------------------------
 
 static bool isValidPortTypeForLagMember(const Port& port)
@@ -396,6 +403,8 @@ static void getPortSerdesAttr(PortSerdesAttrMap_t &map, const PortConfig &port)
 PortsOrch::PortsOrch(DBConnector *db, DBConnector *stateDb, vector<table_name_with_pri_t> &tableNames, DBConnector *chassisAppDb) :
         Orch(db, tableNames),
         m_portStateTable(stateDb, STATE_PORT_TABLE_NAME),
+        m_portPfcStateTable(stateDb, STATE_PORT_PFC_STATE_TABLE_NAME),
+        m_portPfcAsymStateTable(stateDb, STATE_PORT_PFC_ASYM_STATE_TABLE_NAME),
         port_stat_manager(PORT_STAT_COUNTER_FLEX_COUNTER_GROUP, StatsMode::READ, PORT_STAT_FLEX_COUNTER_POLLING_INTERVAL_MS, false),
         gb_port_stat_manager("GB_FLEX_COUNTER_DB",
                 PORT_STAT_COUNTER_FLEX_COUNTER_GROUP, StatsMode::READ,
@@ -1738,6 +1747,7 @@ bool PortsOrch::setPortPfc(sai_object_id_t portId, uint8_t pfc_bitmask)
     if (!getPort(portId, p))
     {
         SWSS_LOG_ERROR("Failed to get port object for port id 0x%" PRIx64, portId);
+        setPfcStatus(p.m_alias, pfc_bitmask, PortObjectStatus::FAILURE);
         return false;
     }
 
@@ -1752,6 +1762,7 @@ bool PortsOrch::setPortPfc(sai_object_id_t portId, uint8_t pfc_bitmask)
     else
     {
         SWSS_LOG_ERROR("Incorrect asymmetric PFC mode: %u", p.m_pfc_asym);
+        setPfcStatus(p.m_alias, pfc_bitmask, PortObjectStatus::FAILURE);
         return false;
     }
 
@@ -1761,11 +1772,8 @@ bool PortsOrch::setPortPfc(sai_object_id_t portId, uint8_t pfc_bitmask)
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to set PFC 0x%x to port id 0x%" PRIx64 " (rc:%d)", attr.value.u8, portId, status);
-        task_process_status handle_status = handleSaiSetStatus(SAI_API_PORT, status);
-        if (handle_status != task_success)
-        {
-            return parseHandleSaiStatusFailure(handle_status);
-        }
+        setPfcStatus(p.m_alias, p.m_pfc_bitmask, PortObjectStatus::FAILURE);
+        return false;
     }
 
     if (p.m_pfc_bitmask != pfc_bitmask)
@@ -1773,6 +1781,8 @@ bool PortsOrch::setPortPfc(sai_object_id_t portId, uint8_t pfc_bitmask)
         p.m_pfc_bitmask = pfc_bitmask;
         m_portList[p.m_alias] = p;
     }
+
+    setPfcStatus(p.m_alias, p.m_pfc_bitmask, PortObjectStatus::SUCCESS);
 
     return true;
 }
@@ -1818,9 +1828,12 @@ bool PortsOrch::setPortPfcAsym(Port &port, sai_port_priority_flow_control_mode_t
 {
     SWSS_LOG_ENTER();
 
+    std::string asym_status = (pfc_asym == SAI_PORT_PRIORITY_FLOW_CONTROL_MODE_SEPARATE) ? "enable" : "disable";
+
     uint8_t pfc = 0;
     if (!getPortPfc(port.m_port_id, &pfc))
     {
+        setPfcAsymStatus(port.m_alias, PortObjectStatus::FAILURE, asym_status);
         return false;
     }
 
@@ -1835,15 +1848,13 @@ bool PortsOrch::setPortPfcAsym(Port &port, sai_port_priority_flow_control_mode_t
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to set PFC mode %d to port id 0x%" PRIx64 " (rc:%d)", pfc_asym, port.m_port_id, status);
-        task_process_status handle_status = handleSaiSetStatus(SAI_API_PORT, status);
-        if (handle_status != task_success)
-        {
-            return parseHandleSaiStatusFailure(handle_status);
-        }
+        setPfcAsymStatus(port.m_alias, PortObjectStatus::FAILURE, asym_status);
+        return false;
     }
 
     if (!setPortPfc(port.m_port_id, pfc))
     {
+        setPfcAsymStatus(port.m_alias, PortObjectStatus::FAILURE, asym_status);
         return false;
     }
 
@@ -1856,15 +1867,13 @@ bool PortsOrch::setPortPfcAsym(Port &port, sai_port_priority_flow_control_mode_t
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to set RX PFC 0x%x to port id 0x%" PRIx64 " (rc:%d)", attr.value.u8, port.m_port_id, status);
-            task_process_status handle_status = handleSaiSetStatus(SAI_API_PORT, status);
-            if (handle_status != task_success)
-            {
-                return parseHandleSaiStatusFailure(handle_status);
-            }
+            setPfcAsymStatus(port.m_alias, PortObjectStatus::FAILURE, asym_status);
+            return false;
         }
     }
 
     SWSS_LOG_INFO("Set asymmetric PFC %d to port id 0x%" PRIx64, pfc_asym, port.m_port_id);
+    setPfcAsymStatus(port.m_alias, PortObjectStatus::SUCCESS);
 
     return true;
 }
@@ -7171,7 +7180,7 @@ void PortsOrch::generatePriorityGroupMap()
 
     for (const auto& it: m_portList)
     {
-        if (it.second.m_type == Port::PHY && it.second.m_alias.compare(0, strlen(VRRP_PREFIX), VRRP_PREFIX))
+        if (it.second.m_type == Port::PHY)
         {
             generatePriorityGroupMapPerPort(it.second);
         }
@@ -7276,7 +7285,7 @@ void PortsOrch::generatePortCounterMap()
     for (const auto& it: m_portList)
     {
         // Set counter stats only for PHY ports to ensure syncd will not try to query the counter statistics from the HW for non-PHY ports.
-        if (it.second.m_type != Port::Type::PHY || !it.second.m_alias.compare(0, strlen(VRRP_PREFIX), VRRP_PREFIX))
+        if (it.second.m_type != Port::Type::PHY)
         {
             continue;
         }
@@ -7304,7 +7313,7 @@ void PortsOrch::generatePortBufferDropCounterMap()
     for (const auto& it: m_portList)
     {
         // Set counter stats only for PHY ports to ensure syncd will not try to query the counter statistics from the HW for non-PHY ports.
-        if (it.second.m_type != Port::Type::PHY || !it.second.m_alias.compare(0, strlen(VRRP_PREFIX), VRRP_PREFIX))
+        if (it.second.m_type != Port::Type::PHY)
         {
             continue;
         }
@@ -7312,16 +7321,6 @@ void PortsOrch::generatePortBufferDropCounterMap()
     }
 
     m_isPortBufferDropCounterMapGenerated = true;
-}
-
-uint32_t PortsOrch::getNumberOfPortSupportedPgCounters(string port)
-{
-    return static_cast<uint32_t>(m_portList[port].m_priority_group_ids.size());
-}
-
-uint32_t PortsOrch::getNumberOfPortSupportedQueueCounters(string port)
-{
-    return static_cast<uint32_t>(m_portList[port].m_queue_ids.size());
 }
 
 void PortsOrch::doTask(NotificationConsumer &consumer)
@@ -8899,3 +8898,63 @@ void PortsOrch::doTask(swss::SelectableTimer &timer)
     }
 }
 
+void PortsOrch::setPfcStatus(const string& table_name,
+                             uint8_t pfc_enable,
+                             PortObjectStatus status)
+{
+    vector<FieldValueTuple> fvVector;
+    string pfc_enable_str;
+    int pfc_prio = 0;
+
+    while (pfc_enable)
+    {
+        if (pfc_enable & 0x1)
+        {
+            if (pfc_enable_str == "")
+            {
+                pfc_enable_str = to_string(pfc_prio);
+            }
+            else
+            {
+                pfc_enable_str += list_item_delimiter + to_string(pfc_prio);
+            }
+        }
+
+        pfc_enable = static_cast<uint8_t>(pfc_enable >> 1);
+        pfc_prio += 1;
+    }
+
+    fvVector.emplace_back("pfc_enable", pfc_enable_str);
+    fvVector.emplace_back("status", portObjectStatusLookup[status]);
+
+    if (status == PortObjectStatus::SUCCESS)
+    {
+        fvVector.emplace_back("message", "");
+    }
+    else
+    {
+        fvVector.emplace_back("message", "Failed to set PFC priority.");
+    }
+    m_portPfcStateTable.set(table_name, fvVector);
+}
+
+void PortsOrch::setPfcAsymStatus(const string& table_name,
+                                 PortObjectStatus status,
+                                 const string& asym_status)
+{
+    vector<FieldValueTuple> fvVector;
+    fvVector.emplace_back("status", portObjectStatusLookup[status]);
+    if (status == PortObjectStatus::SUCCESS)
+    {
+        fvVector.emplace_back("message", "");
+    }
+    else
+    {
+        std::stringstream ssErrMsg;
+        ssErrMsg << "Failed to " << asym_status;
+        ssErrMsg << " PFC asymmetric mode on port " << table_name;
+        ssErrMsg << ".";
+        fvVector.emplace_back("message", ssErrMsg.str());
+    }
+    m_portPfcAsymStateTable.set(table_name, fvVector);
+}
