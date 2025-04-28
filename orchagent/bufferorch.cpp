@@ -110,7 +110,7 @@ void BufferOrch::initBufferReadyLists(DBConnector *applDb, DBConnector *confDb)
         Table pg_table(applDb, APP_BUFFER_PG_TABLE_NAME);
         initBufferReadyList(pg_table, false);
 
-        if(gMySwitchType == "voq") 
+        if(gMySwitchType == "voq")
         {
             Table queue_table(applDb, APP_BUFFER_QUEUE_TABLE_NAME);
             initVoqBufferReadyList(queue_table, false);
@@ -126,7 +126,7 @@ void BufferOrch::initBufferReadyLists(DBConnector *applDb, DBConnector *confDb)
         Table pg_table(confDb, CFG_BUFFER_PG_TABLE_NAME);
         initBufferReadyList(pg_table, true);
 
-        if(gMySwitchType == "voq") 
+        if(gMySwitchType == "voq")
         {
             Table queue_table(confDb, CFG_BUFFER_QUEUE_TABLE_NAME);
             initVoqBufferReadyList(queue_table, true);
@@ -158,16 +158,29 @@ void BufferOrch::initBufferReadyList(Table& table, bool isConfigDb)
             continue;
         }
 
+        string lookup_key = "";
+        if (table.getTableName() == CFG_BUFFER_PG_TABLE_NAME ||
+            table.getTableName() == APP_BUFFER_PG_TABLE_NAME)
+        {
+            lookup_key = buffer_pg_prefix;
+        }
+        else
+        {
+            lookup_key = buffer_queue_prefix;
+        }
+
         // We need transform the key from config db format to appl db format
         auto appldb_key = tokens[0] + delimiter + tokens[1];
-        m_ready_list[appldb_key] = false;
+        lookup_key += appldb_key;
+
+        m_ready_list[lookup_key] = false;
 
         auto &&port_names = tokenize(tokens[0], list_item_delimiter);
 
         for(const auto& port_name: port_names)
         {
-            SWSS_LOG_INFO("Item %s has been inserted into ready list", appldb_key.c_str());
-            m_port_ready_list_ref[port_name].push_back(appldb_key);
+            SWSS_LOG_INFO("Item %s has been inserted into ready list", lookup_key.c_str());
+            m_port_ready_list_ref[port_name].push_back(lookup_key);
         }
     }
 }
@@ -870,7 +883,7 @@ task_process_status BufferOrch::processQueue(KeyOpFieldsValuesTuple &tuple)
     tokens = tokenize(key, delimiter);
 
     vector<string> port_names;
-    if (gMySwitchType == "voq") 
+    if (gMySwitchType == "voq")
     {
         if (tokens.size() != 4)
         {
@@ -891,7 +904,7 @@ task_process_status BufferOrch::processQueue(KeyOpFieldsValuesTuple &tuple)
            SWSS_LOG_INFO("System port %s is local port %d local port name %s", port_names[0].c_str(), local_port, local_port_name.c_str());
         }
     }
-    else 
+    else
     {
         if (tokens.size() != 2)
         {
@@ -984,7 +997,7 @@ task_process_status BufferOrch::processQueue(KeyOpFieldsValuesTuple &tuple)
             SWSS_LOG_DEBUG("processing queue:%zd", ind);
             sai_object_id_t queue_id;
 
-            if (gMySwitchType == "voq") 
+            if (gMySwitchType == "voq")
             {
                 std :: vector<sai_object_id_t> queue_ids = gPortsOrch->getPortVoQIds(port);
                 if (queue_ids.size() <= ind)
@@ -993,7 +1006,7 @@ task_process_status BufferOrch::processQueue(KeyOpFieldsValuesTuple &tuple)
                     return task_process_status::task_invalid_entry;
                 }
                 queue_id = queue_ids[ind];
-            } 
+            }
             else
             {
                 if (port.m_queue_ids.size() <= ind)
@@ -1076,9 +1089,10 @@ task_process_status BufferOrch::processQueue(KeyOpFieldsValuesTuple &tuple)
         }
     }
 
-    if (m_ready_list.find(key) != m_ready_list.end())
+    const string lookup_key = buffer_queue_prefix + key;
+    if (m_ready_list.find(lookup_key) != m_ready_list.end())
     {
-        m_ready_list[key] = true;
+        m_ready_list[lookup_key] = true;
     }
     else
     {
@@ -1275,9 +1289,10 @@ task_process_status BufferOrch::processPriorityGroup(KeyOpFieldsValuesTuple &tup
         }
     }
 
-    if (m_ready_list.find(key) != m_ready_list.end())
+    const string lookup_key = buffer_pg_prefix + key;
+    if (m_ready_list.find(lookup_key) != m_ready_list.end())
     {
-        m_ready_list[key] = true;
+        m_ready_list[lookup_key] = true;
     }
     else
     {
@@ -1499,7 +1514,7 @@ void BufferOrch::doTask(Consumer &consumer)
 
     if (gMySwitchType == "voq")
     {
-        if(!gPortsOrch->isInitDone()) 
+        if(!gPortsOrch->isInitDone())
         {
             SWSS_LOG_INFO("Buffer task for %s can't be executed ahead of port config done", consumer.getTableName().c_str());
             return;
