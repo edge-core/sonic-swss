@@ -181,35 +181,11 @@ bool PortsOrch::setPortPfc(sai_object_id_t portId, uint8_t pfc_bitmask)
     return true;
 }
 
-void PortsOrch::generateQueueMap(std::map<string, FlexCounterQueueStates> queuesStateVector)
+void PortsOrch::generateQueueMap()
 {
 }
 
-void PortsOrch::generateQueueMapPerPort(const Port& port, FlexCounterQueueStates& queuesState, bool voq)
-{
-}
-
-void PortsOrch::createPortBufferQueueCounters(const Port &port, string queues)
-{
-}
-
-void PortsOrch::removePortBufferQueueCounters(const Port &port, string queues)
-{
-}
-
-void PortsOrch::generatePriorityGroupMap(std::map<string, FlexCounterPgStates> pgsStateVector)
-{
-}
-
-void PortsOrch::generatePriorityGroupMapPerPort(const Port& port, FlexCounterPgStates& pgsState)
-{
-}
-
-void PortsOrch::createPortBufferPgCounters(const Port& port, string pgs)
-{
-}
-
-void PortsOrch::removePortBufferPgCounters(const Port& port, string pgs)
+void PortsOrch::generatePriorityGroupMap()
 {
 }
 
@@ -601,7 +577,15 @@ bool PortsOrch::getQueueTypeAndIndex(sai_object_id_t queue_id, string &type, uin
     return true;
 }
 
-bool PortsOrch::isAutoNegEnabled(sai_object_id_t id)
+void PortsOrch::generateQueueMapPerPort(const Port &port, bool voq)
+{
+}
+
+void PortsOrch::generatePriorityGroupMapPerPort(const Port &port)
+{
+}
+
+task_process_status PortsOrch::setPortAutoNeg(sai_object_id_t id, int an)
 {
     return true;
 }
