@@ -26,6 +26,9 @@ StpOrch::StpOrch(DBConnector * db, DBConnector * stateDb, vector<string> &tableN
     vector<sai_attribute_t> attrs;
     attr.id = SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID;
     attrs.push_back(attr);
+    attr.id = SAI_SWITCH_ATTR_MAX_STP_INSTANCE;
+    attrs.push_back(attr);
+
 
     status = sai_switch_api->get_switch_attribute(gSwitchId, (uint32_t)attrs.size(), attrs.data());
     if (status != SAI_STATUS_SUCCESS)
@@ -34,6 +37,7 @@ StpOrch::StpOrch(DBConnector * db, DBConnector * stateDb, vector<string> &tableN
     }
 
     m_defaultStpId = attrs[0].value.oid;
+    updateMaxStpInstance(attrs[1].value.u32);
 };
 
 
@@ -344,6 +348,18 @@ bool StpOrch::stpVlanFdbFlush(string vlan_alias)
     gFdbOrch->flushFdbByVlan(vlan_alias);
 
     SWSS_LOG_INFO("Set STP FDB flush vlan %s ", vlan_alias.c_str());
+    return true;
+}
+
+bool StpOrch::updateMaxStpInstance(uint32_t max_stp_instances)
+{
+    SWSS_LOG_NOTICE("Max STP instances %d", (max_stp_instances - 1));
+
+    vector<FieldValueTuple> tuples;
+    FieldValueTuple tuple("max_stp_inst", to_string(max_stp_instances - 1));
+    tuples.push_back(tuple);
+    m_stpTable->set("GLOBAL", tuples);
+
     return true;
 }
 
