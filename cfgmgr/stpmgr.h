@@ -207,6 +207,7 @@ private:
     Table m_stateVlanMemberTable;
     Table m_stateLagTable;
     Table m_stateStpTable;
+    ProducerStateTable m_appCoppTableProducer;
 
     std::bitset<L2_INSTANCE_MAX> l2InstPool;
     int stpd_fd;
@@ -248,6 +249,9 @@ private:
                                 uint32_t vlan_id,
                                 const std::string intfName,
                                 std::vector<FieldValueTuple> &tupEntry);
+
+    void enableCoppRule(void);
+
 };
 
 }

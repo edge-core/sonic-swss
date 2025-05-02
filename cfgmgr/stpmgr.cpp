@@ -3,6 +3,7 @@
 #include "logger.h"
 #include "tokenize.h"
 #include "warm_restart.h"
+#include "copporch.h"
 
 #include <iostream>
 #include <algorithm>
@@ -28,7 +29,9 @@ StpMgr::StpMgr(DBConnector *confDb, DBConnector *applDb, DBConnector *statDb,
     m_stateVlanTable(statDb, STATE_VLAN_TABLE_NAME),
     m_stateLagTable(statDb, STATE_LAG_TABLE_NAME),
     m_stateStpTable(statDb, STATE_STP_TABLE_NAME),
-    m_stateVlanMemberTable(statDb, STATE_VLAN_MEMBER_TABLE_NAME)
+    m_stateVlanMemberTable(statDb, STATE_VLAN_MEMBER_TABLE_NAME),
+    m_appCoppTableProducer(applDb, APP_COPP_TABLE_NAME)
+
 {
     SWSS_LOG_ENTER();
     l2ProtoEnabled = L2_NONE;
@@ -116,6 +119,7 @@ void StpMgr::doStpGlobalTask(Consumer &consumer)
             }
 
             memcpy(msg.base_mac_addr, macAddress.getMac(), 6);
+            enableCoppRule();
         }
         else if (op == DEL_COMMAND)
         {
@@ -134,6 +138,10 @@ void StpMgr::doStpGlobalTask(Consumer &consumer)
             int ret = swss::exec(cmd, res);
             if (ret != 0)
                 SWSS_LOG_ERROR("ebtables del failed %d", ret);
+
+            // Disable dynamic CoPP
+            m_appCoppTableProducer.del("trap.group.stp.pvrst");
+
         }
 
         sendMsgStpd(STP_BRIDGE_CONFIG, sizeof(msg), (void *)&msg);
@@ -1103,4 +1111,22 @@ uint16_t StpMgr::getStpMaxInstances(void)
     }
 
     return max_stp_instances;
+}
+
+void StpMgr::enableCoppRule(void)
+{
+    vector<FieldValueTuple> rule_values = {
+                { copp_trap_id_list, "stp,pvrst" },
+                { copp_trap_action_field, "trap" },
+                { copp_queue_field, "5" },
+                { copp_trap_priority_field, "5" },
+                { copp_policer_meter_type_field, "packets" },
+                { copp_policer_mode_field, "sr_tcm" },
+                { copp_policer_color_field, "blind" },
+                { copp_policer_cir_field, "600" },
+                { copp_policer_cbs_field, "600" },
+                { copp_policer_action_red_field, "drop" }
+            };
+
+    m_appCoppTableProducer.set("trap.group.stp.pvrst", rule_values );
 }
