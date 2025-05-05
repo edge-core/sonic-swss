@@ -195,8 +195,8 @@ void MclagLink::setPortIsolate(char *msg)
         CTC_PLATFORM_SUBSTRING
     };
 
-    const char *platform = getenv("platform");
-    if (platform != nullptr && supported.find(string(platform)) != supported.end())
+    //const char *platform = getenv("platform");
+    //if (platform != nullptr && supported.find(string(platform)) != supported.end())
     {
         mclag_sub_option_hdr_t *op_hdr = NULL;
         string isolate_src_port;
@@ -277,6 +277,7 @@ void MclagLink::setPortIsolate(char *msg)
                     isolate_dst_port.c_str());
         }
     }
+#if 0 /* Not support acl mclag rule */
     else
     {
         mclag_sub_option_hdr_t *op_hdr = NULL;
@@ -370,7 +371,7 @@ void MclagLink::setPortIsolate(char *msg)
         p_acl_rule_tbl->set(acl_rule_name, acl_rule_attrs);
         /*End create ACL rule table*/
     }
-
+#endif
     return;
 }
 
