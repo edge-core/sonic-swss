@@ -1748,7 +1748,7 @@ bool FdbOrch::addFdbEntry(const FdbEntry& entry, const string& port_name,
 
             if ((status == SAI_STATUS_ITEM_ALREADY_EXISTS) && (fdbData.origin == FDB_ORIGIN_MCLAG_ADVERTIZED))
             {
-                SWSS_LOG_ERROR("[MCLAG, SAI_STATUS_ITEM_ALREADY_EXISTS] Set for FDB %s in %s on %s",
+                SWSS_LOG_NOTICE("[MCLAG, SAI_STATUS_ITEM_ALREADY_EXISTS] Set for FDB %s in %s on %s",
                                entry.mac.to_string().c_str(), vlan.m_alias.c_str(), port_name.c_str());
 
                 for (auto itr : attrs)
