@@ -4283,6 +4283,10 @@ void PortsOrch::doPortTask(Consumer &consumer)
                             );
                         }
                     }
+                    else
+                    {
+                        setPfcAsymStatus(p.m_alias, PortObjectStatus::SUCCESS);
+                    }
                 }
 
                 if (!serdes_attr.empty())
