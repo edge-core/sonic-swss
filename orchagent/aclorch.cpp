@@ -2533,7 +2533,7 @@ bool AclTable::create()
 
     sai_attribute_t attr;
     vector<sai_attribute_t> table_attrs;
-    vector<int32_t> action_types_list;
+    vector<int32_t> action_types_list {type.getActions().begin(), type.getActions().end()};
     vector<int32_t> bpoint_list {type.getBindPointTypes().begin(), type.getBindPointTypes().end()};
 
     sai_acl_stage_t acl_stage;
@@ -2581,21 +2581,23 @@ bool AclTable::create()
         table_attrs.push_back(matchPair.second->toSaiAttribute());
     }
 
-    if (!m_aclActions.empty())
+    // mixin m_actions and type.actions
+    for (const auto& action: m_aclActions)
     {
-        action_types_list.assign( m_aclActions.cbegin(), m_aclActions.cend());
+        auto actionItr = std::find(action_types_list.begin(), action_types_list.end(), action);
+        if(actionItr == action_types_list.end())
+        {
+            action_types_list.push_back(action);
+        }
+    }
 
+    if (!action_types_list.empty())
+    {
         attr.id= SAI_ACL_TABLE_ATTR_ACL_ACTION_TYPE_LIST;
         attr.value.s32list.count = static_cast<uint32_t>(action_types_list.size());
         attr.value.s32list.list = action_types_list.data();
         table_attrs.push_back(attr);
     }
-
-    // sai_acl_stage_t acl_stage;
-    // attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
-    // acl_stage = (stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
-    // attr.value.s32 = acl_stage;
-    // table_attrs.push_back(attr);
 
     sai_status_t status = sai_acl_api->create_acl_table(&m_oid, gSwitchId, (uint32_t)table_attrs.size(), table_attrs.data());
     if (status != SAI_STATUS_SUCCESS)
