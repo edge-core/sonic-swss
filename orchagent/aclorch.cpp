@@ -4640,6 +4640,8 @@ void AclOrch::doAclTableTask(Consumer &consumer)
             }
 
             newTable.validateAddType(*tableType);
+            // Add mandatory ACL action if not present
+            newTable.addMandatoryActions();
 
             newTable.addStageMandatoryMatchFields();
 
