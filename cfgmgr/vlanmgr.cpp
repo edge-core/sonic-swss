@@ -1094,6 +1094,12 @@ void VlanMgr::doNeighSuppressTask(Consumer &consumer)
     auto it = consumer.m_toSync.begin();
     while (it != consumer.m_toSync.end())
     {
+        // skip since neigh suppression is not supported on .X
+        {
+            it = consumer.m_toSync.erase(it);
+            continue;
+        }
+
         auto &t = it->second;
 
         string key = kfvKey(t);
@@ -1238,6 +1244,12 @@ void VlanMgr::doNeighSuppressVlanTask(Consumer &consumer)
     auto it = consumer.m_toSync.begin();
     while (it != consumer.m_toSync.end())
     {
+        // skip since neigh suppression is not supported on .X
+        {
+            it = consumer.m_toSync.erase(it);
+            continue;
+        }
+
         auto &t = it->second;
 
         string key = kfvKey(t);

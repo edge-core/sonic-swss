@@ -5186,6 +5186,12 @@ void PortsOrch::doNeighSuppressTask(Consumer &consumer)
     auto it = consumer.m_toSync.begin();
     while (it != consumer.m_toSync.end())
     {
+        // skip since neigh suppression is not supported on .X
+        {
+            it = consumer.m_toSync.erase(it);
+            continue;
+        }
+
         /* Check platform */
         if (platform != BRCM_PLATFORM_SUBSTRING)
         {
