@@ -5186,7 +5186,7 @@ void PortsOrch::doNeighSuppressTask(Consumer &consumer)
     auto it = consumer.m_toSync.begin();
     while (it != consumer.m_toSync.end())
     {
-        // skip since neigh suppression is not supported on .X
+        // skip neigh-suppression since orchagent and sai is not ready
         {
             it = consumer.m_toSync.erase(it);
             continue;
