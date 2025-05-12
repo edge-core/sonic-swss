@@ -638,7 +638,8 @@ bool VxlanMgr::doVxlanTunnelMapCreateTask(const KeyOpFieldsValuesTuple & t)
     vector<FieldValueTuple> fvVector;
     FieldValueTuple s("netdev", vxlan_dev_name);
     fvVector.push_back(s);
-    m_stateNeighSuppressVlanTable.set(key,fvVector);
+    // skip since neigh suppression is not supported on .X
+    // m_stateNeighSuppressVlanTable.set(key,fvVector);
 
     if (isNeighExist(vlan))
     {
@@ -691,8 +692,9 @@ bool VxlanMgr::doVxlanTunnelMapDeleteTask(const KeyOpFieldsValuesTuple & t)
     std::string vlan_delimiter = "-";
     found = vxlan_dev_name.find(vlan_delimiter);
     std::string key = "Vlan" + vxlan_dev_name.substr(found+1,vxlan_dev_name.length());
-    SWSS_LOG_INFO("Delete Tunnel Map for %s -> %s ", key.c_str(), vxlan_dev_name.c_str());
-    m_stateNeighSuppressVlanTable.del(key);
+    // skip since neigh suppression is not supported on .X
+    // SWSS_LOG_INFO("Delete Tunnel Map for %s -> %s ", key.c_str(), vxlan_dev_name.c_str());
+    // m_stateNeighSuppressVlanTable.del(key);
 
     if (isNeighExist(vlan))
     {
