@@ -340,6 +340,16 @@ void SwitchCapabilities::queryHashNativeHashFieldListEnumCapabilities()
     auto status = queryEnumCapabilitiesSai(
         hfList, SAI_OBJECT_TYPE_HASH, SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST
     );
+
+    if (status == SAI_STATUS_NOT_SUPPORTED)
+    {
+        SWSS_LOG_WARN(
+            "Attribute(%s) enum capability query is not supported",
+            toStr(SAI_OBJECT_TYPE_HASH, SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST).c_str()
+        );
+        return;
+    }
+
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR(
@@ -364,9 +374,25 @@ void SwitchCapabilities::queryHashNativeHashFieldListAttrCapabilities()
 
     sai_attr_capability_t attrCap;
 
+    const sai_attr_metadata_t *meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_HASH, SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST);
+    if (meta && !meta->capability) {
+        SWSS_LOG_WARN("Skipping capability query for unimplemented attribute: %s", meta->attridname);
+        return;
+    }
+
     auto status = queryAttrCapabilitiesSai(
         attrCap, SAI_OBJECT_TYPE_HASH, SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST
     );
+
+    if (status == SAI_STATUS_NOT_SUPPORTED)
+    {
+        SWSS_LOG_WARN(
+            "Attribute(%s) capability query is not supported",
+            toStr(SAI_OBJECT_TYPE_HASH, SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST).c_str()
+        );
+        return;
+    }
+
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR(
@@ -462,6 +488,16 @@ void SwitchCapabilities::querySwitchEcmpHashAlgorithmEnumCapabilities()
     auto status = queryEnumCapabilitiesSai(
         haList, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_ALGORITHM
     );
+
+    if (status == SAI_STATUS_NOT_SUPPORTED)
+    {
+        SWSS_LOG_WARN(
+            "Attribute(%s) enum capability query is not supported",
+            toStr(SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_ALGORITHM).c_str()
+        );
+        return;
+    }
+
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR(
@@ -518,6 +554,16 @@ void SwitchCapabilities::querySwitchLagHashAlgorithmEnumCapabilities()
     auto status = queryEnumCapabilitiesSai(
         haList, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_LAG_DEFAULT_HASH_ALGORITHM
     );
+
+    if (status == SAI_STATUS_NOT_SUPPORTED)
+    {
+        SWSS_LOG_WARN(
+            "Attribute(%s) enum capability query is not supported",
+            toStr(SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_LAG_DEFAULT_HASH_ALGORITHM).c_str()
+        );
+        return;
+    }
+
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR(
