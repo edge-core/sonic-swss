@@ -62,6 +62,7 @@ FlowCounterRouteOrch *gFlowCounterRouteOrch;
 DebugCounterOrch *gDebugCounterOrch;
 MonitorOrch *gMonitorOrch;
 StpOrch *gStpOrch;
+MclagAaOrch *gMclagAaOrch;
 
 bool gIsNatSupported = false;
 event_handle_t g_events_handle;
@@ -164,6 +165,13 @@ bool OrchDaemon::init()
     };
     gStpOrch = new StpOrch(m_applDb, m_stateDb, stp_tables);
     gDirectory.set(gStpOrch);
+
+    vector<TableConnector> mclagtables = {
+        TableConnector(m_applDb, APP_MCLAG_TABLE_NAME),
+        TableConnector(m_stateDb, STATE_MCLAG_LOCAL_INTF_TABLE_NAME)
+    };
+
+    gMclagAaOrch = new MclagAaOrch(m_applDb, m_stateDb, mclagtables);
 
     vector<string> vnet_tables = {
             APP_VNET_RT_TABLE_NAME,
@@ -521,6 +529,7 @@ bool OrchDaemon::init()
     m_orchList.push_back(dash_vnet_orch);
     m_orchList.push_back(dash_route_orch);
     m_orchList.push_back(dash_orch);
+    m_orchList.push_back(gMclagAaOrch);
 
     if (m_fabricEnabled)
     {

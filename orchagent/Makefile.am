@@ -88,6 +88,7 @@ orchagent_SOURCES = \
             vrforch.cpp \
             countercheckorch.cpp \
             vxlanorch.cpp \
+            mclagaaorch.cpp \
             vnetorch.cpp \
             dtelorch.cpp \
             flexcounterorch.cpp \
