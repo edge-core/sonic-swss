@@ -45,6 +45,7 @@
 #include "p4orch/p4orch.h"
 #include "bfdorch.h"
 #include "srv6orch.h"
+#include "mclagaaorch.h"
 #include "nvgreorch.h"
 #include "stporch.h"
 #include "dash/dashaclorch.h"

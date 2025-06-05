@@ -13,6 +13,7 @@
 #include "vxlanorch.h"
 #include "flowcounterrouteorch.h"
 #include "directory.h"
+#include "mclagaaorch.h"
 #include "routeorch.h"
 
 using namespace std;
@@ -23,6 +24,7 @@ extern sai_object_id_t gSwitchId;
 
 extern Directory<Orch*>      gDirectory;
 extern PortsOrch*            gPortsOrch;
+extern MclagAaOrch*     gMclagAaOrch;
 extern FlowCounterRouteOrch* gFlowCounterRouteOrch;
 extern RouteOrch*            gRouteOrch;
 
@@ -311,5 +313,7 @@ int VRFOrch::updateL3VniVlan(uint32_t vni, uint16_t vlan_id)
     status = gPortsOrch->updateL3VniStatus(vlan_id, true);
     SWSS_LOG_INFO("updateL3VniStatus vni %d vlan %d, status %d", vni, vlan_id, status);
 
+    status = gMclagAaOrch->updateL3VniStatus(vlan_id, true);
+    SWSS_LOG_INFO("MclagAaOrch updateL3VniStatus vni %d vlan %d, status %d", vni, vlan_id, status);
     return 0;
 }

@@ -136,6 +136,7 @@ public:
     bool                m_admin_state_up = false;
     bool                m_init = false;
     bool                m_l3_vni = false;
+    sai_object_id_t     m_mclag_rif_id = 0;
     sai_object_id_t     m_port_id = 0;
     sai_port_fec_mode_t m_fec_mode = SAI_PORT_FEC_MODE_NONE;
     VlanInfo            m_vlan_info;
@@ -171,6 +172,7 @@ public:
     sai_port_interface_type_t m_interface_type = SAI_PORT_INTERFACE_TYPE_NONE;
     std::set<sai_port_interface_type_t> m_adv_interface_types;
     bool      m_mpls = false;
+    bool      is_peerlink = false;
     /*
      * Following bit vector is used to lock
      * the queue from being changed in BufferOrch.

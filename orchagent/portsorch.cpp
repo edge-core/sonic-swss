@@ -33,6 +33,7 @@
 #include "switchorch.h"
 #include "stringutility.h"
 #include "subscriberstatetable.h"
+#include "mclagaaorch.h"
 
 extern sai_switch_api_t *sai_switch_api;
 extern sai_bridge_api_t *sai_bridge_api;
@@ -59,6 +60,7 @@ extern int32_t gVoqMySwitchId;
 extern string gMyHostName;
 extern string gMyAsicName;
 extern event_handle_t g_events_handle;
+extern MclagAaOrch *gMclagAaOrch;
 
 // defines ------------------------------------------------------------------------------------------------------------
 
@@ -6837,6 +6839,15 @@ bool PortsOrch::addLagMember(Port &lag, Port &port, string member_status)
         voqSyncAddLagMember(lag, port, member_status);
     }
 
+    string platform = getenv("platform") ? getenv("platform") : "";
+    if (platform == BRCM_PLATFORM_SUBSTRING && lag.is_peerlink)
+    {
+        if (!gMclagAaOrch->setMclagPeerlinkPort(port.m_port_id, true))
+        {
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -6883,6 +6894,15 @@ bool PortsOrch::removeLagMember(Port &lag, Port &port)
     {
         //Sync to SYSTEM_LAG_MEMBER_TABLE of CHASSIS_APP_DB
         voqSyncDelLagMember(lag, port);
+    }
+
+    string platform = getenv("platform") ? getenv("platform") : "";
+    if (platform == BRCM_PLATFORM_SUBSTRING && lag.is_peerlink)
+    {
+        if (!gMclagAaOrch->setMclagPeerlinkPort(port.m_port_id, false))
+        {
+            return false;
+        }
     }
 
     return true;
