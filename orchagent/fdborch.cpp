@@ -464,7 +464,7 @@ void FdbOrch::update(sai_fdb_event_t        type,
             status = sai_fdb_api->remove_fdb_entry(&fdb_entry);
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("Failed to remove FDB entry on ISL link. mac=%s, bv_id=0x%" PRIx64,
+                SWSS_LOG_NOTICE("Failed to remove FDB entry on ISL link. mac=%s, bv_id=0x%" PRIx64,
                         update.entry.mac.to_string().c_str(), entry->bv_id);
             }
             return;
@@ -726,7 +726,7 @@ void FdbOrch::update(sai_fdb_event_t        type,
             status = sai_fdb_api->remove_fdb_entry(&fdb_entry);
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("Failed to remove FDB entry on ISL link. mac=%s, bv_id=0x%" PRIx64,
+                SWSS_LOG_NOTICE("Failed to remove FDB entry on ISL link. mac=%s, bv_id=0x%" PRIx64,
                 update.entry.mac.to_string().c_str(), entry->bv_id);
             }
             return;
