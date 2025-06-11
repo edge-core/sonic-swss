@@ -20,6 +20,8 @@ using namespace swss;
 extern MacAddress gMacAddress;
 
 // Fields name
+#define SAG_TRAFFIC         "0x100000"
+#define SAG_CHAIN           "SAG"
 #define VXLAN_TUNNEL "vxlan_tunnel"
 #define SOURCE_IP "src_ip"
 #define VNI "vni"
@@ -454,6 +456,18 @@ bool VxlanMgr::doVxlanTunnelCreateTask(const KeyOpFieldsValuesTuple & t)
 
     m_appVxlanTunnelTableProducer.set(vxlanTunnelName, kfvFieldsValues(t));
     m_vxlanTunnelCache[vxlanTunnelName] = tuncache;
+    std::string nft_rule_dev_name;
+    nft_rule_dev_name = std::string(vxlanTunnelName) + "*" ;
+
+    //add nftable
+    /*
+    Add nftable:  Avoid using SAG MAC when forwarding packets via VTEP.
+    */
+    if(createNftablesChain("bridge", "filter", SAG_CHAIN, "filter", "postrouting"))
+    {
+        string rules = "mark "s + SAG_TRAFFIC + " oifname " + nft_rule_dev_name + " ether saddr set " + gMacAddress.to_string();
+        setNftRule("bridge", "filter", SAG_CHAIN, rules, nft_rule_dev_name, true);
+    }
 
     SWSS_LOG_NOTICE("Create vxlan tunnel %s", vxlanTunnelName.c_str());
     return true;
@@ -491,6 +505,11 @@ bool VxlanMgr::doVxlanTunnelDeleteTask(const KeyOpFieldsValuesTuple & t)
     {
         m_vxlanTunnelCache.erase(it1);
     }
+
+    // delete nft table
+    std::string nft_rule_dev_name;
+    nft_rule_dev_name = std::string(vxlanTunnelName) + "*" ;
+    setNftRule("bridge", "filter", SAG_CHAIN, "", nft_rule_dev_name, false);
 
     SWSS_LOG_NOTICE("Delete vxlan tunnel %s", vxlanTunnelName.c_str());
     return true;
@@ -1491,4 +1510,61 @@ bool VxlanMgr::isNeighExist(std::string vlan_dev_name)
     }
     return false;
 
+}
+
+bool VxlanMgr::createNftablesChain(const string &family, const string &table, const string &chain, const string &type, const string &hook)
+{
+    string nftables_cmd, res;
+
+    nftables_cmd = "nft add table " + family + " " + table;
+    swss::exec(nftables_cmd.c_str(), res);
+    SWSS_LOG_DEBUG("nftables_cmd = [%s]", nftables_cmd.c_str());
+
+    nftables_cmd = "nft add chain " + family + " " + table + " " + chain +
+    " '{ type " + type +" hook " + hook + " priority 0; policy accept; }'";
+    swss::exec(nftables_cmd.c_str(), res);
+    SWSS_LOG_DEBUG("nftables_cmd = [%s]", nftables_cmd.c_str());
+
+    return true;
+}
+
+bool VxlanMgr::setNftRule(const string &family, const string &table, const string &chain, const string &rules, const string port_alias, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    string nftables_cmd, res;
+    string key = chain;
+
+    if (is_add)
+    {
+        if (m_nftRuleHandles.find(key) != m_nftRuleHandles.end()){
+            if (m_nftRuleHandles[key].find(port_alias) != m_nftRuleHandles[key].end()){
+                return true;
+            }
+        }
+        //example: nft --echo --handle add rule bridge filter SAG mark 0X1 oifname vtep* ether saddr set 52:54:00:01:bb:54 counter packets 0 bytes 0 accept | grep handle | awk '{print $NF}'
+        nftables_cmd = "nft --echo --handle add rule " + family + " " + table + " "  + chain + " "  + rules +
+                        " counter packets 0 bytes 0 accept | grep handle | awk '{print $NF}'";
+    }
+    else
+    {
+        if (m_nftRuleHandles.find(key) != m_nftRuleHandles.end())
+            //example: nft delete rule bridge filter SAG handle #HANDLEID
+            nftables_cmd = "nft --echo --handle delete rule " + family + " "  + table + " "  +  chain + " handle " + m_nftRuleHandles[key][port_alias];
+        else
+            return false;
+    }
+
+    SWSS_LOG_DEBUG("nftables_cmd = [%s]", nftables_cmd.c_str());
+    swss::exec(nftables_cmd.c_str(), res);
+
+    if (is_add)
+    {
+        SWSS_LOG_INFO("Success to add nftables rule, key = [%s], handle = [%s]", key.c_str(), res.c_str());
+        m_nftRuleHandles[key].insert(make_pair(port_alias, res));
+    }
+    else
+        m_nftRuleHandles[key].erase(port_alias);
+
+    return true;
 }
