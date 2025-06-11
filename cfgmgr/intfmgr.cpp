@@ -16,6 +16,9 @@
 using namespace std;
 using namespace swss;
 
+#define SAG_TRAFFIC         "0x100000"
+#define SAG_CHAIN           "SAG"
+
 #define VLAN_PREFIX         "Vlan"
 #define LAG_PREFIX          "PortChannel"
 #define SUBINTF_LAG_PREFIX  "Po"
@@ -48,6 +51,10 @@ IntfMgr::IntfMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *stateDb, c
         m_appLagTable(appDb, APP_LAG_TABLE_NAME),
         m_cfgVlanTable(cfgDb, CFG_VLAN_TABLE_NAME)
 {
+    std::string nftables_cmd, res;
+    nftables_cmd = std::string("") + "nft flush chain bridge filter " + SAG_CHAIN;
+    swss::exec(nftables_cmd.c_str(), res);
+
     auto subscriberStateTable = new swss::SubscriberStateTable(stateDb,
             STATE_PORT_TABLE_NAME, TableConsumable::DEFAULT_POP_BATCH_SIZE, 100);
     auto stateConsumer = new Consumer(subscriberStateTable, this, STATE_PORT_TABLE_NAME);
@@ -1332,7 +1339,7 @@ void IntfMgr::doSagTask(const vector<string>& keys,
 {
 SWSS_LOG_ENTER();
 
-string mac = "";
+string SAGmac = "";
 for (auto idx : data)
 {
     const auto &field = fvField(idx);
@@ -1340,18 +1347,25 @@ for (auto idx : data)
 
     if (field == "gateway_mac")
     {
-        mac = value;
+        SAGmac = value;
     }
 }
 
 vector<FieldValueTuple> fvAppSag;
 if (op == SET_COMMAND)
 {
-    FieldValueTuple gwmac("gateway_mac", MacAddress(mac).to_string());
+    FieldValueTuple gwmac("gateway_mac", MacAddress(SAGmac).to_string());
     fvAppSag.push_back(gwmac);
     m_appSagTableProducer.set("GLOBAL", fvAppSag);
 
-    updateSagMac(mac);
+    updateSagMac(SAGmac);
+
+    if(createNftablesChain("bridge", "filter", SAG_CHAIN, "filter", "postrouting"))
+    {
+        string rules = "ether saddr " + SAGmac + " meta mark set "s + SAG_TRAFFIC;
+        setNftRule("bridge", "filter", SAG_CHAIN, rules, "GLOBAL", true);
+    }
+
 }
 else if (op == DEL_COMMAND)
 {
@@ -1359,6 +1373,7 @@ else if (op == DEL_COMMAND)
 
     // reset mac address for enabled static-anycast-gateway's VLAN interfaces
     updateSagMac(gMacAddress.to_string());
+    setNftRule("bridge", "filter", SAG_CHAIN, "", "GLOBAL", false);
 }
 }
 
@@ -1563,4 +1578,60 @@ int IntfMgr::getIntfAddrCount(const string &ifName, const string &ipType)
     }
 
     return count;
+}
+
+bool IntfMgr::createNftablesChain(const string &family, const string &table, const string &chain, const string &type, const string &hook)
+{
+    string nftables_cmd, res;
+
+    nftables_cmd = "nft add table " + family + " " + table;
+    swss::exec(nftables_cmd.c_str(), res);
+    SWSS_LOG_DEBUG("nftables_cmd = [%s]", nftables_cmd.c_str());
+
+    nftables_cmd = "nft add chain " + family + " " + table + " " + chain +
+    " '{ type " + type +" hook " + hook + " priority 0; policy accept; }'";
+    swss::exec(nftables_cmd.c_str(), res);
+    SWSS_LOG_DEBUG("nftables_cmd = [%s]", nftables_cmd.c_str());
+
+    return true;
+}
+
+bool IntfMgr::setNftRule(const string &family, const string &table, const string &chain, const string &rules, const string port_alias, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    string nftables_cmd, res;
+    string key = chain;
+
+    if (is_add)
+    {
+        if (m_nftRuleHandles.find(key) != m_nftRuleHandles.end())
+            if (m_nftRuleHandles[key].find(port_alias) != m_nftRuleHandles[key].end())
+                return true;
+
+        //example: nft --echo --handle insert rule bridge filter SAG ether saddr 00:11:22:33:44:55 meta mark set 0x00000001 counter packets 0 bytes 0 | grep handle | awk '{print $NF}'
+        nftables_cmd = "nft --echo --handle insert rule " + family + " " + table + " "  + chain + " "  + rules +
+                        " counter packets 0 bytes 0 | grep handle | awk '{print $NF}'";
+    }
+    else
+    {
+        if (m_nftRuleHandles.find(key) != m_nftRuleHandles.end())
+            //example: nft delete rule bridge filter SAG handle #HANDLEID
+            nftables_cmd = "nft --echo --handle delete rule " + family + " "  + table + " "  +  chain + " handle " + m_nftRuleHandles[key][port_alias];
+        else
+            return false;
+    }
+
+    SWSS_LOG_DEBUG("nftables_cmd = [%s]", nftables_cmd.c_str());
+    swss::exec(nftables_cmd.c_str(), res);
+
+    if (is_add)
+    {
+        SWSS_LOG_INFO("Success to add nftables rule, key = [%s], handle = [%s]", key.c_str(), res.c_str());
+        m_nftRuleHandles[key].insert(make_pair(port_alias, res));
+    }
+    else
+        m_nftRuleHandles[key].erase(port_alias);
+
+    return true;
 }

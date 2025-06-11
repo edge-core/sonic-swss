@@ -92,6 +92,11 @@ private:
     bool enableIpv6Flag(const std::string&);
 
     bool m_replayDone {false};
+
+    std::map<std::string, std::map<std::string, std::string>> m_nftRuleHandles;
+    bool createNftablesChain(const std::string &family, const std::string &table, const std::string &chain, const std::string &type, const std::string &hook);
+    bool setNftRule(const std::string &family, const std::string &table, const std::string &chain, const std::string &rules,  const std::string port_alias, bool is_add);
+
 };
 
 }
