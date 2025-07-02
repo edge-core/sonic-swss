@@ -814,49 +814,6 @@ bool AclRule::validateAddMatch(string attr_name, string attr_value)
 
     matchData.enable = true;
 
-    if (m_pTable->stage == ACL_STAGE_EGRESS)
-    {
-        if (attr_name == MATCH_ETHER_TYPE)
-        {
-            if (to_uint<uint16_t>(attr_value) == 0x0800)
-            {
-                SWSS_LOG_INFO("Replace %s : %s with ip type", attr_name.c_str(), attr_value.c_str());
-                if (!processIpType(IP_TYPE_IPv4ANY, matchData.data.u32))
-                {
-                    SWSS_LOG_ERROR("Invalid IP type");
-                    return false;
-                }
-
-                matchData.mask.u32 = 0xFFFFFFFF;
-            }
-            else if (to_uint<uint16_t>(attr_value) == 0x86DD)
-            {
-                SWSS_LOG_INFO("Replace %s : %s with ip type", attr_name.c_str(), attr_value.c_str());
-                if (!processIpType(IP_TYPE_IPv6ANY, matchData.data.u32))
-                {
-                    SWSS_LOG_ERROR("Invalid IP type");
-                    return false;
-                }
-
-                matchData.mask.u32 = 0xFFFFFFFF;
-            }
-            else
-            {
-                SWSS_LOG_ERROR("%s is not supported on egress", MATCH_ETHER_TYPE);
-                return false;
-            }
-
-            return setMatch(aclMatchLookup[MATCH_IP_TYPE], matchData);
-        }
-
-        if ((attr_name == MATCH_L4_SRC_PORT_RANGE) || (attr_name == MATCH_L4_DST_PORT_RANGE))
-        {
-            // Add patch here to skip port_range field but still set the rule to chip
-            SWSS_LOG_NOTICE("Skip %s in egress ACL table %s", attr_name.c_str(), m_pTable->id.c_str());
-            return true;
-        }
-    }
-
     try
     {
         if (aclMatchLookup.find(attr_name) == aclMatchLookup.end())
@@ -2536,27 +2493,6 @@ bool AclTable::create()
     vector<int32_t> action_types_list {type.getActions().begin(), type.getActions().end()};
     vector<int32_t> bpoint_list {type.getBindPointTypes().begin(), type.getBindPointTypes().end()};
 
-    sai_acl_stage_t acl_stage;
-    attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
-    acl_stage = (stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
-    attr.value.s32 = acl_stage;
-    table_attrs.push_back(attr);
-
-    if (acl_stage == SAI_ACL_STAGE_EGRESS)
-    {
-        for (std::vector<int>::iterator it = bpoint_list.begin(); it != bpoint_list.end(); )
-        {
-            if (*it != SAI_ACL_BIND_POINT_TYPE_PORT)
-            {
-                it = bpoint_list.erase(it);
-            }
-            else
-            {
-                ++it;
-            }
-        }
-    }
-
     attr.id = SAI_ACL_TABLE_ATTR_ACL_BIND_POINT_TYPE_LIST;
     attr.value.s32list.count = static_cast<uint32_t>(bpoint_list.size());
     attr.value.s32list.list = bpoint_list.data();
@@ -2564,31 +2500,7 @@ bool AclTable::create()
 
     for (const auto& matchPair: type.getMatches())
     {
-        if (acl_stage == SAI_ACL_STAGE_EGRESS)
-        {
-            auto attr_id = matchPair.second->toSaiAttribute().id;
-
-            if (attr_id == SAI_ACL_TABLE_ATTR_FIELD_ETHER_TYPE)
-            {
-                continue;
-            }
-            else if (attr_id == SAI_ACL_TABLE_ATTR_FIELD_ACL_RANGE_TYPE)
-            {
-                continue;
-            }
-        }
-
-        table_attrs.push_back(matchPair.second->toSaiAttribute());
-    }
-
-    // mixin m_actions and type.actions
-    for (const auto& action: m_aclActions)
-    {
-        auto actionItr = std::find(action_types_list.begin(), action_types_list.end(), action);
-        if(actionItr == action_types_list.end())
-        {
-            action_types_list.push_back(action);
-        }
+          table_attrs.push_back(matchPair.second->toSaiAttribute());
     }
 
     if (!action_types_list.empty())
@@ -2598,6 +2510,12 @@ bool AclTable::create()
         attr.value.s32list.list = action_types_list.data();
         table_attrs.push_back(attr);
     }
+
+    sai_acl_stage_t acl_stage;
+    attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
+    acl_stage = (stage == ACL_STAGE_INGRESS) ? SAI_ACL_STAGE_INGRESS : SAI_ACL_STAGE_EGRESS;
+    attr.value.s32 = acl_stage;
+    table_attrs.push_back(attr);
 
     sai_status_t status = sai_acl_api->create_acl_table(&m_oid, gSwitchId, (uint32_t)table_attrs.size(), table_attrs.data());
     if (status != SAI_STATUS_SUCCESS)
