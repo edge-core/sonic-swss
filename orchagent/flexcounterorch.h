@@ -18,6 +18,10 @@ public:
     virtual ~FlexCounterOrch(void);
     bool getPortCountersState() const;
     bool getPortBufferDropCountersState() const;
+    bool getQueueCountersState() const;
+    bool getQueueWatermarkCountersState() const;
+    bool getPgCountersState() const;
+    bool getPgWatermarkCountersState() const;
     bool getHostIfTrapCounterState() const {return m_hostif_trap_counter_enabled;}
     bool getRouteFlowCountersState() const {return m_route_flow_counter_enabled;}
     bool bake() override;
@@ -29,6 +33,10 @@ private:
     std::shared_ptr<ProducerTable> m_gbflexCounterGroupTable = nullptr;
     bool m_port_counter_enabled = false;
     bool m_port_buffer_drop_counter_enabled = false;
+    bool m_queue_enabled = false;
+    bool m_queue_watermark_enabled = false;
+    bool m_pg_enabled = false;
+    bool m_pg_watermark_enabled = false;
     bool m_hostif_trap_counter_enabled = false;
     bool m_route_flow_counter_enabled = false;
     Table m_flexCounterConfigTable;
