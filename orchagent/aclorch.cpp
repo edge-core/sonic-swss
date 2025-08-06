@@ -811,10 +811,12 @@ bool AclRule::validateAddMatch(string attr_name, string attr_value)
     sai_acl_field_data_t matchData{};
     vector<sai_object_id_t> inPorts;
     vector<sai_object_id_t> outPorts;
+    string platform = getenv("platform") ? getenv("platform") : "";
 
     matchData.enable = true;
 
-    if (m_pTable->stage == ACL_STAGE_EGRESS)
+    if (platform == BRCM_PLATFORM_SUBSTRING &&
+        m_pTable->stage == ACL_STAGE_EGRESS)
     {
         if (attr_name == MATCH_ETHER_TYPE)
         {
@@ -2542,7 +2544,10 @@ bool AclTable::create()
     attr.value.s32 = acl_stage;
     table_attrs.push_back(attr);
 
-    if (acl_stage == SAI_ACL_STAGE_EGRESS)
+    string platform = getenv("platform") ? getenv("platform") : "";
+
+    if (platform == BRCM_PLATFORM_SUBSTRING &&
+        acl_stage == SAI_ACL_STAGE_EGRESS)
     {
         for (std::vector<int>::iterator it = bpoint_list.begin(); it != bpoint_list.end(); )
         {
@@ -2564,15 +2569,12 @@ bool AclTable::create()
 
     for (const auto& matchPair: type.getMatches())
     {
-        if (acl_stage == SAI_ACL_STAGE_EGRESS)
+        if (platform == BRCM_PLATFORM_SUBSTRING &&
+            acl_stage == SAI_ACL_STAGE_EGRESS)
         {
             auto attr_id = matchPair.second->toSaiAttribute().id;
 
             if (attr_id == SAI_ACL_TABLE_ATTR_FIELD_ETHER_TYPE)
-            {
-                continue;
-            }
-            else if (attr_id == SAI_ACL_TABLE_ATTR_FIELD_ACL_RANGE_TYPE)
             {
                 continue;
             }
