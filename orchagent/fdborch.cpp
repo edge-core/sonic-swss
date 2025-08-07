@@ -1735,7 +1735,14 @@ bool FdbOrch::addFdbEntry(const FdbEntry& entry, const string& port_name,
         SWSS_LOG_INFO("MAC-Create %s FDB %s in %s on %s", fdbData.type.c_str(), entry.mac.to_string().c_str(), vlan.m_alias.c_str(), port_name.c_str());
 
         status = sai_fdb_api->create_fdb_entry(&fdb_entry, (uint32_t)attrs.size(), attrs.data());
-        if (status != SAI_STATUS_SUCCESS)
+        if (status == SAI_STATUS_TABLE_FULL || status == SAI_STATUS_INSUFFICIENT_RESOURCES)
+        {
+            SWSS_LOG_WARN("Failed to create %s FDB %s in %s on %s, rv:%d",
+                    fdbData.type.c_str(), entry.mac.to_string().c_str(),
+                    vlan.m_alias.c_str(), port_name.c_str(), status);
+            return true; // No need to retry when FDB table is full
+        }
+        else if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to create %s FDB %s in %s on %s, rv:%d",
                     fdbData.type.c_str(), entry.mac.to_string().c_str(),
