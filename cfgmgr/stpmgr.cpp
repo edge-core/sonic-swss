@@ -17,6 +17,8 @@
 using namespace std;
 using namespace swss;
 
+#define ETHERNET_PREFIX "Ethernet"
+
 StpMgr::StpMgr(DBConnector *confDb, DBConnector *applDb, DBConnector *statDb,
         const vector<TableConnector> &tables) :
     Orch(tables),
@@ -30,8 +32,8 @@ StpMgr::StpMgr(DBConnector *confDb, DBConnector *applDb, DBConnector *statDb,
     m_stateLagTable(statDb, STATE_LAG_TABLE_NAME),
     m_stateStpTable(statDb, STATE_STP_TABLE_NAME),
     m_stateVlanMemberTable(statDb, STATE_VLAN_MEMBER_TABLE_NAME),
-    m_appCoppTableProducer(applDb, APP_COPP_TABLE_NAME)
-
+    m_appCoppTableProducer(applDb, APP_COPP_TABLE_NAME),
+    m_appPortTable(applDb, APP_PORT_TABLE_NAME)
 {
     SWSS_LOG_ENTER();
     l2ProtoEnabled = L2_NONE;
@@ -1111,6 +1113,32 @@ uint16_t StpMgr::getStpMaxInstances(void)
     }
 
     return max_stp_instances;
+}
+
+uint16_t StpMgr::getMaxPortNumber(void)
+{
+    uint16_t maxPortNumber = 0;
+    string etherPrefix = ETHERNET_PREFIX;
+
+    vector<string> portTableKeys;
+    m_appPortTable.getKeys(portTableKeys);
+
+    for (auto key : portTableKeys)
+    {
+        size_t pos = key.find(etherPrefix);
+        if (pos == string::npos)
+            continue;
+
+        string portNumberStr = key.substr(pos + etherPrefix.length());
+        uint16_t portNumber = static_cast<uint16_t>(stoi(portNumberStr.c_str()));
+
+        if (maxPortNumber < portNumber)
+        {
+            maxPortNumber = portNumber;
+        }
+    }
+
+    return maxPortNumber;
 }
 
 void StpMgr::enableCoppRule(void)
