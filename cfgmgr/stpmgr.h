@@ -97,6 +97,7 @@ typedef struct STP_IPC_MSG {
 typedef struct STP_INIT_READY_MSG {
     uint8_t  opcode; // enable/disable
     uint16_t max_stp_instances;
+    uint16_t max_port_number;
     // Example: potential extra padding if alignment warnings arise
     // uint8_t  padding[1];
 } ALIGNED(4) STP_INIT_READY_MSG;
@@ -195,6 +196,7 @@ public:
     MacAddress macAddress;
     bool isPortInitDone(DBConnector *app_db);
     uint16_t getStpMaxInstances(void);
+    uint16_t getMaxPortNumber(void);
 
 private:
     Table m_cfgStpGlobalTable;
@@ -207,6 +209,7 @@ private:
     Table m_stateVlanMemberTable;
     Table m_stateLagTable;
     Table m_stateStpTable;
+    Table m_appPortTable;
     ProducerStateTable m_appCoppTableProducer;
 
     std::bitset<L2_INSTANCE_MAX> l2InstPool;

@@ -69,6 +69,7 @@ int main(int argc, char **argv)
         STP_INIT_READY_MSG msg;
         memset(&msg, 0, sizeof(STP_INIT_READY_MSG));
         msg.max_stp_instances = stpmgr.getStpMaxInstances();
+        msg.max_port_number = stpmgr.getMaxPortNumber();
         stpmgr.sendMsgStpd(STP_INIT_READY, sizeof(msg), (void *)&msg);
 
         // Get Base MAC
