@@ -82,6 +82,8 @@ public:
     void resolveNeighbor(const NeighborEntry &);
     void updateSrv6Nexthop(const NextHopKey &, const sai_object_id_t &);
 
+    void getInvalidNeighborEntry(TableDump& invalid_nhe);
+    void applyInvalidNeighborEntry(const NeighborEntry &neighbor_entry, const MacAddress &mac_address, const string state_key);
 private:
     PortsOrch *m_portsOrch;
     IntfsOrch *m_intfsOrch;

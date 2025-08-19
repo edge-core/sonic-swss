@@ -1131,6 +1131,29 @@ void IntfsOrch::doTask(Consumer &consumer)
                 setIntfProxyArp(alias, proxy_arp);
             }
 
+            if (ip_prefix_in_key)
+            {
+                TableDump invalid_nhes;
+                gNeighOrch->getInvalidNeighborEntry(invalid_nhes);
+
+                for (const auto &inhe: invalid_nhes)
+                {
+                    size_t found = inhe.first.find('|');
+                    string alias = inhe.first.substr(0, found);
+                    IpAddress ip_address(inhe.first.substr(found+1));
+                    TableMap attr = inhe.second;
+                    string vrf_name = attr["vrf_name"];
+                    string mac_address = attr["neigh"];
+                    string reason = attr["reason"];
+
+                    if (isIpInIntfSubnet(ip_address, alias, vrf_name) && reason == "invalid_subnet")
+                    {
+                        NeighborEntry neighbor_entry = { ip_address, alias };
+                        gNeighOrch->applyInvalidNeighborEntry(neighbor_entry, mac_address, inhe.first);
+                    }
+                }
+            }
+
             it = consumer.m_toSync.erase(it);
         }
         else if (op == DEL_COMMAND)
