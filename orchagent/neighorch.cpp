@@ -762,6 +762,33 @@ bool NeighOrch::getNeighborEntry(const IpAddress &ipAddress, NeighborEntry &neig
     return getNeighborEntry(nexthop, neighborEntry, macAddress);
 }
 
+void NeighOrch::getInvalidNeighborEntry(TableDump& invalid_nhe)
+{
+    vector<string> keys;
+    m_stateNeighInvalidTable->getKeys(keys);
+
+    for (const auto &key: keys)
+    {
+        vector<FieldValueTuple> values;
+        TableMap map;
+
+        m_stateNeighInvalidTable->get(key, values);
+
+        for (const auto &value: values)
+            map[value.first] = value.second;
+
+        invalid_nhe[key] = map;
+    }
+}
+
+void NeighOrch::applyInvalidNeighborEntry(const NeighborEntry &neighbor_entry, const MacAddress &mac_address, const string state_key)
+{
+    if (addNeighbor(neighbor_entry, mac_address))
+    {
+        m_stateNeighInvalidTable->del(state_key);
+    }
+}
+
 void NeighOrch::doTask(Consumer &consumer)
 {
     SWSS_LOG_ENTER();
@@ -866,6 +893,23 @@ void NeighOrch::doTask(Consumer &consumer)
                  && gIntfsOrch->isIpInIntfSubnet(ip_address, alias, vrf_name)== false)
             {
                 SWSS_LOG_WARN("IP %s not in alias %s subnet", ip_address.to_string().c_str(), alias.c_str());
+
+                string state_key = alias + state_db_key_delimiter + ip_address.to_string();
+                vector<FieldValueTuple> fvVector;
+                FieldValueTuple mac("neigh", mac_address.to_string());
+                fvVector.push_back(mac);
+
+                FieldValueTuple family("family", ip_address.isV4() ? "IPv4" : "IPv6");
+                fvVector.push_back(family);
+
+                FieldValueTuple vrf("vrf_name", vrf_name);
+                fvVector.push_back(vrf);
+
+                FieldValueTuple reason("reason", "invalid_subnet");
+                fvVector.push_back(reason);
+
+                m_stateNeighInvalidTable->set(state_key, fvVector);
+
                 it = consumer.m_toSync.erase(it);
                 continue;
             }
