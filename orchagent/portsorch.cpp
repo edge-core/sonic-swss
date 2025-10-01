@@ -4681,25 +4681,51 @@ void PortsOrch::doVlanMemberTask(Consumer &consumer)
         }
         else if (op == DEL_COMMAND)
         {
-            if (getPort(vlan_alias, vlan) && vlan.m_members.find(port_alias) != vlan.m_members.end())
-            {
-                if (!removeVlanMember(vlan, port))
-                {
-                    it++;
-                    continue;
-                }
-            }
+            string platform = getenv("platform") ? getenv("platform") : "";
 
-            if (m_portVlanMember[port.m_alias].empty())
+            if (platform == XS_PLATFORM_SUBSTRING)
             {
-                if (!removeBridgePort(port))
+                if (getPort(vlan_alias, vlan) && vlan.m_members.find(port_alias) != vlan.m_members.end())
                 {
-                    it++;
-                    continue;
+                    if (removeVlanMember(vlan, port))
+                    {
+                        if (m_portVlanMember[port.m_alias].empty())
+                        {
+                            removeBridgePort(port);
+                        }
+                        it = consumer.m_toSync.erase(it);
+                    }
+                    else
+                    {
+                        it++;
+                    }
                 }
+                else
+                    /* Cannot locate the VLAN */
+                    it = consumer.m_toSync.erase(it);
             }
+            else
+            {
+                if (getPort(vlan_alias, vlan) && vlan.m_members.find(port_alias) != vlan.m_members.end())
+                {
+                    if (!removeVlanMember(vlan, port))
+                    {
+                        it++;
+                        continue;
+                    }
+                }
 
-            it = consumer.m_toSync.erase(it);
+                if (m_portVlanMember[port.m_alias].empty())
+                {
+                    if (!removeBridgePort(port))
+                    {
+                        it++;
+                        continue;
+                    }
+                }
+
+                it = consumer.m_toSync.erase(it);
+            }
         }
         else
         {
@@ -5876,6 +5902,8 @@ bool PortsOrch::addBridgePort(Port &port)
 
 bool PortsOrch::removeBridgePort(Port &port)
 {
+    string platform = getenv("platform") ? getenv("platform") : "";
+
     SWSS_LOG_ENTER();
 
     if (port.m_bridge_port_id == SAI_NULL_OBJECT_ID)
@@ -5921,13 +5949,15 @@ bool PortsOrch::removeBridgePort(Port &port)
     gFdbOrch->flushFDBEntries(port.m_bridge_port_id, SAI_NULL_OBJECT_ID);
     SWSS_LOG_INFO("Flush FDB entries for port %s", port.m_alias.c_str());
 
-    if (port.m_fdb_count != 0)
+    if (platform != XS_PLATFORM_SUBSTRING)
     {
-        // SWSS_LOG_NOTICE("Still has %d FDB entries, couldn't remove bridge port %s",
-        //         port.m_fdb_count, port.m_alias.c_str());
-        return false;
+        if (port.m_fdb_count != 0)
+        {
+            // SWSS_LOG_NOTICE("Still has %d FDB entries, couldn't remove bridge port %s",
+            //         port.m_fdb_count, port.m_alias.c_str());
+            return false;
+        }
     }
-
     /* Remove bridge port */
     PortUpdate update = { port, false };
     notify(SUBJECT_TYPE_PRE_BRIDGE_PORT_CHANGE, static_cast<void *>(&update));
