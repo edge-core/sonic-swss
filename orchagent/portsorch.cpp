@@ -5900,7 +5900,7 @@ bool PortsOrch::removeBridgePort(Port &port)
     }
 
     port.m_bridge_port_admin_state = false;
-    m_portList[port.m_alias] = port;
+    m_portList[port.m_alias].m_bridge_port_admin_state = port.m_bridge_port_admin_state;
 
     if (port.m_child_ports.empty())
     {
@@ -5915,7 +5915,8 @@ bool PortsOrch::removeBridgePort(Port &port)
     /* Remove STP ports before bridge port deletion*/
     gStpOrch->removeStpPorts(port);
     port.m_bridge_port_removing = true;
-    m_portList[port.m_alias] = port;
+    m_portList[port.m_alias].m_stp_port_ids = port.m_stp_port_ids;
+    m_portList[port.m_alias].m_bridge_port_removing = port.m_bridge_port_removing;
 
     //Flush the FDB entires corresponding to the port
     gFdbOrch->flushFDBEntries(port.m_bridge_port_id, SAI_NULL_OBJECT_ID);
