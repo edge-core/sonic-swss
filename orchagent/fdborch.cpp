@@ -105,6 +105,7 @@ bool FdbOrch::storeFdbEntryState(const FdbUpdate& update)
             }
             mac_move = true;
             oldFdbData = it->second;
+            (void)m_entries.erase(entry);
         }
 
         fdbdata.bridge_port_id = update.port.m_bridge_port_id;
