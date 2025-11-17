@@ -281,7 +281,6 @@ bool StpOrch::removeStpPorts(Port &port)
     }
 
     port.m_stp_port_ids.clear();
-    gPortsOrch->setPort(port.m_alias, port);
     return true;
 }
 
