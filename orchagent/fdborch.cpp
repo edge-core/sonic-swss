@@ -1022,6 +1022,7 @@ void FdbOrch::doTask(Consumer& consumer)
             fdbData.esi = esi;
             fdbData.vni = vni;
             fdbData.is_flush_pending = false;
+            entry.port_name = port;
             if (addFdbEntry(entry, port, fdbData))
             {
                 if (origin == FDB_ORIGIN_MCLAG_ADVERTIZED)
@@ -1439,6 +1440,7 @@ void FdbOrch::updateVlanMember(const VlanMemberUpdate& update)
                 FdbEntry entry;
                 entry.mac = fdb.mac;
                 entry.bv_id = update.vlan.m_vlan_info.vlan_oid;
+                entry.port_name = port_name;
                  if (!addFdbEntry(entry, port_name, fdb.fdbData))
                  {
                     //Since the source of updateVlanMember comes from saved_db and not from another producer,
