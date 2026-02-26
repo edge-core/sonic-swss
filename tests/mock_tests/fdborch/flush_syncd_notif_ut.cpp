@@ -144,6 +144,7 @@ namespace fdb_syncd_flush_test
             delete gNeighOrch;
             gNeighOrch = nullptr;
 
+            delete gDirectory.get<VxlanTunnelOrch*>();
             gDirectory.m_values.clear();
             ut_helper::uninitSaiApi();
         }
