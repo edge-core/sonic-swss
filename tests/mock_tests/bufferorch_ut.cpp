@@ -379,6 +379,7 @@ namespace bufferorch_test
                 i.second->clear();
             }
 
+            delete gDirectory.get<FlexCounterOrch*>();
             gDirectory.m_values.clear();
 
             delete gCrmOrch;

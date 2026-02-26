@@ -450,6 +450,7 @@ namespace portsorch_test
             gSwitchOrch = nullptr;
 
             // clear orchs saved in directory
+            delete gDirectory.get<FlexCounterOrch*>();
             gDirectory.m_values.clear();
         }
 
