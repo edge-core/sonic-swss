@@ -38,6 +38,7 @@ namespace intfsorch_test
 
     struct IntfsOrchTest : public ::testing::Test
     {
+        TunnelDecapOrch *m_tunnel_decap_orch = nullptr;
         shared_ptr<swss::DBConnector> m_app_db;
         shared_ptr<swss::DBConnector> m_config_db;
         shared_ptr<swss::DBConnector> m_state_db;
@@ -174,6 +175,7 @@ namespace intfsorch_test
             gNeighOrch = new NeighOrch(m_app_db.get(), APP_NEIGH_TABLE_NAME, gIntfsOrch, gFdbOrch, gPortsOrch, gVrfOrch, m_chassis_app_db.get());
 
             auto* tunnel_decap_orch = new TunnelDecapOrch(m_app_db.get(), APP_TUNNEL_DECAP_TABLE_NAME);
+            m_tunnel_decap_orch = tunnel_decap_orch;
             vector<string> mux_tables = {
                 CFG_MUX_CABLE_TABLE_NAME,
                 CFG_PEER_SWITCH_TABLE_NAME
@@ -244,6 +246,14 @@ namespace intfsorch_test
 
         void TearDown() override
         {
+            auto* mux_orch = gDirectory.get<MuxOrch*>();
+            delete mux_orch;
+            delete m_tunnel_decap_orch;
+            m_tunnel_decap_orch = nullptr;
+            delete gDirectory.get<FlexCounterOrch*>();
+            delete gDirectory.get<VNetOrch*>();
+            delete gDirectory.get<VNetCfgRouteOrch*>();
+            delete gDirectory.get<VNetRouteOrch*>();
             gDirectory.m_values.clear();
 
             delete gCrmOrch;
