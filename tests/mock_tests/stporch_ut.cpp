@@ -243,4 +243,38 @@ namespace stporch_test
         _unhook_sai_vlan_api();
         _unhook_sai_fdb_api();
     }
+
+    TEST_F(StpOrchTest, TestVsPlatformCheck) {
+        // Test that when platform is "vs", the constructor returns early without initialization
+        const char* old_platform = getenv("platform");
+        
+        // Set platform to "vs"
+        setenv("platform", "vs", 1);
+        
+        // Create a new StpOrch instance
+        // This should detect vs platform and skip initialization
+        vector<string> tableNames = {
+            "STP_TABLE",
+            "STP_VLAN_INSTANCE_TABLE",
+            "STP_PORT_STATE_TABLE",
+            "STP_FASTAGEING_FLUSH_TABLE"
+        };
+        
+        // The constructor should log a warning and return early
+        StpOrch* stp_vs = new StpOrch(m_app_db.get(), m_state_db.get(), tableNames);
+        ASSERT_NE(stp_vs, nullptr);
+        
+        // Verify that m_defaultStpId is not set (should be SAI_NULL_OBJECT_ID)
+        // This indicates the initialization was skipped
+        ASSERT_EQ(stp_vs->m_defaultStpId, SAI_NULL_OBJECT_ID);
+        
+        delete stp_vs;
+        
+        // Restore original platform environment
+        if (old_platform) {
+            setenv("platform", old_platform, 1);
+        } else {
+            unsetenv("platform");
+        }
+    }
 }
