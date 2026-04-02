@@ -1,4 +1,5 @@
 #include <tuple>
+#include <string>
 #include "portsorch.h"
 #include "logger.h"
 #include "fdborch.h"
@@ -17,6 +18,16 @@ StpOrch::StpOrch(DBConnector * db, DBConnector * stateDb, vector<string> &tableN
     Orch(db, tableNames)
 {
     SWSS_LOG_ENTER();
+
+    // Check if platform is "vs" (virtual switch)
+    const char *platform = getenv("platform");
+    if (platform && string(platform) == "vs")
+    {
+        SWSS_LOG_WARN("vs platform is not supported, SAI STP not initialized");
+        m_defaultStpId = SAI_NULL_OBJECT_ID;
+        m_stpTable = unique_ptr<Table>(new Table(stateDb, STATE_STP_TABLE_NAME));
+        return;
+    }
 
     sai_attribute_t attr;
     sai_status_t status;

@@ -27,7 +27,6 @@ extern PortsOrch*            gPortsOrch;
 extern MclagAaOrch*     gMclagAaOrch;
 extern FlowCounterRouteOrch* gFlowCounterRouteOrch;
 extern RouteOrch*            gRouteOrch;
-
 bool VRFOrch::addOperation(const Request& request)
 {
     SWSS_LOG_ENTER();
