@@ -264,6 +264,24 @@ task_process_status PfcWdOrch<DropHandler, ForwardHandler>::createEntry(const st
                         }
                     }
                 }
+                if (m_platform == XS_PLATFORM_SUBSTRING)
+                {
+                    if(gSwitchOrch->checkPfcDlrInitEnable())
+                    {
+                        sai_object_id_t queueId = port.m_queue_ids[0];
+                        sai_attribute_t attr;
+                        attr.id = SAI_QUEUE_ATTR_PFC_DLR_PACKET_ACTION;
+                        attr.value.u32 = packet_action_map.at(value);
+
+                        sai_status_t status = sai_queue_api->set_queue_attribute(queueId, &attr);
+                        if (status != SAI_STATUS_SUCCESS)
+                        {
+                            SWSS_LOG_ERROR("Failed to set PFC DLR Packet Action on port 0x%" PRIx64 " queue 0x%" PRIx64 " : %d",
+                                           port.m_port_id, queueId, status);
+                            return task_process_status::task_invalid_entry;
+                        }
+                    }
+                }
             }
             else
             {
