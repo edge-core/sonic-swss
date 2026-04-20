@@ -484,7 +484,9 @@ PfcWdLossyHandler::PfcWdLossyHandler(sai_object_id_t port, sai_object_id_t queue
     SWSS_LOG_ENTER();
 
     string platform = getenv("platform") ? getenv("platform") : "";
-    if (platform == CISCO_8000_PLATFORM_SUBSTRING || ((platform == BRCM_PLATFORM_SUBSTRING) && (gSwitchOrch->checkPfcDlrInitEnable())))
+    if (platform == CISCO_8000_PLATFORM_SUBSTRING ||
+        ((platform == BRCM_PLATFORM_SUBSTRING) && (gSwitchOrch->checkPfcDlrInitEnable())) ||
+        ((platform == XS_PLATFORM_SUBSTRING) && (gSwitchOrch->checkPfcDlrInitEnable())))
     {
         SWSS_LOG_DEBUG("Skipping in constructor PfcWdLossyHandler for platform %s on port 0x%" PRIx64,
                        platform.c_str(), port);
@@ -511,7 +513,9 @@ PfcWdLossyHandler::~PfcWdLossyHandler(void)
     SWSS_LOG_ENTER();
 
     string platform = getenv("platform") ? getenv("platform") : "";
-    if (platform == CISCO_8000_PLATFORM_SUBSTRING || ((platform == BRCM_PLATFORM_SUBSTRING) && (gSwitchOrch->checkPfcDlrInitEnable())))
+    if (platform == CISCO_8000_PLATFORM_SUBSTRING ||
+        ((platform == BRCM_PLATFORM_SUBSTRING) && (gSwitchOrch->checkPfcDlrInitEnable())) ||
+        ((platform == XS_PLATFORM_SUBSTRING) && (gSwitchOrch->checkPfcDlrInitEnable())))
     {
         SWSS_LOG_DEBUG("Skipping in destructor PfcWdLossyHandler for platform %s on port 0x%" PRIx64,
                        platform.c_str(), getPort());
