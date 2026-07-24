@@ -1,6 +1,8 @@
 #ifndef __NEIGHSYNC__
 #define __NEIGHSYNC__
 
+#include <unordered_map>
+#include <ctime>
 #include "dbconnector.h"
 #include "producerstatetable.h"
 #include "netmsg.h"
@@ -35,6 +37,9 @@ public:
         return m_AppRestartAssist;
     }
 
+    void pruneSuppressCache();
+    void clearSuppressCache();
+
 private:
     Table m_stateNeighRestoreTable, m_cfgPeerSwitchTable;
     ProducerStateTable m_neighTable;
@@ -47,6 +52,8 @@ private:
     void onMsgNbr(int nlmsg_type, struct nl_object *obj);
     void onMsgLink(int nlmsg_type, struct nl_object *obj);
     std::map<std::string, int> m_intf_master;
+
+    std::unordered_map<std::string, time_t> m_suppressDelCache;
 };
 
 }
