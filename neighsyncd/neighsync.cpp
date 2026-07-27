@@ -25,6 +25,25 @@ using namespace swss;
 #define SHORT_NAME_ETH_PREFIX "Eth"
 #define DEFAULT_VRF         "default"
 
+const int SUPPRESS_TTL = 60; // seconds
+
+void NeighSync::pruneSuppressCache()
+{
+    auto now = time(nullptr);
+    for (auto it = m_suppressDelCache.begin(); it != m_suppressDelCache.end(); )
+    {
+        if (now - it->second > SUPPRESS_TTL * 2)
+            it = m_suppressDelCache.erase(it);
+        else
+            ++it;
+    }
+}
+
+void NeighSync::clearSuppressCache()
+{
+    m_suppressDelCache.clear();
+}
+
 NeighSync::NeighSync(RedisPipeline *pipelineAppDB, DBConnector *stateDb, DBConnector *cfgDb) :
     m_neighTable(pipelineAppDB, APP_NEIGH_TABLE_NAME),
     m_stateNeighRestoreTable(stateDb, STATE_NEIGH_RESTORE_TABLE_NAME),
@@ -279,10 +298,24 @@ void NeighSync::onMsgNbr(int nlmsg_type, struct nl_object *obj)
     {
         if (delete_key == true)
         {
+            // Suppress redundant delete
+            auto now = time(nullptr);
+            auto it = m_suppressDelCache.find(key);
+
+            if (it != m_suppressDelCache.end() && (now - it->second) < SUPPRESS_TTL)
+            {
+                SWSS_LOG_INFO("Suppressing del for unresolved neighbor %s", key.c_str());
+                return;
+            }
+
+            // Proceed with delete and update cache
             m_neighTable.del(key);
+            m_suppressDelCache[key] = now;
+
             return;
         }
         m_neighTable.set(key, fvVector);
+        m_suppressDelCache.erase(key);
     }
 }
 

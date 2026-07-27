@@ -7,9 +7,13 @@
 #include "netdispatcher.h"
 #include "netlink.h"
 #include "neighsyncd/neighsync.h"
+#include "selectabletimer.h"
 
 using namespace std;
 using namespace swss;
+
+// Register a 30 sec timer
+SelectableTimer pruneTimer(timespec{30, 0});
 
 int main(int argc, char **argv)
 {
@@ -70,11 +74,23 @@ int main(int argc, char **argv)
             netlink.dumpRequest(RTM_GETNEIGH);
             netlink.dumpRequest(RTM_GETLINK);
 
+            sync.clearSuppressCache();
+
             s.addSelectable(&netlink);
+            pruneTimer.start();
+            s.addSelectable(&pruneTimer);
+
             while (true)
             {
                 Selectable *temps;
                 s.select(&temps);
+
+                if (temps == &pruneTimer)
+                {
+                    sync.pruneSuppressCache();
+                    continue;
+                }
+
                 /*
                  * If warmstart is in progress, we check the reconcile timer,
                  * if timer expired, we stop the timer and start the reconcile process
