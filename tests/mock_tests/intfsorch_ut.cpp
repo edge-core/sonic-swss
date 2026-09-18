@@ -1,6 +1,19 @@
+#include <memory>
+#include <vector>
+#include <sstream>
+#include <string>
+#include <set>
+#include <map>
+
 #define private public // make Directory::m_values available to clean it.
 #include "directory.h"
 #undef private
+#define protected public
+#define private public
+#include "orch.h"
+#include "intfsorch.h"
+#undef private
+#undef protected
 #include "gtest/gtest.h"
 #include "ut_helper.h"
 #include "mock_orchagent_main.h"
@@ -342,5 +355,70 @@ namespace intfsorch_test
         static_cast<Orch *>(gIntfsOrch)->doTask();
         ASSERT_EQ(current_create_count + 1, create_rif_count);
         ASSERT_EQ(current_remove_count + 1, remove_rif_count);
+    }
+
+    // SONIC-14859: an interface whose RIF removal is stuck (ref_count > 0, held by
+    // a gateway neighbor that is only released by the IP-re-add self-recovery path)
+    // must not stay permanently blocked. A genuine IP re-add on such an interface
+    // has to be allowed through so recovery can proceed, instead of being blocked
+    // forever by the m_removingIntfses marker (the deadlock reported by the customer).
+    TEST_F(IntfsOrchTest, IntfsOrchStuckRemovalIpReAddRecovers)
+    {
+        auto consumer = dynamic_cast<Consumer *>(gIntfsOrch->getExecutor(APP_INTF_TABLE_NAME));
+
+        // 1) Create the interface and add an IP (mirrors "config interface ip add"):
+        //    intfmgrd pushes an interface-level SET (creates the RIF) and an
+        //    IP-level SET (adds the address).
+        std::deque<KeyOpFieldsValuesTuple> entries;
+        entries.push_back({"Ethernet0", "SET", { {"mtu", "9100"} }});
+        entries.push_back({"Ethernet0:10.0.0.1/24", "SET", { {"scope", "global"}, {"family", "IPv4"} }});
+        consumer->addToSync(entries);
+        auto current_create_count = create_rif_count;
+        static_cast<Orch *>(gIntfsOrch)->doTask();
+        ASSERT_EQ(current_create_count + 1, create_rif_count);
+        ASSERT_TRUE(gIntfsOrch->m_syncdIntfses.find("Ethernet0") != gIntfsOrch->m_syncdIntfses.end());
+
+        // 2) A gateway neighbor referencing this RIF keeps ref_count > 0.
+        gIntfsOrch->increaseRouterIntfsRefCount("Ethernet0");
+
+        // 3) Remove the IP (mirrors "config interface ip remove"). First the IP-level
+        //    DEL drops the address; then, on the next update, the interface-level DEL
+        //    drives removeRouterIntfs(). Because ref_count is still > 0 it fails, the
+        //    RIF is NOT removed, and the interface is marked "in removal".
+        entries.clear();
+        entries.push_back({"Ethernet0:10.0.0.1/24", "DEL", { {} }});
+        consumer->addToSync(entries);
+        static_cast<Orch *>(gIntfsOrch)->doTask();
+
+        entries.clear();
+        entries.push_back({"Ethernet0", "DEL", { {} }});
+        consumer->addToSync(entries);
+        auto current_remove_count = remove_rif_count;
+        static_cast<Orch *>(gIntfsOrch)->doTask();
+        ASSERT_EQ(current_remove_count, remove_rif_count);                 // removal did not happen
+        ASSERT_TRUE(gIntfsOrch->m_removingIntfses.count("Ethernet0") == 1); // marker is set
+        ASSERT_TRUE(gIntfsOrch->m_syncdIntfses.find("Ethernet0") != gIntfsOrch->m_syncdIntfses.end()); // RIF still present
+
+        // 4) Re-add the identical IP (the second half of the customer's unconditional
+        //    "remove IP, then add IP" sequence) while ref_count is still held. The
+        //    stale interface-level DEL is still queued and would loop forever,
+        //    blocking this re-add. The fix must cancel that stale removal so the IP
+        //    re-add is allowed through and recovery can proceed.
+        entries.clear();
+        entries.push_back({"Ethernet0", "SET", { {"mtu", "9100"} }});
+        entries.push_back({"Ethernet0:10.0.0.1/24", "SET", { {"scope", "global"}, {"family", "IPv4"} }});
+        consumer->addToSync(entries);
+        current_create_count = create_rif_count;
+        current_remove_count = remove_rif_count;
+        static_cast<Orch *>(gIntfsOrch)->doTask();
+
+        // Fixed behavior: the removal marker is cleared, so the interface is no longer
+        // deadlocked. The RIF is reused in place (no spurious remove, no re-create),
+        // and the queue drains instead of retrying the stuck removal forever.
+        ASSERT_TRUE(gIntfsOrch->m_removingIntfses.count("Ethernet0") == 0); // marker cleared
+        ASSERT_EQ(current_remove_count, remove_rif_count);                  // RIF not torn down
+        ASSERT_EQ(current_create_count, create_rif_count);                  // RIF reused, not recreated
+        ASSERT_TRUE(gIntfsOrch->m_syncdIntfses.find("Ethernet0") != gIntfsOrch->m_syncdIntfses.end());
+        ASSERT_TRUE(consumer->m_toSync.empty());                           // queue drained, not stuck retrying
     }
 }

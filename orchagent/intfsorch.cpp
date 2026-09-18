@@ -1246,6 +1246,54 @@ void IntfsOrch::doTask(Consumer &consumer)
                 }
                 else
                 {
+                    // removeIntf() failed because the RIF ref_count is still > 0. PR #2679
+                    // normally marks the interface "in removal" and retries until it drains.
+                    //
+                    // That retries forever whenever an IP is removed and re-added on the
+                    // same interface (e.g. a DHCP lease renewal, but any "remove IP, then
+                    // re-add IP" sequence): the "in removal" marker blocks the follow-up
+                    // re-add SET, and blocking the SET blocks the neighbor recovery that
+                    // would drain ref_count -- so it never reaches 0. A self-sustaining deadlock.
+                    //
+                    // Break it: if an IP re-add SET for this interface is already queued, the
+                    // DEL is stale -- drop it, keep the valid RIF, and clear the marker so the
+                    // re-add can proceed and recover. Only a SET with an IP prefix (e.g.
+                    // "Ethernet0:10.0.0.1/24") qualifies; a bare interface SET keeps #2679's retry.
+                    bool ip_readd_pending = false;
+                    for (auto &sync_it : consumer.m_toSync)
+                    {
+                        const KeyOpFieldsValuesTuple &pending = sync_it.second;
+                        if (kfvOp(pending) != SET_COMMAND)
+                        {
+                            continue;
+                        }
+                        const string &pkey = kfvKey(pending);
+                        size_t sep = pkey.find(':');
+                        if (sep == string::npos)
+                        {
+                            continue; // no IP prefix -> not an IP re-add
+                        }
+                        if (pkey.substr(0, sep) == alias)
+                        {
+                            ip_readd_pending = true;
+                            break;
+                        }
+                    }
+
+                    if (ip_readd_pending)
+                    {
+                        SWSS_LOG_NOTICE("Interface %s removal is stuck (ref count held) but an "
+                                        "IP re-add is pending; cancelling stale removal to allow "
+                                        "recovery", alias.c_str());
+                        m_removingIntfses.erase(alias);
+                        if (m_syncdIntfses.find(alias) != m_syncdIntfses.end())
+                        {
+                            m_syncdIntfses[alias].remove_intf_hw_pending = false;
+                        }
+                        it = consumer.m_toSync.erase(it);
+                        continue;
+                    }
+
                     m_removingIntfses.insert(alias);
                     it++;
                     continue;
