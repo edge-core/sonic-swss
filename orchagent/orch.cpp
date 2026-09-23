@@ -248,6 +248,17 @@ void Consumer::execute()
     {
         std::deque<KeyOpFieldsValuesTuple> entries;
         table->pops(entries);
+
+        if (entries.empty())
+        {
+            auto *selectable = getSelectable();
+            while (selectable->hasData())
+            {
+                selectable->updateAfterRead();
+            }
+            break;
+        }
+
         update_size = addToSync(entries);
     } while (update_size != 0);
 
@@ -783,14 +794,17 @@ bool Orch::isItemIdsMapContinuous(unsigned long idsMap, sai_uint32_t maxId)
 
 void Orch::addConsumer(DBConnector *db, string tableName, int pri)
 {
+    Consumer *consumer;
     if (db->getDbId() == CONFIG_DB || db->getDbId() == STATE_DB || db->getDbId() == CHASSIS_APP_DB)
     {
-        addExecutor(new Consumer(new SubscriberStateTable(db, tableName, TableConsumable::DEFAULT_POP_BATCH_SIZE, pri), this, tableName));
+        consumer = new Consumer(new SubscriberStateTable(db, tableName, TableConsumable::DEFAULT_POP_BATCH_SIZE, pri), this, tableName);
     }
     else
     {
-        addExecutor(new Consumer(new ConsumerStateTable(db, tableName, gBatchSize, pri), this, tableName));
+        consumer = new Consumer(new ConsumerStateTable(db, tableName, gBatchSize, pri), this, tableName);
     }
+    consumer->setPri(pri);
+    addExecutor(consumer);
 }
 
 void Orch::addExecutor(Executor* executor)
