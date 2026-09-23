@@ -50,29 +50,6 @@ bool PortMgr::setPortMtu(const string &alias, const string &mtu)
     {
         throw runtime_error(cmd_str + " : " + res);
     }
-    vector<FieldValueTuple> temp;
-
-    /* 'mtu_slowpath' has higher priority than 'mtu' for the netdev mtu in kernel */
-    if (m_cfgPortTable.get(alias, temp))
-    {
-        auto mtu_slowpath = swss::fvsGetValue(temp, "mtu_slowpath", true);
-        if (!mtu_slowpath)
-        {
-            // ip link set dev <port_name> mtu <mtu>
-            cmd << IP_CMD << " link set dev " << shellquote(alias) << " mtu " << shellquote(mtu);
-            EXEC_WITH_ERROR_THROW(cmd.str(), res);
-
-        }
-    }
-
-    // Set the port MTU in application database to update both
-    // the port MTU and possibly the port based router interface MTU
-    vector<FieldValueTuple> fvs;
-    FieldValueTuple fv("mtu", mtu);
-    fvs.push_back(fv);
-    m_appPortTable.set(alias, fvs);
-
-    return true;
 }
 
 bool PortMgr::setPortMtuSlowpath(const string &alias, const string &mtu_slowpath)
